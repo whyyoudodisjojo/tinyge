@@ -11,5 +11,5 @@ wgpu = "29.0.3"
 winit = "0.30.13"
 
 [[bin]]
-name="triangle"
-path="examples/triangle.rs"
+name="hexagon"
+path="examples/hexagon.rs"

@@ -19,8 +19,21 @@ pub struct ColorTargetStateData {
     pub write_mask: ColorWrites,
 }
 
+pub struct BindGroupLayoutDescriptorOwned {
+    pub entries: Vec<BindGroupLayoutEntry>,
+}
+
+impl BindGroupLayoutDescriptorOwned {
+    pub fn into_desc<'a>(&'a self) -> BindGroupLayoutDescriptor<'a> {
+        BindGroupLayoutDescriptor {
+            label: None,
+            entries: &self.entries,
+        }
+    }
+}
+
 pub struct ResourceBufferBindGroupLayoutWithUsages {
-    pub layout: BindGroupLayout,
+    pub layout: BindGroupLayoutDescriptorOwned,
     pub usages: BufferUsages,
     pub size: u64,
 }
@@ -65,8 +78,8 @@ pub trait Shader {
                      }| (vertex_buffer, vertex_buffer_size),
                 )
                 .collect::<(Vec<_>, Vec<_>)>();
-        let (bind_group_layouts, usages, resource_buffer_sizes): (
-            Vec<BindGroupLayout>,
+        let (bind_group_layout_desc, usages, resource_buffer_sizes): (
+            Vec<BindGroupLayoutDescriptorOwned>,
             Vec<BufferUsages>,
             Vec<u64>,
         ) = self
@@ -81,13 +94,18 @@ pub trait Shader {
             )
             .collect::<(Vec<_>, Vec<_>, Vec<_>)>();
 
+        let bind_group_layouts = bind_group_layout_desc
+            .iter()
+            .map(|l| device.create_bind_group_layout(&l.into_desc()))
+            .collect::<Vec<_>>();
+
         let desc = self.shader_pipeline_desc();
 
         let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &bind_group_layouts
                 .iter()
-                .map(|l| Some(l))
+                .map(|b| Some(b))
                 .collect::<Vec<_>>(),
             immediate_size: 0,
         });
@@ -147,14 +165,40 @@ pub trait Shader {
 
         let resource_buffers = resource_buffer_sizes
             .into_iter()
+            .zip(bind_group_layout_desc.iter())
+            .zip(bind_group_layouts.iter())
             .zip(usages.into_iter())
-            .map(|(size, usage)| {
-                device.create_buffer(&BufferDescriptor {
+            .map(|(((size, desc), layout), usage)| {
+                let buffers = desc
+                    .entries
+                    .iter()
+                    .map(|_| {
+                        device.create_buffer(&BufferDescriptor {
+                            label: None,
+                            size: align_to_4_bytes(size),
+                            usage: usage | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                            mapped_at_creation: false,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                let bind_group = device.create_bind_group(&BindGroupDescriptor {
                     label: None,
-                    size: align_to_4_bytes(size),
-                    usage: usage | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                    mapped_at_creation: false,
-                })
+                    layout: &layout,
+                    entries: &buffers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, b)| BindGroupEntry {
+                            binding: i as u32,
+                            resource: b.as_entire_binding(),
+                        })
+                        .collect::<Vec<_>>(),
+                });
+
+                ShaderResourceBindGroupsAndBuffers {
+                    buffers,
+                    bind_group,
+                }
             })
             .collect::<Vec<_>>();
 
@@ -174,10 +218,14 @@ pub struct ShaderBuiltData {
     pipeline: RenderPipeline,
 }
 
+pub struct ShaderResourceBindGroupsAndBuffers {
+    pub buffers: Vec<Buffer>,
+    pub bind_group: BindGroup,
+}
 pub struct ShaderBuffers {
     pub vertex_buffers: Vec<Buffer>,
     pub index_buffer: Buffer,
-    pub resource_buffers: Vec<Buffer>,
+    pub resource_buffers: Vec<ShaderResourceBindGroupsAndBuffers>,
 }
 
 impl ShaderBuffers {
@@ -200,7 +248,12 @@ impl ShaderBuffers {
         self.resource_buffers
             .iter()
             .zip(new_buffers.resource_buffers.iter())
-            .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder));
+            .for_each(|(o, n)| {
+                o.buffers
+                    .iter()
+                    .zip(n.buffers.iter())
+                    .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder))
+            });
 
         queue.submit(std::iter::once(encoder.finish()));
     }

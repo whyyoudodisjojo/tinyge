@@ -1,3 +1,8 @@
+use std::{
+    num::NonZeroU64,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
 use tinyge::{
     game_loop::{
         GameLoop,
@@ -11,14 +16,16 @@ use tinyge::{
         },
     },
     shaders::{
-        ColorTargetStateData, Shader, ShaderBuffers, ShaderManager, ShaderMeshBufferLayouts,
-        ShaderPipelineDescriptor, ShaderVertexBufferLayout,
+        BindGroupLayoutDescriptorOwned, ColorTargetStateData,
+        ResourceBufferBindGroupLayoutWithUsages, Shader, ShaderBuffers, ShaderManager,
+        ShaderMeshBufferLayouts, ShaderPipelineDescriptor, ShaderVertexBufferLayout,
     },
     state::{StateRender, StateUpdates},
 };
 use wgpu::{
-    Backends, BlendComponent, BlendState, Color, ColorWrites, Device, MultisampleState, Operations,
-    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, VertexAttribute,
+    Backends, BindGroupLayoutEntry, BindingType, BlendComponent, BlendState, BufferUsages, Color,
+    ColorWrites, Device, MultisampleState, Operations, PrimitiveState, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, ShaderStages, VertexAttribute,
     VertexBufferLayout, VertexFormat, wgt::DeviceDescriptor,
 };
 use winit::{dpi::PhysicalSize, event::WindowEvent, event_loop::EventLoop};
@@ -31,9 +38,9 @@ pub struct State {
     sz: PhysicalSize<u32>,
 }
 
-struct Triangle;
+struct Hexagon;
 
-impl Shader for Triangle {
+impl Shader for Hexagon {
     fn mesh_buffers_layouts(&self) -> tinyge::shaders::ShaderMeshBufferLayouts<'static> {
         let vertex_sz = (3 * 4) + (3 * 4); // position (3 floats) + color (3 floats) = 24 bytes per vertex
         let vertex_buffer_sz = vertex_sz * VERTICES.len() as u64; // 5 vertices
@@ -67,7 +74,22 @@ impl Shader for Triangle {
     fn resource_buffers_bind_group_layouts(
         &self,
     ) -> Vec<tinyge::shaders::ResourceBufferBindGroupLayoutWithUsages> {
-        vec![]
+        vec![ResourceBufferBindGroupLayoutWithUsages {
+            layout: BindGroupLayoutDescriptorOwned {
+                entries: vec![BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::all(),
+                    ty: BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: NonZeroU64::new(4),
+                    },
+                    count: None,
+                }],
+            },
+            usages: BufferUsages::UNIFORM,
+            size: 4,
+        }]
     }
 
     fn load_source_code(&self) -> &'static str {
@@ -110,26 +132,31 @@ struct Vertex {
     color: [f32; 3],
 }
 
+pub enum UpdateEvents {
+    Resize(PhysicalSize<u32>),
+    TimeUpdate,
+}
+
 const VERTICES: &[Vertex] = &[
     Vertex {
         position: [-0.0868241, 0.49240386, 0.0],
-        color: [0.5, 0.0, 0.5],
+        color: [0.1, 0.1, 0.8],
     }, // A
     Vertex {
         position: [-0.49513406, 0.06958647, 0.0],
-        color: [0.5, 0.0, 0.5],
+        color: [0.2, 0.7, 0.3],
     }, // B
     Vertex {
         position: [-0.21918549, -0.44939706, 0.0],
-        color: [0.5, 0.0, 0.5],
+        color: [0.1, 0.5, 0.2],
     }, // C
     Vertex {
         position: [0.35966998, -0.3473291, 0.0],
-        color: [0.5, 0.0, 0.5],
+        color: [0.6, 0.8, 0.4],
     }, // D
     Vertex {
         position: [0.44147372, 0.2347359, 0.0],
-        color: [0.5, 0.0, 0.5],
+        color: [0.8, 0.3, 0.5],
     }, // E
 ];
 
@@ -137,7 +164,7 @@ const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4, /* padding */ 0];
 
 impl StateUpdates for State {
     type K = ShaderId;
-    type UpdateEvent = PhysicalSize<u32>;
+    type UpdateEvent = UpdateEvents;
 
     fn handle_shader_recompilation(
         &mut self,
@@ -155,14 +182,36 @@ impl StateUpdates for State {
                     bytemuck::cast_slice(&VERTICES),
                 );
                 queue.write_buffer(&new_buffer.index_buffer, 0, bytemuck::cast_slice(INDICES));
+                queue.write_buffer(
+                    &new_buffer.resource_buffers[0].buffers[0],
+                    0,
+                    bytemuck::cast_slice(&[SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as u32]),
+                );
             }
         }
 
         self.buffers = Some(new_buffer);
     }
 
-    fn update(&mut self, update_event: Self::UpdateEvent, _queue: Option<&wgpu::Queue>) {
-        self.sz = update_event;
+    fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&wgpu::Queue>) {
+        match update_event {
+            UpdateEvents::Resize(sz) => self.sz = sz,
+            UpdateEvents::TimeUpdate => {
+                self.buffers.as_ref().zip(queue).map(|(b, q)| {
+                    q.write_buffer(
+                        &b.resource_buffers[0].buffers[0],
+                        0,
+                        bytemuck::cast_slice(&[SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs() as u32]),
+                    )
+                });
+            }
+        }
     }
 }
 
@@ -216,6 +265,11 @@ impl RenderAble<ShaderId> for State {
             self.buffers.as_ref().unwrap().index_buffer.slice(..),
             wgpu::IndexFormat::Uint16,
         );
+        render_pass.set_bind_group(
+            0,
+            &self.buffers.as_ref().unwrap().resource_buffers[0].bind_group,
+            &[],
+        );
         render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
     }
 }
@@ -223,9 +277,12 @@ impl RenderAble<ShaderId> for State {
 impl StateRenderSinglePass<ShaderId> for State {}
 
 pub struct Executor;
+
+pub struct TimedEvent;
+
 impl EventsExecutor<State> for Executor {
-    type CustomEvent = ();
-    type UpdateEvent = PhysicalSize<u32>;
+    type CustomEvent = TimedEvent;
+    type UpdateEvent = UpdateEvents;
 
     fn handle_event(
         &mut self,
@@ -241,9 +298,34 @@ impl EventsExecutor<State> for Executor {
         match event {
             BaseEvent::Resumed => {
                 tx.force_redraw_async();
+                self.emit_event(
+                    TimedEvent,
+                    tinyge::game_loop::events::EventSchedule::In(Duration::from_secs(10)),
+                    tx,
+                );
+            }
+            BaseEvent::CustomEvent(_) => {
+                tx.send(
+                    tinyge::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
+                        UpdateEvents::TimeUpdate,
+                    ),
+                )
+                .unwrap();
+
+                tx.force_redraw_async();
+
+                self.emit_event(
+                    TimedEvent,
+                    tinyge::game_loop::events::EventSchedule::In(Duration::from_secs(10)),
+                    tx,
+                );
             }
             BaseEvent::WindowEvent(WindowEvent::Resized(sz)) => tx
-                .send(tinyge::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(sz))
+                .send(
+                    tinyge::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
+                        UpdateEvents::Resize(sz),
+                    ),
+                )
                 .unwrap(),
             _ => return,
         }
@@ -253,7 +335,7 @@ impl EventsExecutor<State> for Executor {
 fn main() {
     let mut shader_manager: ShaderManager<ShaderId> = ShaderManager::new();
 
-    let shader: Triangle = Triangle;
+    let shader = Hexagon;
     shader_manager.register_shader(ShaderId(1), shader);
 
     let renderer = Renderer::new(
