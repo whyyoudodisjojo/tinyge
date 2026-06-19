@@ -19,7 +19,7 @@ use tinyge::{
 use wgpu::{
     Backends, BlendComponent, BlendState, Color, ColorWrites, Device, MultisampleState, Operations,
     PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, VertexAttribute,
-    VertexBufferLayout, VertexFormat, naga::compact::KeepUnused::No, wgt::DeviceDescriptor,
+    VertexBufferLayout, VertexFormat, wgt::DeviceDescriptor,
 };
 use winit::{dpi::PhysicalSize, event::WindowEvent, event_loop::EventLoop};
 
@@ -230,7 +230,7 @@ impl EventsExecutor<State> for Executor {
                 Self::CustomEvent,
             >,
         >,
-        state: &State,
+        _state: &State,
     ) {
         match event {
             BaseEvent::Resumed => {

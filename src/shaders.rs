@@ -36,7 +36,7 @@ pub struct ShaderMeshBufferLayouts<'a> {
 }
 
 pub fn align_to_4_bytes(size: u64) -> u64 {
-    ((size + 3) / 4) / 4
+    ((size + 3) / 4) * 4
 }
 
 pub trait Shader {
@@ -55,16 +55,21 @@ pub trait Shader {
             vertex_buffer_layouts: vertex_layouts,
             index_buffer_size,
         } = self.mesh_buffers_layouts();
-        let (vertex_layouts, vertex_buffer_sizes): (Vec<VertexBufferLayout<'static>>, Vec<u64>)= vertex_layouts
-            .into_iter()
-            .map(
-                |ShaderVertexBufferLayout {
-                     vertex_buffer,
-                     vertex_buffer_size,
-                 }| (vertex_buffer, vertex_buffer_size),
-            )
-            .collect::<(Vec<_>, Vec<_>)>();
-        let (bind_group_layouts, usages, resource_buffer_sizes): (Vec<BindGroupLayout>, Vec<BufferUsages>, Vec<u64>) = self
+        let (vertex_layouts, vertex_buffer_sizes): (Vec<VertexBufferLayout<'static>>, Vec<u64>) =
+            vertex_layouts
+                .into_iter()
+                .map(
+                    |ShaderVertexBufferLayout {
+                         vertex_buffer,
+                         vertex_buffer_size,
+                     }| (vertex_buffer, vertex_buffer_size),
+                )
+                .collect::<(Vec<_>, Vec<_>)>();
+        let (bind_group_layouts, usages, resource_buffer_sizes): (
+            Vec<BindGroupLayout>,
+            Vec<BufferUsages>,
+            Vec<u64>,
+        ) = self
             .resource_buffers_bind_group_layouts()
             .into_iter()
             .map(
