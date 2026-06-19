@@ -145,6 +145,9 @@ where
             ctx.surface_config.width = render_width;
             ctx.surface_config.height = render_height;
 
+            // Reconfigure the surface with new dimensions - this is required!
+            ctx.surface.configure(&ctx.device, &ctx.surface_config);
+
             let new_buffers = shader_manager.recompile_shaders(&ctx.device);
             new_buffers.map(|n| state.handle_shader_recompilation(n, &ctx.queue, &ctx.device));
         }
