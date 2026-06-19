@@ -51,9 +51,7 @@ where
             CurrentSurfaceTexture::Timeout
             | CurrentSurfaceTexture::Occluded
             | CurrentSurfaceTexture::Validation => return,
-            CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => {
-                return;
-            }
+            CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => return,
         };
 
         let view = output

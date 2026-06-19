@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, num::NonZero};
+use std::{collections::HashMap, hash::Hash, mem, num::NonZero};
 
 use wgpu::*;
 
@@ -20,19 +20,19 @@ pub struct ColorTargetStateData {
 }
 
 pub struct ResourceBufferBindGroupLayoutWithUsages {
-    layout: BindGroupLayout,
-    usages: BufferUsages,
-    size: u64,
+    pub layout: BindGroupLayout,
+    pub usages: BufferUsages,
+    pub size: u64,
 }
 
 pub struct ShaderVertexBufferLayout<'a> {
-    vertex_buffer: VertexBufferLayout<'a>,
-    vertex_buffer_size: u64,
+    pub vertex_buffer: VertexBufferLayout<'a>,
+    pub vertex_buffer_size: u64,
 }
 
 pub struct ShaderMeshBufferLayouts<'a> {
-    vertex_buffer_layouts: Vec<ShaderVertexBufferLayout<'a>>,
-    index_buffer_size: u64,
+    pub vertex_buffer_layouts: Vec<ShaderVertexBufferLayout<'a>>,
+    pub index_buffer_size: u64,
 }
 
 pub trait Shader {
@@ -124,16 +124,16 @@ pub trait Shader {
                 device.create_buffer(&BufferDescriptor {
                     label: None,
                     size,
-                    usage: BufferUsages::VERTEX,
-                    mapped_at_creation: false,
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                    mapped_at_creation: true,
                 })
             })
             .collect::<Vec<_>>();
         let index_buffer = device.create_buffer(&BufferDescriptor {
             label: None,
             size: index_buffer_size,
-            usage: BufferUsages::INDEX,
-            mapped_at_creation: false,
+            usage: BufferUsages::INDEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+            mapped_at_creation: true,
         });
 
         let resource_buffers = resource_buffer_sizes
@@ -143,8 +143,8 @@ pub trait Shader {
                 device.create_buffer(&BufferDescriptor {
                     label: None,
                     size,
-                    usage,
-                    mapped_at_creation: false,
+                    usage: usage | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                    mapped_at_creation: true,
                 })
             })
             .collect::<Vec<_>>();
@@ -171,110 +171,111 @@ pub struct ShaderBuffers {
     pub resource_buffers: Vec<Buffer>,
 }
 
-pub struct ShaderManager<K> {
-    pub compilation_cache: Option<PipelineCache>,
-    pub pipeline_cache: HashMap<K, RenderPipeline>,
-    pub shaders: Vec<(K, &'static dyn Shader)>,
-    pub texture_format: TextureFormat,
+impl ShaderBuffers {
+    fn copy_via_encoder(src: &wgpu::Buffer, dst: &wgpu::Buffer, encoder: &mut CommandEncoder) {
+        let copy_size = src.size().min(dst.size());
+        if copy_size > 0 {
+            encoder.copy_buffer_to_buffer(src, 0, dst, 0, copy_size);
+        }
+    }
+
+    pub fn copy_data_into(&self, new_buffers: &Self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        self.vertex_buffers
+            .iter()
+            .zip(new_buffers.vertex_buffers.iter())
+            .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder));
+        Self::copy_via_encoder(&self.index_buffer, &new_buffers.index_buffer, &mut encoder);
+        self.resource_buffers
+            .iter()
+            .zip(new_buffers.resource_buffers.iter())
+            .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder));
+
+        queue.submit(std::iter::once(encoder.finish()));
+    }
 }
 
-impl<K> ShaderManager<K>
+pub struct ShaderManager<'a, K> {
+    pub compilation_cache: Option<PipelineCache>,
+    pub pipeline_cache: HashMap<K, RenderPipeline>,
+    pub shaders: HashMap<K, &'a dyn Shader>,
+    pub compilation_pending_shaders: HashMap<K, &'a dyn Shader>,
+    pub texture_format: Option<TextureFormat>,
+}
+
+impl<'a, K> ShaderManager<'a, K>
 where
     K: Eq + PartialEq + Hash + Clone,
 {
-    pub fn new(texture_format: TextureFormat) -> Self {
+    pub fn new() -> Self {
         Self {
             compilation_cache: None,
             pipeline_cache: HashMap::new(),
-            shaders: vec![],
-            texture_format,
+            shaders: HashMap::new(),
+            compilation_pending_shaders: HashMap::new(),
+            texture_format: None,
         }
     }
 
     pub fn new_with_compilation_cache(
         device: &Device,
         cache_descriptor: PipelineCacheDescriptor,
-        texture_format: TextureFormat,
     ) -> Self {
         Self {
             compilation_cache: Some(unsafe { device.create_pipeline_cache(&cache_descriptor) }),
             pipeline_cache: HashMap::new(),
-            shaders: vec![],
-            texture_format,
+            shaders: HashMap::new(),
+            compilation_pending_shaders: HashMap::new(),
+            texture_format: None,
         }
     }
 
     pub fn update_texture_format(&mut self, texture_format: TextureFormat) {
-        self.texture_format = texture_format;
+        self.texture_format = Some(texture_format);
     }
 
-    pub fn register_shader_dyn(
-        &mut self,
-        key: K,
-        shader: &'static dyn Shader,
-        device: &Device,
-    ) -> ShaderBuffers {
+    pub fn register_shader_dyn(&mut self, key: K, shader: &'static dyn Shader) {
         let shader: &dyn Shader = shader;
-        let ShaderBuiltData { buffers, pipeline } = shader.build(
-            device,
-            &self.texture_format,
-            self.compilation_cache.as_ref(),
-        );
 
-        self.pipeline_cache.insert(key.clone(), pipeline);
-        self.shaders.push((key, shader));
-
-        buffers
+        self.compilation_pending_shaders.insert(key, shader);
     }
 
-    pub fn register_shader<S>(
-        &mut self,
-        key: K,
-        shader: &'static S,
-        device: &Device,
-    ) -> ShaderBuffers
+    pub fn register_shader<S>(&mut self, key: K, shader: &'a S)
     where
         S: Shader + Sized,
     {
         let shader: &dyn Shader = shader;
-        let ShaderBuiltData { buffers, pipeline } = shader.build(
-            device,
-            &self.texture_format,
-            self.compilation_cache.as_ref(),
-        );
 
-        self.pipeline_cache.insert(key.clone(), pipeline);
-        self.shaders.push((key, shader));
-
-        buffers
+        self.compilation_pending_shaders.insert(key, shader);
     }
 
-    pub fn register_shaders(
-        &mut self,
-        shaders: HashMap<K, &'static dyn Shader>,
-        device: &Device,
-    ) -> HashMap<K, ShaderBuffers> {
+    pub fn register_shaders(&mut self, shaders: HashMap<K, &'static dyn Shader>) {
         shaders
             .into_iter()
-            .map(|(k, s)| (k.clone(), self.register_shader_dyn(k, s, device)))
-            .collect()
+            .for_each(|(k, s)| self.register_shader_dyn(k, s))
     }
 
     pub fn recompile_shaders(&mut self, device: &Device) -> HashMap<K, ShaderBuffers> {
         self.pipeline_cache.clear();
 
+        let pending_shaders = mem::take(&mut self.compilation_pending_shaders);
+
+        self.shaders.extend(pending_shaders);
+
         self.shaders
             .iter()
             .map(|(k, s)| {
-                let ShaderBuiltData { buffers, pipeline } = s.build(
+                let build_data = s.build(
                     device,
-                    &self.texture_format,
+                    &self.texture_format.unwrap(),
                     self.compilation_cache.as_ref(),
                 );
 
-                self.pipeline_cache.insert(k.clone(), pipeline);
+                self.pipeline_cache.insert(k.clone(), build_data.pipeline);
 
-                (k.clone(), buffers)
+                (k.clone(), build_data.buffers)
             })
             .collect()
     }

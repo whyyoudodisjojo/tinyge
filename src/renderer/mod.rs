@@ -1,5 +1,6 @@
 pub mod strategies;
 use std::{
+    collections::HashMap,
     hash::Hash,
     sync::{Arc, Weak},
 };
@@ -8,7 +9,7 @@ use wgpu::*;
 use winit::window::Window;
 
 use crate::{
-    shaders::ShaderManager,
+    shaders::{ShaderBuffers, ShaderManager},
     state::{StateRender, StateUpdates},
 };
 
@@ -48,21 +49,21 @@ impl From<RendererInstanceDescriptor> for InstanceDescriptor {
     }
 }
 pub struct AdapterDescriptor {
-    power_preference: PowerPreference,
-    force_fallback_adapter: bool,
+    pub power_preference: PowerPreference,
+    pub force_fallback_adapter: bool,
 }
 
 pub struct Renderer<'a, K> {
     pub ctx: Option<RendererCtx<'a>>,
     pub descriptor: RendererDescriptor<'a>,
-    pub shader_manager: ShaderManager<K>,
+    pub shader_manager: ShaderManager<'a, K>,
 }
 
 impl<'a, K> Renderer<'a, K>
 where
     K: Hash + Eq + PartialEq + Clone,
 {
-    pub fn new(descriptor: RendererDescriptor<'a>, shader_manager: ShaderManager<K>) -> Self {
+    pub fn new(descriptor: RendererDescriptor<'a>, shader_manager: ShaderManager<'a, K>) -> Self {
         Self {
             ctx: None,
             descriptor,
@@ -70,7 +71,7 @@ where
         }
     }
 
-    pub async fn init(&mut self, window: Arc<Window>) {
+    pub async fn init(&mut self, window: Arc<Window>) -> Option<HashMap<K, ShaderBuffers>> {
         let instance = wgpu::Instance::new(self.descriptor.instance_descriptor.clone().into());
 
         let surface = instance.create_surface(window.clone()).unwrap();
@@ -110,6 +111,12 @@ where
 
         self.shader_manager.update_texture_format(format);
 
+        let mut new_buffers = None;
+        if self.shader_manager.texture_format.unwrap() != format {
+            self.shader_manager.update_texture_format(format);
+            new_buffers = Some(self.shader_manager.recompile_shaders(&device));
+        }
+
         self.ctx = Some(RendererCtx {
             instance,
             surface,
@@ -118,7 +125,9 @@ where
             queue,
             surface_config,
             window,
-        })
+        });
+
+        new_buffers
     }
 
     pub fn window(&self) -> Option<Weak<Window>> {
@@ -140,7 +149,7 @@ where
             ctx.surface_config.height = render_height;
 
             let new_buffers = shader_manager.recompile_shaders(&ctx.device);
-            state.handle_shader_recompilation(new_buffers);
+            state.handle_shader_recompilation(new_buffers, &ctx.queue, &ctx.device);
         }
     }
 }
