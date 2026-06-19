@@ -222,8 +222,6 @@ impl RenderAble<ShaderId> for State {
 
 impl StateRenderSinglePass<ShaderId> for State {}
 
-// TODO: Investigate Clone requirement
-#[derive(Clone)]
 pub struct Executor;
 impl EventsExecutor<State> for Executor {
     type CustomEvent = ();

@@ -75,7 +75,7 @@ impl<T> Drop for RenderEventHandle<T> {
     }
 }
 
-pub trait EventsExecutor<State>: Clone
+pub trait EventsExecutor<State> 
 where
     Self::CustomEvent: Send + Sync + 'static,
     Self::UpdateEvent: Send + Sync + 'static,
@@ -89,7 +89,7 @@ where
         state: &State,
     );
     fn emit_event(
-        self,
+        &self,
         event: Self::CustomEvent,
         when: EventSchedule,
         mut tx: RenderEventHandle<UpdateEventOrTimedEvent<Self::UpdateEvent, Self::CustomEvent>>,
