@@ -1,4 +1,4 @@
-pub mod styles;
+pub mod strategies;
 use std::{
     hash::Hash,
     sync::{Arc, Weak},

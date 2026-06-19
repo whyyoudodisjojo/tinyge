@@ -5,7 +5,7 @@ use wgpu::{CommandEncoderDescriptor, CurrentSurfaceTexture};
 use crate::{
     renderer::{
         Renderer,
-        styles::{RenderDispatcher, RenderPath},
+        strategies::{RenderDispatcher, RenderPath},
     },
     state::{RendererAble, StateRender, StateUpdates},
 };

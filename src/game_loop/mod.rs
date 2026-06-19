@@ -14,7 +14,7 @@ use crate::{
     game_loop::events::{BaseEvent, EventsExecutor, RenderEventHandle, UpdateEventOrTimedEvent},
     renderer::{
         Renderer,
-        styles::{RenderDispatcher, RenderPath, single::StateRenderSinglePass},
+        strategies::{RenderDispatcher, RenderPath, single::StateRenderSinglePass},
     },
     state::StateUpdates,
 };
@@ -40,7 +40,7 @@ where
         + StateUpdates<UpdateEvent = <Executor as EventsExecutor<State>>::UpdateEvent>
         + StateRenderSinglePass<State::K>,
     State::K: Eq + PartialEq + Hash + Clone,
-    for<'b> RenderPath<'b, State, State::Style>: RenderDispatcher<State::K>,
+    for<'b> RenderPath<'b, State, State::RenderStrategy>: RenderDispatcher<State::K>,
 {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window_attrs = Window::default_attributes();
