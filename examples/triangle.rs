@@ -250,13 +250,11 @@ impl EventsExecutor<State> for Executor {
     }
 }
 
-// TODO: Move to Arc in shader manager
-const SHADER: Triangle = Triangle;
-
 fn main() {
     let mut shader_manager: ShaderManager<ShaderId> = ShaderManager::new();
 
-    shader_manager.register_shader(ShaderId(1), &SHADER);
+    let shader: Triangle = Triangle;
+    shader_manager.register_shader(ShaderId(1), shader);
 
     let renderer = Renderer::new(
         RendererDescriptor {

@@ -75,7 +75,7 @@ impl<T> Drop for RenderEventHandle<T> {
     }
 }
 
-pub trait EventsExecutor<State> 
+pub trait EventsExecutor<State>
 where
     Self::CustomEvent: Send + Sync + 'static,
     Self::UpdateEvent: Send + Sync + 'static,

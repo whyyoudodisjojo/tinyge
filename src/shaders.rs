@@ -245,25 +245,13 @@ where
         self.texture_format = Some(texture_format);
     }
 
-    pub fn register_shader_dyn(&mut self, key: K, shader: &'static dyn Shader) {
-        let shader: &dyn Shader = shader;
-
-        self.compilation_pending_shaders.insert(key, shader);
-    }
-
-    pub fn register_shader<S>(&mut self, key: K, shader: &'a S)
+    pub fn register_shader<S>(&mut self, key: K, shader: S)
     where
-        S: Shader + Sized,
+        S: Shader + Sized + 'static,
     {
-        let shader: &'a dyn Shader = shader as &'a dyn Shader;
+        let shader: &'static dyn Shader = Box::leak(Box::new(shader));
 
         self.compilation_pending_shaders.insert(key, shader);
-    }
-
-    pub fn register_shaders(&mut self, shaders: HashMap<K, &'static dyn Shader>) {
-        shaders
-            .into_iter()
-            .for_each(|(k, s)| self.register_shader_dyn(k, s))
     }
 
     pub fn recompile_shaders(&mut self, device: &Device) -> Option<HashMap<K, ShaderBuffers>> {
