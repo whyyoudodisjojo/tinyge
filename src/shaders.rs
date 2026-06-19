@@ -35,6 +35,10 @@ pub struct ShaderMeshBufferLayouts<'a> {
     pub index_buffer_size: u64,
 }
 
+pub fn align_to_4_bytes(size: u64) -> u64 {
+    ((size + 3) / 4) / 4
+}
+
 pub trait Shader {
     fn mesh_buffers_layouts(&self) -> ShaderMeshBufferLayouts<'static>;
     fn resource_buffers_bind_group_layouts(&self) -> Vec<ResourceBufferBindGroupLayoutWithUsages>;
@@ -51,7 +55,7 @@ pub trait Shader {
             vertex_buffer_layouts: vertex_layouts,
             index_buffer_size,
         } = self.mesh_buffers_layouts();
-        let (vertex_layouts, vertex_buffer_sizes) = vertex_layouts
+        let (vertex_layouts, vertex_buffer_sizes): (Vec<VertexBufferLayout<'static>>, Vec<u64>)= vertex_layouts
             .into_iter()
             .map(
                 |ShaderVertexBufferLayout {
@@ -60,7 +64,7 @@ pub trait Shader {
                  }| (vertex_buffer, vertex_buffer_size),
             )
             .collect::<(Vec<_>, Vec<_>)>();
-        let (bind_group_layouts, usages, resource_buffer_sizes) = self
+        let (bind_group_layouts, usages, resource_buffer_sizes): (Vec<BindGroupLayout>, Vec<BufferUsages>, Vec<u64>) = self
             .resource_buffers_bind_group_layouts()
             .into_iter()
             .map(
@@ -123,17 +127,17 @@ pub trait Shader {
             .map(|size| {
                 device.create_buffer(&BufferDescriptor {
                     label: None,
-                    size,
+                    size: align_to_4_bytes(size),
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                    mapped_at_creation: true,
+                    mapped_at_creation: false,
                 })
             })
             .collect::<Vec<_>>();
         let index_buffer = device.create_buffer(&BufferDescriptor {
             label: None,
-            size: index_buffer_size,
+            size: align_to_4_bytes(index_buffer_size),
             usage: BufferUsages::INDEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-            mapped_at_creation: true,
+            mapped_at_creation: false,
         });
 
         let resource_buffers = resource_buffer_sizes
@@ -142,9 +146,9 @@ pub trait Shader {
             .map(|(size, usage)| {
                 device.create_buffer(&BufferDescriptor {
                     label: None,
-                    size,
+                    size: align_to_4_bytes(size),
                     usage: usage | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                    mapped_at_creation: true,
+                    mapped_at_creation: false,
                 })
             })
             .collect::<Vec<_>>();
@@ -246,7 +250,7 @@ where
     where
         S: Shader + Sized,
     {
-        let shader: &dyn Shader = shader;
+        let shader: &'a dyn Shader = shader as &'a dyn Shader;
 
         self.compilation_pending_shaders.insert(key, shader);
     }
@@ -257,26 +261,28 @@ where
             .for_each(|(k, s)| self.register_shader_dyn(k, s))
     }
 
-    pub fn recompile_shaders(&mut self, device: &Device) -> HashMap<K, ShaderBuffers> {
+    pub fn recompile_shaders(&mut self, device: &Device) -> Option<HashMap<K, ShaderBuffers>> {
         self.pipeline_cache.clear();
 
         let pending_shaders = mem::take(&mut self.compilation_pending_shaders);
 
         self.shaders.extend(pending_shaders);
 
-        self.shaders
-            .iter()
-            .map(|(k, s)| {
-                let build_data = s.build(
-                    device,
-                    &self.texture_format.unwrap(),
-                    self.compilation_cache.as_ref(),
-                );
+        Some(
+            self.shaders
+                .iter()
+                .map(|(k, s)| {
+                    let build_data = s.build(
+                        device,
+                        &self.texture_format.unwrap(),
+                        self.compilation_cache.as_ref(),
+                    );
 
-                self.pipeline_cache.insert(k.clone(), build_data.pipeline);
+                    self.pipeline_cache.insert(k.clone(), build_data.pipeline);
 
-                (k.clone(), build_data.buffers)
-            })
-            .collect()
+                    (k.clone(), build_data.buffers)
+                })
+                .collect(),
+        )
     }
 }

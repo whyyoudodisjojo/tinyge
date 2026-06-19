@@ -1725,6 +1725,7 @@ dependencies = [
 name = "tinyge"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "pollster",
  "rayon",
  "wgpu",

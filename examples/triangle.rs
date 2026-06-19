@@ -3,24 +3,32 @@ use tinyge::{
         GameLoop,
         events::{BaseEvent, EventsExecutor},
     },
-    renderer::{AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor},
+    renderer::{
+        AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor,
+        strategies::{
+            RenderAble,
+            single::{SinglePass, StateRenderSinglePass},
+        },
+    },
     shaders::{
         ColorTargetStateData, Shader, ShaderBuffers, ShaderManager, ShaderMeshBufferLayouts,
         ShaderPipelineDescriptor, ShaderVertexBufferLayout,
     },
-    state::StateUpdates,
+    state::{StateRender, StateUpdates},
 };
 use wgpu::{
-    Backends, BlendComponent, BlendState, ColorWrites, Device, MultisampleState, PrimitiveState,
-    Queue, VertexAttribute, VertexBufferLayout, VertexFormat, wgt::DeviceDescriptor,
+    Backends, BlendComponent, BlendState, Color, ColorWrites, Device, MultisampleState, Operations,
+    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, VertexAttribute,
+    VertexBufferLayout, VertexFormat, naga::compact::KeepUnused::No, wgt::DeviceDescriptor,
 };
-use winit::{dpi::PhysicalSize, event::WindowEvent};
+use winit::{dpi::PhysicalSize, event::WindowEvent, event_loop::EventLoop};
 
 #[derive(Hash, Clone, PartialEq, Eq)]
 pub struct ShaderId(u32);
 
 pub struct State {
     buffers: Option<ShaderBuffers>,
+    sz: PhysicalSize<u32>,
 }
 
 struct Triangle;
@@ -52,7 +60,7 @@ impl Shader for Triangle {
                 vertex_buffer: layout,
                 vertex_buffer_size: vertex_buffer_sz,
             }],
-            index_buffer_size: 6,
+            index_buffer_size: 20,
         }
     }
 
@@ -95,6 +103,30 @@ impl Shader for Triangle {
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+const TRIANGE_GEO: [Vertex; 3] = [
+    Vertex {
+        position: [0.0, 0.5, 0.0],
+        color: [1.0, 0.0, 0.0],
+    }, // Top (Red)
+    Vertex {
+        position: [-0.5, -0.5, 0.0],
+        color: [0.0, 1.0, 0.0],
+    }, // Bottom Left (Green)
+    Vertex {
+        position: [0.5, -0.5, 0.0],
+        color: [0.0, 0.0, 1.0],
+    }, // Bottom Right (Blue)
+];
+
+const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4, /* padding */ 0];
+
 impl StateUpdates for State {
     type K = ShaderId;
     type UpdateEvent = PhysicalSize<u32>;
@@ -106,17 +138,83 @@ impl StateUpdates for State {
         device: &Device,
     ) {
         let new_buffer = new_buffers.into_iter().next().unwrap().1;
-
-        self.buffers
-            .as_ref()
-            .map(|b| b.copy_data_into(&new_buffer, device, queue));
+        match &mut self.buffers {
+            Some(b) => b.copy_data_into(&new_buffer, device, queue),
+            None => {
+                queue.write_buffer(
+                    &new_buffer.vertex_buffers[0],
+                    0,
+                    bytemuck::cast_slice(&TRIANGE_GEO),
+                );
+                queue.write_buffer(&new_buffer.index_buffer, 0, bytemuck::cast_slice(INDICES));
+            }
+        }
 
         self.buffers = Some(new_buffer);
     }
 
-    fn update(&mut self, _update_event: Self::UpdateEvent, _queue: Option<&wgpu::Queue>) {}
+    fn update(&mut self, update_event: Self::UpdateEvent, _queue: Option<&wgpu::Queue>) {
+        self.sz = update_event;
+    }
 }
 
+impl StateRender for State {
+    type RenderStrategy = SinglePass;
+
+    fn render_height(&self) -> u32 {
+        self.sz.height
+    }
+
+    fn render_width(&self) -> u32 {
+        self.sz.width
+    }
+}
+
+impl RenderAble<ShaderId> for State {
+    fn render_pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        pipeline_cache: &std::collections::HashMap<ShaderId, wgpu::RenderPipeline>,
+        view: &wgpu::TextureView,
+    ) {
+        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: Operations {
+                    load: wgpu::LoadOp::Clear(Color {
+                        r: 0.1,
+                        g: 0.2,
+                        b: 0.3,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+                depth_slice: None,
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+            multiview_mask: None,
+        });
+
+        render_pass.set_pipeline(pipeline_cache.get(&ShaderId(1)).unwrap());
+        render_pass.set_vertex_buffer(
+            0,
+            self.buffers.as_ref().unwrap().vertex_buffers[0].slice(..),
+        );
+        render_pass.set_index_buffer(
+            self.buffers.as_ref().unwrap().index_buffer.slice(..),
+            wgpu::IndexFormat::Uint16,
+        );
+        render_pass.draw_indexed(0..3, 0, 0..1);
+    }
+}
+
+impl StateRenderSinglePass<ShaderId> for State {}
+
+// TODO: Investigate Clone requirement
 #[derive(Clone)]
 pub struct Executor;
 impl EventsExecutor<State> for Executor {
@@ -146,11 +244,13 @@ impl EventsExecutor<State> for Executor {
     }
 }
 
+// TODO: Move to Arc in shader manager
+const SHADER: Triangle = Triangle;
+
 fn main() {
     let mut shader_manager: ShaderManager<ShaderId> = ShaderManager::new();
 
-    let shader = Triangle;
-    shader_manager.register_shader(ShaderId(1), &shader);
+    shader_manager.register_shader(ShaderId(1), &SHADER);
 
     let renderer = Renderer::new(
         RendererDescriptor {
@@ -176,5 +276,20 @@ fn main() {
         shader_manager,
     );
 
-    let game_loop = GameLoop::new(State { buffers: None }, Executor, renderer);
+    // TODO: Have GameLoop struct not allow creation without a vlaid render strategy impl
+    let mut game_loop = GameLoop::new(
+        State {
+            buffers: None,
+            sz: PhysicalSize {
+                width: 400,
+                height: 600,
+            },
+        },
+        Executor,
+        renderer,
+    );
+
+    let event_loop = EventLoop::with_user_event().build().unwrap();
+
+    event_loop.run_app(&mut game_loop).unwrap();
 }

@@ -110,12 +110,9 @@ where
         };
 
         self.shader_manager.update_texture_format(format);
+        let new_buffers = self.shader_manager.recompile_shaders(&device);
 
-        let mut new_buffers = None;
-        if self.shader_manager.texture_format.unwrap() != format {
-            self.shader_manager.update_texture_format(format);
-            new_buffers = Some(self.shader_manager.recompile_shaders(&device));
-        }
+        surface.configure(&device, &surface_config);
 
         self.ctx = Some(RendererCtx {
             instance,
@@ -149,7 +146,7 @@ where
             ctx.surface_config.height = render_height;
 
             let new_buffers = shader_manager.recompile_shaders(&ctx.device);
-            state.handle_shader_recompilation(new_buffers, &ctx.queue, &ctx.device);
+            new_buffers.map(|n| state.handle_shader_recompilation(n, &ctx.queue, &ctx.device));
         }
     }
 }
