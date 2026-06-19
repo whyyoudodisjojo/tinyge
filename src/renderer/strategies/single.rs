@@ -5,12 +5,12 @@ use wgpu::{CommandEncoderDescriptor, CurrentSurfaceTexture};
 use crate::{
     renderer::{
         Renderer,
-        strategies::{RenderDispatcher, RenderPath},
+        strategies::{RenderAble, RenderDispatcher, RenderPath},
     },
-    state::{RendererAble, StateRender, StateUpdates},
+    state::{StateRender, StateUpdates},
 };
 
-pub trait StateRenderSinglePass<K>: StateRender + RendererAble<K> {}
+pub trait StateRenderSinglePass<K>: StateRender + RenderAble<K> {}
 
 pub trait SinglePassRenderer<K> {
     fn render<State>(&mut self, state: &mut State)
@@ -32,16 +32,7 @@ where
             return;
         };
 
-        let render_width = state.render_width();
-        let render_height = state.render_height();
-
-        if ctx.surface_config.width != render_width || ctx.surface_config.height != render_height {
-            ctx.surface_config.width = render_width;
-            ctx.surface_config.height = render_height;
-
-            let new_buffers = self.shader_manager.recompile_shaders(&ctx.device);
-            state.handle_shader_recompilation(new_buffers);
-        }
+        Self::prepare_surface(ctx, &mut self.shader_manager, state);
 
         let output = match ctx.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(s) => s,

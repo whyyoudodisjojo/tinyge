@@ -7,7 +7,10 @@ use std::{
 use wgpu::*;
 use winit::window::Window;
 
-use crate::shaders::ShaderManager;
+use crate::{
+    shaders::ShaderManager,
+    state::{StateRender, StateUpdates},
+};
 
 pub struct RendererCtx<'a> {
     pub instance: Instance,
@@ -120,5 +123,24 @@ where
 
     pub fn window(&self) -> Option<Weak<Window>> {
         self.ctx.as_ref().map(|c| Arc::downgrade(&c.window))
+    }
+
+    pub fn prepare_surface<State>(
+        ctx: &mut RendererCtx,
+        shader_manager: &mut ShaderManager<K>,
+        state: &mut State,
+    ) where
+        State: StateRender + StateUpdates<K = K>,
+    {
+        let render_width = state.render_width();
+        let render_height = state.render_height();
+
+        if ctx.surface_config.width != render_width || ctx.surface_config.height != render_height {
+            ctx.surface_config.width = render_width;
+            ctx.surface_config.height = render_height;
+
+            let new_buffers = shader_manager.recompile_shaders(&ctx.device);
+            state.handle_shader_recompilation(new_buffers);
+        }
     }
 }

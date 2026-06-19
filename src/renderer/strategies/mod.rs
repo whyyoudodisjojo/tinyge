@@ -1,4 +1,6 @@
-use std::marker::PhantomData;
+use std::{collections::HashMap, marker::PhantomData};
+
+use wgpu::{CommandEncoder, RenderPipeline, TextureView};
 
 use crate::renderer::Renderer;
 
@@ -21,4 +23,13 @@ impl<'a, S, Style> RenderPath<'a, S, Style> {
 
 pub trait RenderDispatcher<K> {
     fn dispatch_render<'a>(&mut self, renderer: &mut Renderer<'a, K>);
+}
+
+pub trait RenderAble<K> {
+    fn render_pass(
+        &self,
+        encoder: &mut CommandEncoder,
+        pipeline_cache: &HashMap<K, RenderPipeline>,
+        view: &TextureView,
+    );
 }

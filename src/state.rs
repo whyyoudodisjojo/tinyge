@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use wgpu::{CommandEncoder, Queue, RenderPipeline, TextureView, TextureViewDescriptor};
+use wgpu::{Queue, TextureViewDescriptor};
 
 use crate::shaders::ShaderBuffers;
 
@@ -23,13 +23,4 @@ pub trait StateRender {
 
     fn render_width(&self) -> u32;
     fn render_height(&self) -> u32;
-}
-
-pub trait RendererAble<K> {
-    fn render_pass(
-        &self,
-        encoder: &mut CommandEncoder,
-        pipeline_cache: &HashMap<K, RenderPipeline>,
-        view: &TextureView,
-    );
 }
