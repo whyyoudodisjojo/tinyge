@@ -1,3 +1,4 @@
+pub mod styles;
 use std::{
     hash::Hash,
     sync::{Arc, Weak},
@@ -6,10 +7,7 @@ use std::{
 use wgpu::*;
 use winit::window::Window;
 
-use crate::{
-    shaders::ShaderManager,
-    state::{StateRender, StateUpdates},
-};
+use crate::shaders::ShaderManager;
 
 pub struct RendererCtx<'a> {
     pub instance: Instance,
@@ -122,52 +120,5 @@ where
 
     pub fn window(&self) -> Option<Weak<Window>> {
         self.ctx.as_ref().map(|c| Arc::downgrade(&c.window))
-    }
-
-    pub fn render<State>(&mut self, state: &mut State)
-    where
-        State: StateRender<Key = K> + StateUpdates,
-    {
-        let Some(ctx) = &mut self.ctx else {
-            return;
-        };
-
-        let render_width = state.render_width();
-        let render_height = state.render_height();
-
-        if ctx.surface_config.width != render_width || ctx.surface_config.height != render_height {
-            ctx.surface_config.width = render_width;
-            ctx.surface_config.height = render_height;
-
-            let new_buffers = self.shader_manager.recompile_shaders(&ctx.device);
-            state.handle_shader_recompilation(new_buffers);
-        }
-
-        let output = match ctx.surface.get_current_texture() {
-            CurrentSurfaceTexture::Success(s) => s,
-            CurrentSurfaceTexture::Suboptimal(s) => {
-                ctx.surface.configure(&ctx.device, &ctx.surface_config);
-                s
-            }
-            CurrentSurfaceTexture::Timeout
-            | CurrentSurfaceTexture::Occluded
-            | CurrentSurfaceTexture::Validation => return,
-            CurrentSurfaceTexture::Outdated | CurrentSurfaceTexture::Lost => {
-                return;
-            }
-        };
-
-        let view = output
-            .texture
-            .create_view(&state.base_canvas_view_descriptor());
-
-        let mut encoder = ctx
-            .device
-            .create_command_encoder(&CommandEncoderDescriptor { label: None });
-
-        state.render_pass(&mut encoder, &self.shader_manager.pipeline_cache, &view);
-
-        ctx.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
     }
 }

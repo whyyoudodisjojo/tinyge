@@ -1,38 +1,46 @@
 pub mod events;
 
-use std::sync::{
-    Arc,
-    mpsc::{Receiver, Sender},
+use std::{
+    hash::Hash,
+    sync::{
+        Arc,
+        mpsc::{Receiver, Sender},
+    },
 };
 
 use winit::{application::ApplicationHandler, event::WindowEvent, window::Window};
 
 use crate::{
     game_loop::events::{BaseEvent, EventsExecutor, RenderEventHandle, UpdateEventOrTimedEvent},
-    renderer::Renderer,
-    state::{StateRender, StateUpdates},
+    renderer::{
+        Renderer,
+        styles::{RenderDispatcher, RenderPath, single::StateRenderSinglePass},
+    },
+    state::StateUpdates,
 };
 
-pub struct GameLoop<'a, State, Executor>
+pub struct GameLoop<State, Executor>
 where
     Executor: EventsExecutor<State>,
-    State: Send + Sync + 'static + StateUpdates + StateRender,
+    State: Send + Sync + 'static + StateUpdates,
 {
     pub state: State,
     pub executor: Executor,
-    pub renderer: Renderer<'a, State::Key>,
+    pub renderer: Renderer<'static, State::K>,
     pub rx: Receiver<UpdateEventOrTimedEvent<Executor::UpdateEvent, Executor::CustomEvent>>,
     pub tx: Sender<UpdateEventOrTimedEvent<Executor::UpdateEvent, Executor::CustomEvent>>,
 }
 
-impl<'a, State, Executor> ApplicationHandler<()> for GameLoop<'a, State, Executor>
+impl<State, Executor> ApplicationHandler<()> for GameLoop<State, Executor>
 where
     Executor: EventsExecutor<State>,
     State: Send
         + Sync
         + 'static
         + StateUpdates<UpdateEvent = <Executor as EventsExecutor<State>>::UpdateEvent>
-        + StateRender,
+        + StateRenderSinglePass<State::K>,
+    State::K: Eq + PartialEq + Hash + Clone,
+    for<'b> RenderPath<'b, State, State::Style>: RenderDispatcher<State::K>,
 {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window_attrs = Window::default_attributes();
@@ -139,7 +147,7 @@ where
                 }
             }
 
-            self.renderer.render(&mut self.state);
+            RenderPath::new(&mut self.state).dispatch_render(&mut self.renderer);
         }
     }
 }
