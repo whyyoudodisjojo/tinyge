@@ -161,8 +161,6 @@ const VERTICES: &[Vertex] = &[
     },
 ];
 
-/// Indices defining triangle faces: (0,1,4), (1,2,4), (2,3,4)
-/// Padding ensures 4-byte alignment required by wgpu
 const INDICES: &[u16] = &[
     0, 1, 4, // Top triangle
     1, 2, 4, // Left triangle
@@ -309,7 +307,7 @@ impl EventsExecutor<State> for Executor {
                 tx.force_redraw_async();
                 self.emit_event(
                     TimedEvent,
-                    tinyge::game_loop::events::EventSchedule::In(Duration::from_millis(100)),
+                    tinyge::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
                     tx,
                 );
             }
@@ -325,7 +323,7 @@ impl EventsExecutor<State> for Executor {
 
                 self.emit_event(
                     TimedEvent,
-                    tinyge::game_loop::events::EventSchedule::In(Duration::from_millis(100)),
+                    tinyge::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
                     tx,
                 );
             }
