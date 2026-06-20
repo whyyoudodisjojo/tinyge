@@ -36,6 +36,7 @@ pub struct ShaderId(u32);
 pub struct State {
     buffers: Option<ShaderBuffers>,
     sz: PhysicalSize<u32>,
+    start_time: SystemTime,
 }
 
 struct Hexagon;
@@ -126,7 +127,7 @@ impl Shader for Hexagon {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 struct Vertex {
     position: [f32; 3],
     color: [f32; 3],
@@ -140,27 +141,34 @@ pub enum UpdateEvents {
 const VERTICES: &[Vertex] = &[
     Vertex {
         position: [-0.0868241, 0.49240386, 0.0],
-        color: [0.1, 0.1, 0.8],
-    }, // A
+        color: [0.0, 0.9, 1.0],
+    },
     Vertex {
         position: [-0.49513406, 0.06958647, 0.0],
-        color: [0.2, 0.7, 0.3],
-    }, // B
+        color: [0.2, 0.9, 0.3],
+    },
     Vertex {
         position: [-0.21918549, -0.44939706, 0.0],
-        color: [0.1, 0.5, 0.2],
-    }, // C
+        color: [1.0, 0.9, 0.1],
+    },
     Vertex {
         position: [0.35966998, -0.3473291, 0.0],
-        color: [0.6, 0.8, 0.4],
-    }, // D
+        color: [1.0, 0.5, 0.1],
+    },
     Vertex {
         position: [0.44147372, 0.2347359, 0.0],
-        color: [0.8, 0.3, 0.5],
-    }, // E
+        color: [0.9, 0.2, 0.9],
+    },
 ];
 
-const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4, /* padding */ 0];
+/// Indices defining triangle faces: (0,1,4), (1,2,4), (2,3,4)
+/// Padding ensures 4-byte alignment required by wgpu
+const INDICES: &[u16] = &[
+    0, 1, 4, // Top triangle
+    1, 2, 4, // Left triangle
+    2, 3, 4, // Bottom triangle
+    0, // Padding for 4-byte alignment
+];
 
 impl StateUpdates for State {
     type K = ShaderId;
@@ -201,13 +209,14 @@ impl StateUpdates for State {
             UpdateEvents::Resize(sz) => self.sz = sz,
             UpdateEvents::TimeUpdate => {
                 self.buffers.as_ref().zip(queue).map(|(b, q)| {
+                    let time_val = SystemTime::now()
+                        .duration_since(self.start_time)
+                        .unwrap()
+                        .as_secs_f32();
                     q.write_buffer(
                         &b.resource_buffers[0].buffers[0],
                         0,
-                        bytemuck::cast_slice(&[SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs() as u32]),
+                        bytemuck::cast_slice(&[time_val]),
                     )
                 });
             }
@@ -300,7 +309,7 @@ impl EventsExecutor<State> for Executor {
                 tx.force_redraw_async();
                 self.emit_event(
                     TimedEvent,
-                    tinyge::game_loop::events::EventSchedule::In(Duration::from_secs(10)),
+                    tinyge::game_loop::events::EventSchedule::In(Duration::from_millis(100)),
                     tx,
                 );
             }
@@ -316,7 +325,7 @@ impl EventsExecutor<State> for Executor {
 
                 self.emit_event(
                     TimedEvent,
-                    tinyge::game_loop::events::EventSchedule::In(Duration::from_secs(10)),
+                    tinyge::game_loop::events::EventSchedule::In(Duration::from_millis(100)),
                     tx,
                 );
             }
@@ -370,6 +379,7 @@ fn main() {
                 width: 400,
                 height: 600,
             },
+            start_time: SystemTime::now(),
         },
         Executor,
         renderer,

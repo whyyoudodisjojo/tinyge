@@ -40,6 +40,7 @@ pub enum UpdateEventOrTimedEvent<UpdateEvent, CustomEvent> {
     TimedEvent(CustomEvent),
 }
 
+#[derive(Clone)]
 pub struct RenderEventHandle<T> {
     tx: Sender<T>,
     redraw_required: bool,
@@ -97,7 +98,6 @@ where
         match when {
             EventSchedule::Now => tx.send(UpdateEventOrTimedEvent::TimedEvent(event)).unwrap(),
             EventSchedule::In(duration) => {
-                let tx = tx.tx.clone(); // durations cant trigger a redraw so its ok to get the raw sender and pass it
                 spawn(move || {
                     sleep(duration);
                     tx.send(UpdateEventOrTimedEvent::TimedEvent(event)).unwrap();
