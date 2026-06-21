@@ -5,7 +5,7 @@ use tinyge_core::{
         RenderAble,
         single::{SinglePass, StateRenderSinglePass},
     },
-    shaders::ShaderBuffers,
+    shaders::buffers::ShaderBuffers,
     state::{StateRender, StateUpdates},
 };
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
@@ -23,13 +23,26 @@ pub struct State {
     pub start_time: SystemTime,
 }
 
+impl State {
+    pub fn new() -> Self {
+        Self {
+            buffers: None,
+            sz: PhysicalSize {
+                width: 1920,
+                height: 1080,
+            },
+            start_time: SystemTime::now(),
+        }
+    }
+}
+
 impl StateUpdates for State {
     type K = ShaderId;
     type UpdateEvent = UpdateEvents;
 
     fn handle_shader_recompilation(
         &mut self,
-        new_buffers: std::collections::HashMap<Self::K, tinyge_core::shaders::ShaderBuffers>,
+        new_buffers: std::collections::HashMap<Self::K, ShaderBuffers>,
         queue: &Queue,
         device: &Device,
     ) {

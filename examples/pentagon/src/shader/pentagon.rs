@@ -1,8 +1,12 @@
 use std::num::NonZeroU64;
 
 use tinyge_core::shaders::{
-    BindGroupLayoutDescriptorOwned, ColorTargetStateData, ResourceBufferBindGroupLayoutWithUsages,
-    Shader, ShaderMeshBufferLayouts, ShaderPipelineDescriptor, ShaderVertexBufferLayout,
+    Shader,
+    descriptors::{
+        BindGroupLayoutDescriptorOwned, ColorTargetStateData,
+        ResourceBufferBindGroupLayoutWithUsages, ShaderMeshBufferLayouts, ShaderPipelineDescriptor,
+        ShaderVertexBufferLayout,
+    },
 };
 use wgpu::{
     BindGroupLayoutEntry, BindingType, BlendComponent, BlendState, BufferUsages, ColorWrites,
@@ -45,7 +49,7 @@ pub const INDICES: &[u16] = &[
 pub struct Pentagon;
 
 impl Shader for Pentagon {
-    fn mesh_buffers_layouts(&self) -> tinyge_core::shaders::ShaderMeshBufferLayouts<'static> {
+    fn mesh_buffers_layouts(&self) -> ShaderMeshBufferLayouts<'static> {
         let vertex_sz = (3 * 4) + (3 * 4); // position (3 floats) + color (3 floats) = 24 bytes per vertex
         let vertex_buffer_sz = vertex_sz * VERTICES.len() as u64; // 5 vertices
 
@@ -75,9 +79,7 @@ impl Shader for Pentagon {
         }
     }
 
-    fn resource_buffers_bind_group_layouts(
-        &self,
-    ) -> Vec<tinyge_core::shaders::ResourceBufferBindGroupLayoutWithUsages> {
+    fn resource_buffers_bind_group_layouts(&self) -> Vec<ResourceBufferBindGroupLayoutWithUsages> {
         vec![ResourceBufferBindGroupLayoutWithUsages {
             layout: BindGroupLayoutDescriptorOwned {
                 entries: vec![BindGroupLayoutEntry {
@@ -100,7 +102,7 @@ impl Shader for Pentagon {
         include_str!("../../shaders/triangle.wgsl")
     }
 
-    fn shader_pipeline_desc(&self) -> tinyge_core::shaders::ShaderPipelineDescriptor<'static> {
+    fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'static> {
         ShaderPipelineDescriptor {
             vertex_entry_point: Some("vs_main"),
             vertex_compilation_options: Default::default(),

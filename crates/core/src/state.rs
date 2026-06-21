@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use wgpu::{Device, Queue, TextureViewDescriptor};
 
-use crate::shaders::ShaderBuffers;
+use crate::shaders::buffers::ShaderBuffers;
 
 pub trait StateUpdates
 where

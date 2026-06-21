@@ -1,15 +1,13 @@
 mod logic;
 mod shader;
 
-use std::time::SystemTime;
-
 use tinyge_core::{
     game_loop::GameLoop,
     renderer::{AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor},
-    shaders::ShaderManager,
+    shaders::manager::ShaderManager,
 };
 use wgpu::{Backends, wgt::DeviceDescriptor};
-use winit::{dpi::PhysicalSize, event_loop::EventLoop};
+use winit::event_loop::EventLoop;
 
 use crate::{
     logic::{executor::Executor, state::State},
@@ -47,18 +45,7 @@ fn main() {
     );
 
     // TODO: Have GameLoop struct not allow creation without a vlaid render strategy impl
-    let mut game_loop = GameLoop::new(
-        State {
-            buffers: None,
-            sz: PhysicalSize {
-                width: 400,
-                height: 600,
-            },
-            start_time: SystemTime::now(),
-        },
-        Executor,
-        renderer,
-    );
+    let mut game_loop = GameLoop::new(State::new(), Executor, renderer);
 
     let event_loop = EventLoop::with_user_event().build().unwrap();
 

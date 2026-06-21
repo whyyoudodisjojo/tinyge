@@ -9,7 +9,7 @@ use wgpu::*;
 use winit::window::Window;
 
 use crate::{
-    shaders::{ShaderBuffers, ShaderManager},
+    shaders::{buffers::ShaderBuffers, manager::ShaderManager},
     state::{StateRender, StateUpdates},
 };
 
