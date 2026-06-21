@@ -5,16 +5,15 @@ pub mod manager;
 use wgpu::*;
 
 use crate::shaders::{
-    buffers::ShaderBuffers,
+    buffers::{
+        ShaderBufferBuildSpec, ShaderBuffers, ShaderResourceBindGroupBuildSpec,
+        ShaderResourceBuffersBuildSpec, ShaderResourceRawBufferBuildSpec,
+    },
     descriptors::{
         BindGroupLayoutDescriptorOwned, ResourceBufferBindGroupLayoutWithUsages,
         ShaderMeshBufferLayouts, ShaderPipelineDescriptor, ShaderVertexBufferLayout,
     },
 };
-
-pub fn align_to_4_bytes(size: u64) -> u64 {
-    ((size + 3) / 4) * 4
-}
 
 pub struct ShaderBuiltData {
     buffers: ShaderBuffers,
@@ -116,12 +115,25 @@ pub trait Shader {
 
         let buffers = ShaderBuffers::build(
             device,
-            vertex_buffer_sizes,
-            index_buffer_size,
-            resource_buffer_sizes,
-            bind_group_layout_desc,
-            bind_group_layouts,
-            usages,
+            ShaderBufferBuildSpec {
+                vertex_buffer_szs: vertex_buffer_sizes,
+                index_buffer_sz: index_buffer_size,
+                resource_buffer: ShaderResourceBuffersBuildSpec {
+                    bind_groups: bind_group_layout_desc
+                        .into_iter()
+                        .zip(bind_group_layouts)
+                        .map(|(d, l)| ShaderResourceBindGroupBuildSpec {
+                            layout: l,
+                            layout_entries: d.entries,
+                        })
+                        .collect(),
+                    buffers: resource_buffer_sizes
+                        .into_iter()
+                        .zip(usages.into_iter())
+                        .map(|(size, usage)| ShaderResourceRawBufferBuildSpec { usage, size })
+                        .collect(),
+                },
+            },
         );
 
         ShaderBuiltData { buffers, pipeline }
