@@ -2,7 +2,7 @@ use std::{collections::HashMap, hash::Hash, mem};
 
 use wgpu::{Device, PipelineCache, PipelineCacheDescriptor, RenderPipeline, TextureFormat};
 
-use crate::shaders::{Shader, ShaderBuffers};
+use crate::shaders::{Buffers, Shader};
 
 pub struct ShaderManager<'a, K> {
     pub compilation_cache: Option<PipelineCache>,
@@ -52,7 +52,7 @@ where
         self.compilation_pending_shaders.insert(key, shader);
     }
 
-    pub fn recompile_shaders(&mut self, device: &Device) -> Option<HashMap<K, ShaderBuffers>> {
+    pub fn recompile_shaders(&mut self, device: &Device) -> Option<HashMap<K, Buffers>> {
         self.pipeline_cache.clear();
 
         let pending_shaders = mem::take(&mut self.compilation_pending_shaders);

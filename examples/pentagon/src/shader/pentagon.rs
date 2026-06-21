@@ -3,15 +3,13 @@ use std::num::NonZeroU64;
 use tinyge_core::shaders::{
     Shader,
     descriptors::{
-        BindGroupLayoutDescriptorOwned, ColorTargetStateData,
-        ResourceBufferBindGroupLayoutWithUsages, ShaderMeshBufferLayouts, ShaderPipelineDescriptor,
-        ShaderVertexBufferLayout,
+        ColorTarget, MeshBufferSpecs, ResourceBinding, ResourceGroupLayout,
+        ShaderPipelineDescriptor, VertexBufferSpec,
     },
 };
 use wgpu::{
-    BindGroupLayoutEntry, BindingType, BlendComponent, BlendState, BufferUsages, ColorWrites,
-    MultisampleState, PrimitiveState, ShaderStages, VertexAttribute, VertexBufferLayout,
-    VertexFormat,
+    BindingType, BlendComponent, BlendState, BufferUsages, ColorWrites, MultisampleState,
+    PrimitiveState, ShaderStages, VertexAttribute, VertexBufferLayout, VertexFormat,
 };
 
 use crate::shader::Vertex;
@@ -49,7 +47,7 @@ pub const INDICES: &[u16] = &[
 pub struct Pentagon;
 
 impl Shader for Pentagon {
-    fn mesh_buffers_layouts(&self) -> ShaderMeshBufferLayouts<'static> {
+    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
         let vertex_sz = (3 * 4) + (3 * 4); // position (3 floats) + color (3 floats) = 24 bytes per vertex
         let vertex_buffer_sz = vertex_sz * VERTICES.len() as u64; // 5 vertices
 
@@ -70,31 +68,29 @@ impl Shader for Pentagon {
             ],
         };
 
-        ShaderMeshBufferLayouts {
-            vertex_buffer_layouts: vec![ShaderVertexBufferLayout {
-                vertex_buffer: layout,
-                vertex_buffer_size: vertex_buffer_sz,
+        MeshBufferSpecs {
+            vertex_buffers: vec![VertexBufferSpec {
+                layout,
+                size: vertex_buffer_sz,
             }],
             index_buffer_size: (INDICES.len() * 2) as u64, // 9 indices * 2 bytes each = 18 bytes
         }
     }
 
-    fn resource_buffers_bind_group_layouts(&self) -> Vec<ResourceBufferBindGroupLayoutWithUsages> {
-        vec![ResourceBufferBindGroupLayoutWithUsages {
-            layout: BindGroupLayoutDescriptorOwned {
-                entries: vec![BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::all(),
-                    ty: BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: NonZeroU64::new(4),
-                    },
-                    count: None,
-                }],
-            },
-            usages: BufferUsages::UNIFORM,
-            size: 4,
+    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout> {
+        vec![ResourceGroupLayout {
+            entries: vec![ResourceBinding {
+                binding: 0,
+                visibility: ShaderStages::all(),
+                ty: BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: NonZeroU64::new(4),
+                },
+                count: None,
+                usage_overrides: BufferUsages::UNIFORM,
+                size: 4,
+            }],
         }]
     }
 
@@ -117,7 +113,7 @@ impl Shader for Pentagon {
             },
             depth_stencil: None,
             multisample: MultisampleState::default(),
-            fragment_targets: &[Some(ColorTargetStateData {
+            fragment_targets: &[Some(ColorTarget {
                 blend: Some(BlendState {
                     color: BlendComponent::REPLACE,
                     alpha: BlendComponent::REPLACE,

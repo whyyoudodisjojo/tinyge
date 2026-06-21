@@ -1,43 +1,39 @@
 use std::collections::VecDeque;
 
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry, Buffer,
-    BufferDescriptor, BufferUsages, CommandEncoder,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, Buffer, BufferDescriptor,
+    BufferUsages, CommandEncoder,
 };
 
-pub struct ShaderResourceBindGroupsAndBuffers {
+use crate::shaders::descriptors::ResourceBinding;
+
+pub struct ResourceGroup {
     pub buffers: Vec<Buffer>,
     pub bind_group: BindGroup,
 }
 
-pub struct ShaderBufferBuildSpec {
+pub struct BufferBuildSpec {
     pub vertex_buffer_szs: Vec<u64>,
     pub index_buffer_sz: u64,
-    pub resource_buffer: ShaderResourceBuffersBuildSpec,
+    pub resource_buffer: ResourceBuildSpec,
 }
 
-pub struct ShaderResourceBuffersBuildSpec {
-    pub bind_groups: Vec<ShaderResourceBindGroupBuildSpec>,
-    pub buffers: Vec<ShaderResourceRawBufferBuildSpec>,
+pub struct ResourceBuildSpec {
+    pub bind_groups: Vec<ResourceGroupBuildSpec>,
 }
 
-pub struct ShaderResourceBindGroupBuildSpec {
-    pub layout_entries: Vec<BindGroupLayoutEntry>,
+pub struct ResourceGroupBuildSpec {
+    pub layout_entries: Vec<ResourceBinding>,
     pub layout: BindGroupLayout,
 }
 
-pub struct ShaderResourceRawBufferBuildSpec {
-    pub usage: BufferUsages,
-    pub size: u64,
-}
-
-pub struct ShaderBuffers {
+pub struct Buffers {
     pub vertex_buffers: Vec<Buffer>,
     pub index_buffer: Buffer,
-    pub resource_buffers: Vec<ShaderResourceBindGroupsAndBuffers>,
+    pub resource_buffers: Vec<ResourceGroup>,
 }
 
-impl ShaderBuffers {
+impl Buffers {
     fn copy_via_encoder(src: &wgpu::Buffer, dst: &wgpu::Buffer, encoder: &mut CommandEncoder) {
         let copy_size = src.size().min(dst.size());
         if copy_size > 0 {
@@ -67,7 +63,7 @@ impl ShaderBuffers {
         queue.submit(std::iter::once(encoder.finish()));
     }
 
-    pub fn build(device: &wgpu::Device, spec: ShaderBufferBuildSpec) -> Self {
+    pub fn build(device: &wgpu::Device, spec: BufferBuildSpec) -> Self {
         let vertex_buffers = spec
             .vertex_buffer_szs
             .into_iter()
@@ -87,37 +83,32 @@ impl ShaderBuffers {
             mapped_at_creation: false,
         });
 
-        let mut resource_buffers_raw = spec
-            .resource_buffer
-            .buffers
-            .into_iter()
-            .map(|u| {
-                device.create_buffer(&BufferDescriptor {
-                    label: None,
-                    size: align_to_4_bytes(u.size),
-                    usage: u.usage | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                    mapped_at_creation: false,
-                })
-            })
-            .collect::<VecDeque<_>>();
-
         let resource_buffers = spec
             .resource_buffer
             .bind_groups
             .into_iter()
             .map(|b| {
-                let group_buffers = resource_buffers_raw
-                    .drain(0..b.layout_entries.len())
-                    .collect::<Vec<_>>();
-
-                let entries = b
+                let buffers = b
                     .layout_entries
-                    .into_iter()
-                    .zip(group_buffers.iter())
+                    .iter()
+                    .map(|l| {
+                        device.create_buffer(&BufferDescriptor {
+                            label: None,
+                            usage: l.usage_overrides
+                                | BufferUsages::COPY_DST
+                                | BufferUsages::COPY_SRC,
+                            size: align_to_4_bytes(l.size),
+                            mapped_at_creation: false,
+                        })
+                    })
+                    .collect::<VecDeque<_>>();
+
+                let entries = buffers
+                    .iter()
                     .enumerate()
-                    .map(|(i, (_entry_spec, buffer))| BindGroupEntry {
+                    .map(|(i, b)| BindGroupEntry {
                         binding: i as u32,
-                        resource: buffer.as_entire_binding(),
+                        resource: b.as_entire_binding(),
                     })
                     .collect::<Vec<_>>();
 
@@ -127,8 +118,8 @@ impl ShaderBuffers {
                     entries: &entries,
                 });
 
-                ShaderResourceBindGroupsAndBuffers {
-                    buffers: group_buffers,
+                ResourceGroup {
+                    buffers: buffers.into(),
                     bind_group,
                 }
             })

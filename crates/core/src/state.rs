@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use wgpu::{Device, Queue, TextureViewDescriptor};
 
-use crate::shaders::buffers::ShaderBuffers;
+use crate::shaders::buffers::Buffers;
 
 pub trait StateUpdates
 where
@@ -13,7 +13,7 @@ where
 
     fn handle_shader_recompilation(
         &mut self,
-        new_buffers: HashMap<Self::K, ShaderBuffers>,
+        new_buffers: HashMap<Self::K, Buffers>,
         queue: &Queue,
         device: &Device,
     );

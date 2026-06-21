@@ -5,24 +5,20 @@ pub mod manager;
 use wgpu::*;
 
 use crate::shaders::{
-    buffers::{
-        ShaderBufferBuildSpec, ShaderBuffers, ShaderResourceBindGroupBuildSpec,
-        ShaderResourceBuffersBuildSpec, ShaderResourceRawBufferBuildSpec,
-    },
+    buffers::{BufferBuildSpec, Buffers, ResourceBuildSpec, ResourceGroupBuildSpec},
     descriptors::{
-        BindGroupLayoutDescriptorOwned, ResourceBufferBindGroupLayoutWithUsages,
-        ShaderMeshBufferLayouts, ShaderPipelineDescriptor, ShaderVertexBufferLayout,
+        MeshBufferSpecs, ResourceGroupLayout, ShaderPipelineDescriptor, VertexBufferSpec,
     },
 };
 
 pub struct ShaderBuiltData {
-    buffers: ShaderBuffers,
+    buffers: Buffers,
     pipeline: RenderPipeline,
 }
 
 pub trait Shader {
-    fn mesh_buffers_layouts(&self) -> ShaderMeshBufferLayouts<'static>;
-    fn resource_buffers_bind_group_layouts(&self) -> Vec<ResourceBufferBindGroupLayoutWithUsages>;
+    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static>;
+    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout>;
     fn load_source_code(&self) -> &'static str;
     fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'static>;
 
@@ -32,39 +28,28 @@ pub trait Shader {
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
     ) -> ShaderBuiltData {
-        let ShaderMeshBufferLayouts {
-            vertex_buffer_layouts: vertex_layouts,
+        let MeshBufferSpecs {
+            vertex_buffers: vertex_layouts,
             index_buffer_size,
         } = self.mesh_buffers_layouts();
         let (vertex_layouts, vertex_buffer_sizes): (Vec<VertexBufferLayout<'static>>, Vec<u64>) =
             vertex_layouts
                 .into_iter()
-                .map(
-                    |ShaderVertexBufferLayout {
-                         vertex_buffer,
-                         vertex_buffer_size,
-                     }| (vertex_buffer, vertex_buffer_size),
-                )
+                .map(|VertexBufferSpec { layout, size }| (layout, size))
                 .collect::<(Vec<_>, Vec<_>)>();
-        let (bind_group_layout_desc, usages, resource_buffer_sizes): (
-            Vec<BindGroupLayoutDescriptorOwned>,
-            Vec<BufferUsages>,
-            Vec<u64>,
-        ) = self
-            .resource_buffers_bind_group_layouts()
-            .into_iter()
-            .map(
-                |ResourceBufferBindGroupLayoutWithUsages {
-                     layout,
-                     usages,
-                     size,
-                 }| { (layout, usages, size) },
-            )
-            .collect::<(Vec<_>, Vec<_>, Vec<_>)>();
 
-        let bind_group_layouts = bind_group_layout_desc
+        let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
+
+        let bind_group_layouts = resource_buffer_descs
             .iter()
-            .map(|l| device.create_bind_group_layout(&l.into_desc()))
+            .map(|l| {
+                let bind_group_layout_descriptor = BindGroupLayoutDescriptor {
+                    label: None,
+                    entries: &l.entries.iter().map(Into::into).collect::<Vec<_>>(),
+                };
+
+                device.create_bind_group_layout(&bind_group_layout_descriptor)
+            })
             .collect::<Vec<_>>();
 
         let desc = self.shader_pipeline_desc();
@@ -113,24 +98,19 @@ pub trait Shader {
             cache,
         });
 
-        let buffers = ShaderBuffers::build(
+        let buffers = Buffers::build(
             device,
-            ShaderBufferBuildSpec {
+            BufferBuildSpec {
                 vertex_buffer_szs: vertex_buffer_sizes,
                 index_buffer_sz: index_buffer_size,
-                resource_buffer: ShaderResourceBuffersBuildSpec {
-                    bind_groups: bind_group_layout_desc
+                resource_buffer: ResourceBuildSpec {
+                    bind_groups: resource_buffer_descs
                         .into_iter()
                         .zip(bind_group_layouts)
-                        .map(|(d, l)| ShaderResourceBindGroupBuildSpec {
+                        .map(|(d, l)| ResourceGroupBuildSpec {
                             layout: l,
                             layout_entries: d.entries,
                         })
-                        .collect(),
-                    buffers: resource_buffer_sizes
-                        .into_iter()
-                        .zip(usages.into_iter())
-                        .map(|(size, usage)| ShaderResourceRawBufferBuildSpec { usage, size })
                         .collect(),
                 },
             },

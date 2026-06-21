@@ -9,7 +9,7 @@ use wgpu::*;
 use winit::window::Window;
 
 use crate::{
-    shaders::{buffers::ShaderBuffers, manager::ShaderManager},
+    shaders::{buffers::Buffers, manager::ShaderManager},
     state::{StateRender, StateUpdates},
 };
 
@@ -71,7 +71,7 @@ where
         }
     }
 
-    pub async fn init(&mut self, window: Arc<Window>) -> Option<HashMap<K, ShaderBuffers>> {
+    pub async fn init(&mut self, window: Arc<Window>) -> Option<HashMap<K, Buffers>> {
         let instance = wgpu::Instance::new(self.descriptor.instance_descriptor.clone().into());
 
         let surface = instance.create_surface(window.clone()).unwrap();
