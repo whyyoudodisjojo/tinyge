@@ -1,15 +1,10 @@
-[package]
-name = "tinyge"
+[workspace]
+members = ["crates/core", "examples/pentagon"]
 version = "0.1.0"
-edition = "2024"
 
-[dependencies]
+[workspace.dependencies]
 bytemuck = "1.25.0"
+wgpu = "29.0.3"
 pollster = "0.4.0"
 rayon = "1.12.0"
-wgpu = "29.0.3"
 winit = "0.30.13"
-
-[[bin]]
-name="hexagon"
-path="examples/hexagon.rs"

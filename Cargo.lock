@@ -1212,6 +1212,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pentagon"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "tinyge-core",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1722,7 +1732,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinyge"
+name = "tinyge-core"
 version = "0.1.0"
 dependencies = [
  "bytemuck",

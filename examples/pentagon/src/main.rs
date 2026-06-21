@@ -3,7 +3,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use tinyge::{
+use tinyge_core::{
     game_loop::{
         GameLoop,
         events::{BaseEvent, EventsExecutor},
@@ -42,7 +42,7 @@ pub struct State {
 struct Hexagon;
 
 impl Shader for Hexagon {
-    fn mesh_buffers_layouts(&self) -> tinyge::shaders::ShaderMeshBufferLayouts<'static> {
+    fn mesh_buffers_layouts(&self) -> tinyge_core::shaders::ShaderMeshBufferLayouts<'static> {
         let vertex_sz = (3 * 4) + (3 * 4); // position (3 floats) + color (3 floats) = 24 bytes per vertex
         let vertex_buffer_sz = vertex_sz * VERTICES.len() as u64; // 5 vertices
 
@@ -74,7 +74,7 @@ impl Shader for Hexagon {
 
     fn resource_buffers_bind_group_layouts(
         &self,
-    ) -> Vec<tinyge::shaders::ResourceBufferBindGroupLayoutWithUsages> {
+    ) -> Vec<tinyge_core::shaders::ResourceBufferBindGroupLayoutWithUsages> {
         vec![ResourceBufferBindGroupLayoutWithUsages {
             layout: BindGroupLayoutDescriptorOwned {
                 entries: vec![BindGroupLayoutEntry {
@@ -94,10 +94,10 @@ impl Shader for Hexagon {
     }
 
     fn load_source_code(&self) -> &'static str {
-        include_str!("./shaders/triangle.wgsl")
+        include_str!("../shaders/triangle.wgsl")
     }
 
-    fn shader_pipeline_desc(&self) -> tinyge::shaders::ShaderPipelineDescriptor<'static> {
+    fn shader_pipeline_desc(&self) -> tinyge_core::shaders::ShaderPipelineDescriptor<'static> {
         ShaderPipelineDescriptor {
             vertex_entry_point: Some("vs_main"),
             vertex_compilation_options: Default::default(),
@@ -174,7 +174,7 @@ impl StateUpdates for State {
 
     fn handle_shader_recompilation(
         &mut self,
-        new_buffers: std::collections::HashMap<Self::K, tinyge::shaders::ShaderBuffers>,
+        new_buffers: std::collections::HashMap<Self::K, tinyge_core::shaders::ShaderBuffers>,
         queue: &Queue,
         device: &Device,
     ) {
@@ -293,9 +293,9 @@ impl EventsExecutor<State> for Executor {
 
     fn handle_event(
         &mut self,
-        event: tinyge::game_loop::events::BaseEvent<Self::CustomEvent>,
-        mut tx: tinyge::game_loop::events::RenderEventHandle<
-            tinyge::game_loop::events::UpdateEventOrTimedEvent<
+        event: tinyge_core::game_loop::events::BaseEvent<Self::CustomEvent>,
+        mut tx: tinyge_core::game_loop::events::RenderEventHandle<
+            tinyge_core::game_loop::events::UpdateEventOrTimedEvent<
                 Self::UpdateEvent,
                 Self::CustomEvent,
             >,
@@ -307,13 +307,13 @@ impl EventsExecutor<State> for Executor {
                 tx.force_redraw_async();
                 self.emit_event(
                     TimedEvent,
-                    tinyge::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
+                    tinyge_core::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
                     tx,
                 );
             }
             BaseEvent::CustomEvent(_) => {
                 tx.send(
-                    tinyge::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
+                    tinyge_core::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
                         UpdateEvents::TimeUpdate,
                     ),
                 )
@@ -323,13 +323,13 @@ impl EventsExecutor<State> for Executor {
 
                 self.emit_event(
                     TimedEvent,
-                    tinyge::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
+                    tinyge_core::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
                     tx,
                 );
             }
             BaseEvent::WindowEvent(WindowEvent::Resized(sz)) => tx
                 .send(
-                    tinyge::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
+                    tinyge_core::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
                         UpdateEvents::Resize(sz),
                     ),
                 )

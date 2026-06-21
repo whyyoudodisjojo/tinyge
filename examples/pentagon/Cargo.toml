@@ -1,0 +1,10 @@
+[package]
+name = "pentagon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytemuck = {workspace = true}
+tinyge-core = {path = "../../crates/core"}
+wgpu = {workspace = true}
+winit = {workspace = true}
