@@ -1,20 +1,17 @@
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
-    BufferDescriptor, BufferUsages, CommandEncoder, Texture, TextureView,
-    wgt::TextureViewDescriptor,
+    BufferDescriptor, BufferUsages, CommandEncoder, wgt::TextureViewDescriptor,
 };
 
-use crate::shaders::descriptors::{ResourceBinding, ResourceBindingType};
+use crate::shaders::{
+    descriptors::{ResourceBinding, ResourceBindingType},
+    texture::ResourceTexture,
+};
 
 pub struct ResourceGroup {
     pub buffers: Vec<Buffer>,
     pub bind_group: BindGroup,
     pub textures: Vec<ResourceTexture>,
-}
-
-pub struct ResourceTexture {
-    pub texture: Texture,
-    pub view: TextureView,
 }
 
 pub struct BufferBuildSpec<'a> {
@@ -102,7 +99,11 @@ impl Buffers {
                         let texture = device.create_texture(&texture_descriptor);
                         let view = texture.create_view(&TextureViewDescriptor::default());
 
-                        Some(ResourceTexture { texture, view })
+                        Some(ResourceTexture {
+                            texture,
+                            view,
+                            sz: texture_descriptor.size,
+                        })
                     })
                     .collect::<Vec<_>>();
 

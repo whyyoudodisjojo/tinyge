@@ -1,6 +1,7 @@
 pub mod buffers;
 pub mod descriptors;
 pub mod manager;
+pub mod texture;
 
 use wgpu::*;
 

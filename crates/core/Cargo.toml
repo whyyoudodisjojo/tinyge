@@ -9,3 +9,4 @@ rayon = {workspace = true}
 bytemuck = {workspace = true}
 wgpu = {workspace = true}
 winit = {workspace = true}
+image = "0.25.10"
