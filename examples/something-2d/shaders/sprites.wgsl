@@ -27,7 +27,10 @@ fn vs_main(@builtin(vertex_index) v_idx: u32, @builtin(instance_index) i_idx: u3
         case 0u: {local_position = vec2<f32>(-0.5, 0.5); local_uv = vec2<f32>(0.0, 0.0);}
         case 1u: {local_position = vec2<f32>(-0.5, -0.5); local_uv = vec2<f32>(0.0, 1.0);}
         case 2u: {local_position = vec2<f32>(0.5, 0.5); local_uv = vec2<f32>(1.0, 0.0);}
-        default: {local_position = vec2<f32>(0.5, -0.5); local_uv = vec2<f32>(1.0, 1.0);}
+        case 3u: {local_position = vec2<f32>(0.5, 0.5); local_uv = vec2<f32>(1.0, 0.0);}
+        case 4u: {local_position = vec2<f32>(-0.5, -0.5); local_uv = vec2<f32>(0.0, 1.0);}
+        case 5u: {local_position = vec2<f32>(0.5, -0.5); local_uv = vec2<f32>(1.0, 1.0);}
+        default: {local_position = vec2<f32>(0.0, 0.0); local_uv = vec2<f32>(0.0, 0.0);}
     }
 
     let world_pos = (local_position * sprite_d.scale) + sprite_d.pos;

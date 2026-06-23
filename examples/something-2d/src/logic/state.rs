@@ -144,9 +144,9 @@ impl RenderAble<ShaderId> for State {
                 resolve_target: None,
                 ops: Operations {
                     load: wgpu::LoadOp::Clear(Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
                         a: 1.0,
                     }),
                     store: wgpu::StoreOp::Store,
@@ -166,7 +166,7 @@ impl RenderAble<ShaderId> for State {
             render_pass.set_bind_group(1, &buffers.resource_buffers[1].bind_group, &[]);
         }
 
-        render_pass.draw(0..4, 0..1);
+        render_pass.draw(0..6, 0..self.sprites.len() as u32);
     }
 }
 

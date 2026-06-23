@@ -12,12 +12,6 @@ use crate::shader::SpriteData;
 
 pub struct Executor;
 
-impl Executor {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
 const SPAWN_INTERVAL_SECS: f32 = 2.0;
 
 impl EventsExecutor<State> for Executor {
@@ -46,7 +40,6 @@ impl EventsExecutor<State> for Executor {
                     ))
                     .unwrap();
 
-                    // Spawn a sprite every SPAWN_INTERVAL_SECS seconds
                     let elapsed = state.start_time.elapsed().unwrap().as_secs_f32();
                     if elapsed % SPAWN_INTERVAL_SECS < 0.02 {
                         tx.send(UpdateEventOrTimedEvent::TimedEvent(
@@ -67,7 +60,7 @@ impl EventsExecutor<State> for Executor {
                     let mut sprites = state.sprites.clone();
                     let new_sprite = SpriteData {
                         pos: [random::<f32>() * 2.0 - 1.0, random::<f32>() * 2.0 - 1.0],
-                        scale: [0.1, 0.1],
+                        scale: [0.03, 0.03],
                         uv_offset: [0.0, 0.0],
                         uv_scale: [1.0, 1.0],
                     };

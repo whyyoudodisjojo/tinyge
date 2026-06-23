@@ -15,20 +15,39 @@ use crate::{
     shader::{sprites::Sprites, ShaderId},
 };
 
-fn main() {
-    let mut img = image::RgbaImage::new(256, 256);
+fn generate_texture() -> DynamicImage{
+    let size = 64u32;
+    let mut img = image::RgbaImage::new(size, size);
+    let center = (size as f32) / 2.0;
+    let radius = (size as f32) / 2.0 - 2.0;
+
     for (x, y, pixel) in img.enumerate_pixels_mut() {
-        let r = ((x as f32 / 256 as f32) * 255.0) as u8;
-        let g = ((y as f32 / 256 as f32) * 255.0) as u8;
-        *pixel = Rgba([r, g, 128, 255]);
+        let dx = x as f32 - center;
+        let dy = y as f32 - center;
+        let dist = (dx * dx + dy * dy).sqrt();
+
+        if dist <= radius {
+            let alpha = if dist > radius - 4.0 {
+                ((radius - dist) / 4.0 * 255.0) as u8
+            } else {
+                255
+            };
+            *pixel = Rgba([255, 255, 255, alpha]);
+        } else {
+            *pixel = Rgba([0, 0, 0, 0]);
+        }
     }
 
-    let image = DynamicImage::ImageRgba8(img);
+    DynamicImage::ImageRgba8(img)
+}
+
+fn main() {
+    let image = generate_texture();
 
     let sprites = Sprites {
         texture_size: Extent3d {
-            width: 256,
-            height: 256,
+            width: image.width(),
+            height: image.height(),
             depth_or_array_layers: 1,
         },
     };
@@ -60,7 +79,7 @@ fn main() {
         shader_manager,
     );
 
-    let mut game_loop = GameLoop::new(State::new(image), Executor::new(), renderer);
+    let mut game_loop = GameLoop::new(State::new(image), Executor, renderer);
 
     let event_loop = EventLoop::with_user_event().build().unwrap();
 

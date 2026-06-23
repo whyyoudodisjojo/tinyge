@@ -16,7 +16,7 @@ impl Default for SpriteData {
     fn default() -> Self {
         Self {
             pos: [0.0, 0.0],
-            scale: [1.0, 1.0],
+            scale: [0.05, 0.05],
             uv_offset: [0.0, 0.0],
             uv_scale: [1.0, 1.0],
         }
