@@ -5,7 +5,7 @@ pub mod manager;
 use wgpu::*;
 
 use crate::shaders::{
-    buffers::{BufferBuildSpec, Buffers, ResourceBuildSpec, ResourceGroupBuildSpec},
+    buffers::{BufferBuildSpec, Buffers, ResourceGroupBuildSpec},
     descriptors::{
         MeshBufferSpecs, ResourceGroupLayout, ShaderPipelineDescriptor, VertexBufferSpec,
     },
@@ -18,7 +18,7 @@ pub struct ShaderBuiltData {
 
 pub trait Shader {
     fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static>;
-    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout>;
+    fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>>;
     fn load_source_code(&self) -> &'static str;
     fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'static>;
 
@@ -103,16 +103,14 @@ pub trait Shader {
             BufferBuildSpec {
                 vertex_buffer_szs: vertex_buffer_sizes,
                 index_buffer_sz: index_buffer_size,
-                resource_buffer: ResourceBuildSpec {
-                    bind_groups: resource_buffer_descs
-                        .into_iter()
-                        .zip(bind_group_layouts)
-                        .map(|(d, l)| ResourceGroupBuildSpec {
-                            layout: l,
-                            layout_entries: d.entries,
-                        })
-                        .collect(),
-                },
+                resource_buffer: resource_buffer_descs
+                    .into_iter()
+                    .zip(bind_group_layouts)
+                    .map(|(d, l)| ResourceGroupBuildSpec {
+                        layout: l,
+                        layout_entries: d.entries,
+                    })
+                    .collect(),
             },
         );
 

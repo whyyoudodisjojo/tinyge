@@ -8,8 +8,8 @@ use tinyge_core::shaders::{
     },
 };
 use wgpu::{
-    BindingType, BlendComponent, BlendState, BufferUsages, ColorWrites, MultisampleState,
-    PrimitiveState, ShaderStages, VertexAttribute, VertexBufferLayout, VertexFormat,
+    BlendComponent, BlendState, BufferUsages, ColorWrites, MultisampleState, PrimitiveState,
+    ShaderStages, VertexAttribute, VertexBufferLayout, VertexFormat,
 };
 
 use crate::shader::Vertex;
@@ -77,19 +77,19 @@ impl Shader for Pentagon {
         }
     }
 
-    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout> {
+    fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>> {
         vec![ResourceGroupLayout {
             entries: vec![ResourceBinding {
                 binding: 0,
                 visibility: ShaderStages::all(),
-                ty: BindingType::Buffer {
+                ty: tinyge_core::shaders::descriptors::ResourceBindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
                     min_binding_size: NonZeroU64::new(4),
+                    size: 4,
+                    usages: BufferUsages::UNIFORM,
                 },
                 count: None,
-                usage_overrides: BufferUsages::UNIFORM,
-                size: 4,
             }],
         }]
     }

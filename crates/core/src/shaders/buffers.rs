@@ -1,29 +1,30 @@
-use std::collections::VecDeque;
-
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, Buffer, BufferDescriptor,
-    BufferUsages, CommandEncoder,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
+    BufferDescriptor, BufferUsages, CommandEncoder, Texture, TextureView,
+    wgt::TextureViewDescriptor,
 };
 
-use crate::shaders::descriptors::ResourceBinding;
+use crate::shaders::descriptors::{ResourceBinding, ResourceBindingType};
 
 pub struct ResourceGroup {
     pub buffers: Vec<Buffer>,
     pub bind_group: BindGroup,
+    pub textures: Vec<ResourceTexture>,
 }
 
-pub struct BufferBuildSpec {
+pub struct ResourceTexture {
+    pub texture: Texture,
+    pub view: TextureView,
+}
+
+pub struct BufferBuildSpec<'a> {
     pub vertex_buffer_szs: Vec<u64>,
     pub index_buffer_sz: u64,
-    pub resource_buffer: ResourceBuildSpec,
+    pub resource_buffer: Vec<ResourceGroupBuildSpec<'a>>,
 }
 
-pub struct ResourceBuildSpec {
-    pub bind_groups: Vec<ResourceGroupBuildSpec>,
-}
-
-pub struct ResourceGroupBuildSpec {
-    pub layout_entries: Vec<ResourceBinding>,
+pub struct ResourceGroupBuildSpec<'a> {
+    pub layout_entries: Vec<ResourceBinding<'a>>,
     pub layout: BindGroupLayout,
 }
 
@@ -85,30 +86,71 @@ impl Buffers {
 
         let resource_buffers = spec
             .resource_buffer
-            .bind_groups
             .into_iter()
             .map(|b| {
+                let textures = b
+                    .layout_entries
+                    .iter()
+                    .filter_map(|l| {
+                        let ResourceBindingType::Texture {
+                            texture_descriptor, ..
+                        } = &l.ty
+                        else {
+                            return None;
+                        };
+
+                        let texture = device.create_texture(&texture_descriptor);
+                        let view = texture.create_view(&TextureViewDescriptor::default());
+
+                        Some(ResourceTexture { texture, view })
+                    })
+                    .collect::<Vec<_>>();
+
+                let sampler = b
+                    .layout_entries
+                    .iter()
+                    .filter_map(|l| {
+                        let ResourceBindingType::Sampler {
+                            sampler_descriptor, ..
+                        } = &l.ty
+                        else {
+                            return None;
+                        };
+
+                        Some(device.create_sampler(sampler_descriptor))
+                    })
+                    .collect::<Vec<_>>();
+
                 let buffers = b
                     .layout_entries
                     .iter()
-                    .map(|l| {
-                        device.create_buffer(&BufferDescriptor {
+                    .filter_map(|l| {
+                        let ResourceBindingType::Buffer { size, usages, .. } = l.ty else {
+                            return None;
+                        };
+
+                        Some(device.create_buffer(&BufferDescriptor {
                             label: None,
-                            usage: l.usage_overrides
-                                | BufferUsages::COPY_DST
-                                | BufferUsages::COPY_SRC,
-                            size: align_to_4_bytes(l.size),
+                            usage: usages | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                            size: align_to_4_bytes(size),
                             mapped_at_creation: false,
-                        })
+                        }))
                     })
-                    .collect::<VecDeque<_>>();
+                    .collect::<Vec<_>>();
 
                 let entries = buffers
                     .iter()
+                    .map(|b| b.as_entire_binding())
+                    .chain(
+                        textures
+                            .iter()
+                            .map(|t| BindingResource::TextureView(&t.view)),
+                    )
+                    .chain(sampler.iter().map(|s| BindingResource::Sampler(s)))
                     .enumerate()
                     .map(|(i, b)| BindGroupEntry {
                         binding: i as u32,
-                        resource: b.as_entire_binding(),
+                        resource: b,
                     })
                     .collect::<Vec<_>>();
 
@@ -119,8 +161,9 @@ impl Buffers {
                 });
 
                 ResourceGroup {
-                    buffers: buffers.into(),
+                    buffers,
                     bind_group,
+                    textures,
                 }
             })
             .collect();
