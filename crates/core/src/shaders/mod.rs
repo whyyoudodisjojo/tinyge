@@ -18,8 +18,12 @@ pub struct ShaderBuiltData {
 }
 
 pub trait Shader {
-    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static>;
-    fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>>;
+    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
+        MeshBufferSpecs::default()
+    }
+    fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>> {
+        vec![]
+    }
     fn load_source_code(&self) -> &'static str;
     fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'static>;
 

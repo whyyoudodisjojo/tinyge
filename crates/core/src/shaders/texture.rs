@@ -1,6 +1,7 @@
 use image::{DynamicImage, GenericImageView};
 use wgpu::{
-    Extent3d, Origin3d, Queue, TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect, TextureView
+    Extent3d, Origin3d, Queue, TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect,
+    TextureView,
 };
 
 pub struct ResourceTexture {
@@ -11,7 +12,7 @@ pub struct ResourceTexture {
 
 impl ResourceTexture {
     pub fn copy_image_data(&self, image: DynamicImage, queue: &Queue) {
-        let rgba = image.to_rgb8();
+        let rgba = image.to_rgba8();
         let dims = image.dimensions();
 
         let sz = Extent3d {

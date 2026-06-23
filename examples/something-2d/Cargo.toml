@@ -1,12 +1,12 @@
 [package]
-name = "tinyge-core"
+name = "something-2d"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-pollster = {workspace = true}
-rayon = {workspace = true}
 bytemuck = {workspace = true}
+image = { workspace = true }
+rand = { workspace = true }
+tinyge-core = {path = "../../crates/core"}
 wgpu = {workspace = true}
 winit = {workspace = true}
-image = {workspace = true}

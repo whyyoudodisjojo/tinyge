@@ -1,9 +1,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use image::DynamicImage;
 use tinyge_core::{
     renderer::strategies::{
-        RenderAble,
         single::{SinglePass, StateRenderSinglePass},
+        RenderAble,
     },
     shaders::buffers::Buffers,
     state::{StateRender, StateUpdates},
@@ -11,20 +12,20 @@ use tinyge_core::{
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
 use winit::dpi::PhysicalSize;
 
-use crate::{
-    ShaderId,
-    logic::UpdateEvents,
-    shader::pentagon::{INDICES, VERTICES},
-};
+use crate::{logic::UpdateEvents, shader::SpriteData, ShaderId};
 
 pub struct State {
     pub buffers: Option<Buffers>,
     pub sz: PhysicalSize<u32>,
     pub start_time: SystemTime,
+    pub texture_image: DynamicImage,
+    pub sprites: Vec<SpriteData>,
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(texture_image: DynamicImage) -> Self {
+        let sprites = vec![SpriteData::default()];
+
         Self {
             buffers: None,
             sz: PhysicalSize {
@@ -32,6 +33,8 @@ impl State {
                 height: 1080,
             },
             start_time: SystemTime::now(),
+            texture_image,
+            sprites,
         }
     }
 }
@@ -47,27 +50,36 @@ impl StateUpdates for State {
         device: &Device,
     ) {
         let new_buffer = new_buffers.into_iter().next().unwrap().1;
+
+        if let Some(resource_group) = new_buffer.resource_buffers.get(1) {
+            if let Some(texture) = resource_group.textures.first() {
+                texture.copy_image_data(self.texture_image.clone(), queue);
+            }
+        }
+
         match &mut self.buffers {
-            Some(b) => b.copy_data_into(&new_buffer, device, queue),
+            Some(b) => {
+                b.copy_data_into(&new_buffer, device, queue);
+            }
             None => {
-                queue.write_buffer(
-                    &new_buffer.vertex_buffers[0],
-                    0,
-                    bytemuck::cast_slice(&VERTICES),
-                );
-                queue.write_buffer(
-                    &new_buffer.index_buffer.as_ref().unwrap(),
-                    0,
-                    bytemuck::cast_slice(INDICES),
-                );
+                let time_val = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs_f32();
+
                 queue.write_buffer(
                     &new_buffer.resource_buffers[0].buffers[0],
                     0,
-                    bytemuck::cast_slice(&[SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as u32]),
+                    bytemuck::cast_slice(&[time_val]),
                 );
+
+                if !self.sprites.is_empty() {
+                    queue.write_buffer(
+                        &new_buffer.resource_buffers[0].buffers[1],
+                        0,
+                        bytemuck::cast_slice(&self.sprites),
+                    );
+                }
             }
         }
 
@@ -87,7 +99,19 @@ impl StateUpdates for State {
                         &b.resource_buffers[0].buffers[0],
                         0,
                         bytemuck::cast_slice(&[time_val]),
-                    )
+                    );
+                });
+            }
+            UpdateEvents::SpriteUpdate(sprites) => {
+                self.sprites = sprites;
+                self.buffers.as_ref().zip(queue).map(|(b, q)| {
+                    if !self.sprites.is_empty() {
+                        q.write_buffer(
+                            &b.resource_buffers[0].buffers[1],
+                            0,
+                            bytemuck::cast_slice(&self.sprites),
+                        )
+                    }
                 });
             }
         }
@@ -136,26 +160,13 @@ impl RenderAble<ShaderId> for State {
         });
 
         render_pass.set_pipeline(pipeline_cache.get(&ShaderId(1)).unwrap());
-        render_pass.set_vertex_buffer(
-            0,
-            self.buffers.as_ref().unwrap().vertex_buffers[0].slice(..),
-        );
-        render_pass.set_index_buffer(
-            self.buffers
-                .as_ref()
-                .unwrap()
-                .index_buffer
-                .as_ref()
-                .unwrap()
-                .slice(..),
-            wgpu::IndexFormat::Uint16,
-        );
-        render_pass.set_bind_group(
-            0,
-            &self.buffers.as_ref().unwrap().resource_buffers[0].bind_group,
-            &[],
-        );
-        render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
+
+        if let Some(buffers) = &self.buffers {
+            render_pass.set_bind_group(0, &buffers.resource_buffers[0].bind_group, &[]);
+            render_pass.set_bind_group(1, &buffers.resource_buffers[1].bind_group, &[]);
+        }
+
+        render_pass.draw(0..4, 0..1);
     }
 }
 

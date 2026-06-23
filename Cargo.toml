@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "examples/pentagon"]
+members = ["crates/core", "examples/pentagon", "examples/something-2d"]
 version = "0.1.0"
 
 [workspace.dependencies]
@@ -8,3 +8,5 @@ wgpu = "29.0.3"
 pollster = "0.4.0"
 rayon = "1.12.0"
 winit = "0.30.13"
+image = "0.25.10"
+rand = "0.8"

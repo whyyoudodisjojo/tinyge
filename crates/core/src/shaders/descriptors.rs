@@ -51,6 +51,7 @@ pub struct VertexBufferSpec<'a> {
     pub size: u64,
 }
 
+#[derive(Default)]
 pub struct MeshBufferSpecs<'a> {
     pub vertex_buffers: Vec<VertexBufferSpec<'a>>,
     pub index_buffer_size: u64,

@@ -27,7 +27,7 @@ pub struct ResourceGroupBuildSpec<'a> {
 
 pub struct Buffers {
     pub vertex_buffers: Vec<Buffer>,
-    pub index_buffer: Buffer,
+    pub index_buffer: Option<Buffer>,
     pub resource_buffers: Vec<ResourceGroup>,
 }
 
@@ -47,7 +47,10 @@ impl Buffers {
             .iter()
             .zip(new_buffers.vertex_buffers.iter())
             .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder));
-        Self::copy_via_encoder(&self.index_buffer, &new_buffers.index_buffer, &mut encoder);
+        self.index_buffer
+            .as_ref()
+            .zip(new_buffers.index_buffer.as_ref())
+            .map(|(o, n)| Self::copy_via_encoder(&o, &n, &mut encoder));
         self.resource_buffers
             .iter()
             .zip(new_buffers.resource_buffers.iter())
@@ -74,12 +77,16 @@ impl Buffers {
                 })
             })
             .collect::<Vec<_>>();
-        let index_buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: align_to_4_bytes(spec.index_buffer_sz),
-            usage: BufferUsages::INDEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
+        let index_buffer = if spec.index_buffer_sz > 0 {
+            Some(device.create_buffer(&BufferDescriptor {
+                label: None,
+                size: align_to_4_bytes(spec.index_buffer_sz),
+                usage: BufferUsages::INDEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            }))
+        } else {
+            None
+        };
 
         let resource_buffers = spec
             .resource_buffer
@@ -88,7 +95,8 @@ impl Buffers {
                 let textures = b
                     .layout_entries
                     .iter()
-                    .filter_map(|l| {
+                    .enumerate()
+                    .filter_map(|(i, l)| {
                         let ResourceBindingType::Texture {
                             texture_descriptor, ..
                         } = &l.ty
@@ -99,18 +107,22 @@ impl Buffers {
                         let texture = device.create_texture(&texture_descriptor);
                         let view = texture.create_view(&TextureViewDescriptor::default());
 
-                        Some(ResourceTexture {
-                            texture,
-                            view,
-                            sz: texture_descriptor.size,
-                        })
+                        Some((
+                            i,
+                            ResourceTexture {
+                                texture,
+                                view,
+                                sz: texture_descriptor.size,
+                            },
+                        ))
                     })
                     .collect::<Vec<_>>();
 
                 let sampler = b
                     .layout_entries
                     .iter()
-                    .filter_map(|l| {
+                    .enumerate()
+                    .filter_map(|(i, l)| {
                         let ResourceBindingType::Sampler {
                             sampler_descriptor, ..
                         } = &l.ty
@@ -118,39 +130,46 @@ impl Buffers {
                             return None;
                         };
 
-                        Some(device.create_sampler(sampler_descriptor))
+                        Some((i, device.create_sampler(sampler_descriptor)))
                     })
                     .collect::<Vec<_>>();
 
                 let buffers = b
                     .layout_entries
                     .iter()
-                    .filter_map(|l| {
+                    .enumerate()
+                    .filter_map(|(i, l)| {
                         let ResourceBindingType::Buffer { size, usages, .. } = l.ty else {
                             return None;
                         };
 
-                        Some(device.create_buffer(&BufferDescriptor {
-                            label: None,
-                            usage: usages | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                            size: align_to_4_bytes(size),
-                            mapped_at_creation: false,
-                        }))
+                        Some((
+                            i,
+                            device.create_buffer(&BufferDescriptor {
+                                label: None,
+                                usage: usages | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                                size: align_to_4_bytes(size),
+                                mapped_at_creation: false,
+                            }),
+                        ))
                     })
                     .collect::<Vec<_>>();
 
                 let entries = buffers
                     .iter()
-                    .map(|b| b.as_entire_binding())
+                    .map(|(i, b)| (i, b.as_entire_binding()))
                     .chain(
                         textures
                             .iter()
-                            .map(|t| BindingResource::TextureView(&t.view)),
+                            .map(|(i, t)| (i, BindingResource::TextureView(&t.view))),
                     )
-                    .chain(sampler.iter().map(|s| BindingResource::Sampler(s)))
-                    .enumerate()
+                    .chain(
+                        sampler
+                            .iter()
+                            .map(|(i, s)| (i, BindingResource::Sampler(s))),
+                    )
                     .map(|(i, b)| BindGroupEntry {
-                        binding: i as u32,
+                        binding: *i as u32,
                         resource: b,
                     })
                     .collect::<Vec<_>>();
@@ -162,9 +181,9 @@ impl Buffers {
                 });
 
                 ResourceGroup {
-                    buffers,
+                    buffers: buffers.into_iter().map(|b| b.1).collect(),
                     bind_group,
-                    textures,
+                    textures: textures.into_iter().map(|t| t.1).collect(),
                 }
             })
             .collect();
