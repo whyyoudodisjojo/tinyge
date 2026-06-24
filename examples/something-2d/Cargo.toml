@@ -7,6 +7,6 @@ edition = "2024"
 bytemuck = {workspace = true}
 image = { workspace = true }
 rand = { workspace = true }
-tinyge-core = {path = "../../crates/core"}
+tinyge-graphics = {path = "../../crates/graphics"}
 wgpu = {workspace = true}
 winit = {workspace = true}

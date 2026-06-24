@@ -1,7 +1,7 @@
 mod logic;
 mod shader;
 
-use tinyge_core::{
+use tinyge_graphics::{
     game_loop::GameLoop,
     renderer::{AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor},
     shaders::manager::ShaderManager,

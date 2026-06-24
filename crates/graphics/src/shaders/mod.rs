@@ -17,6 +17,11 @@ pub struct ShaderBuiltData {
     pipeline: RenderPipeline,
 }
 
+pub struct ComputeShaderBuiltData {
+    pub buffers: Buffers,
+    pub pipeline: ComputePipeline,
+}
+
 pub trait Shader {
     fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
         MeshBufferSpecs::default()
@@ -120,5 +125,70 @@ pub trait Shader {
         );
 
         ShaderBuiltData { buffers, pipeline }
+    }
+}
+
+pub trait ComputeShader {
+    fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>> {
+        vec![]
+    }
+    fn load_source_code(&self) -> &'static str;
+    fn entry_point(&self) -> &'static str;
+
+    fn build(&self, device: &Device) -> ComputeShaderBuiltData {
+        let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
+
+        let bind_group_layouts = resource_buffer_descs
+            .iter()
+            .map(|l| {
+                let bind_group_layout_descriptor = BindGroupLayoutDescriptor {
+                    label: None,
+                    entries: &l.entries.iter().map(Into::into).collect::<Vec<_>>(),
+                };
+
+                device.create_bind_group_layout(&bind_group_layout_descriptor)
+            })
+            .collect::<Vec<_>>();
+
+        let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &bind_group_layouts
+                .iter()
+                .map(|b| Some(b))
+                .collect::<Vec<_>>(),
+            immediate_size: 0,
+        });
+
+        let shader_module = device.create_shader_module(ShaderModuleDescriptor {
+            label: None,
+            source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(self.load_source_code())),
+        });
+
+        let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            label: None,
+            layout: Some(&layout),
+            module: &shader_module,
+            entry_point: Some(self.entry_point()),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let buffers = Buffers::build(
+            device,
+            BufferBuildSpec {
+                vertex_buffer_szs: vec![],
+                index_buffer_sz: 0,
+                resource_buffer: resource_buffer_descs
+                    .into_iter()
+                    .zip(bind_group_layouts)
+                    .map(|(d, l)| ResourceGroupBuildSpec {
+                        layout: l,
+                        layout_entries: d.entries,
+                    })
+                    .collect(),
+            },
+        );
+
+        ComputeShaderBuiltData { buffers, pipeline }
     }
 }

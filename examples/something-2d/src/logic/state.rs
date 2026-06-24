@@ -1,10 +1,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use image::DynamicImage;
-use tinyge_core::{
+use tinyge_graphics::{
     renderer::strategies::{
-        single::{SinglePass, StateRenderSinglePass},
         RenderAble,
+        single::{SinglePass, StateRenderSinglePass},
     },
     shaders::buffers::Buffers,
     state::{StateRender, StateUpdates},
@@ -12,7 +12,7 @@ use tinyge_core::{
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
 use winit::dpi::PhysicalSize;
 
-use crate::{logic::UpdateEvents, shader::SpriteData, ShaderId};
+use crate::{ShaderId, logic::UpdateEvents, shader::SpriteData};
 
 pub struct State {
     pub buffers: Option<Buffers>,

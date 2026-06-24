@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tinyge_core::game_loop::events::{BaseEvent, EventsExecutor};
+use tinyge_graphics::game_loop::events::{BaseEvent, EventsExecutor};
 use winit::event::WindowEvent;
 
 use crate::logic::{TimedEvent, UpdateEvents, state::State};
@@ -13,9 +13,9 @@ impl EventsExecutor<State> for Executor {
 
     fn handle_event(
         &mut self,
-        event: tinyge_core::game_loop::events::BaseEvent<Self::CustomEvent>,
-        mut tx: tinyge_core::game_loop::events::RenderEventHandle<
-            tinyge_core::game_loop::events::UpdateEventOrTimedEvent<
+        event: tinyge_graphics::game_loop::events::BaseEvent<Self::CustomEvent>,
+        mut tx: tinyge_graphics::game_loop::events::RenderEventHandle<
+            tinyge_graphics::game_loop::events::UpdateEventOrTimedEvent<
                 Self::UpdateEvent,
                 Self::CustomEvent,
             >,
@@ -27,13 +27,13 @@ impl EventsExecutor<State> for Executor {
                 tx.force_redraw_async();
                 self.emit_event(
                     TimedEvent,
-                    tinyge_core::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
+                    tinyge_graphics::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
                     tx,
                 );
             }
             BaseEvent::CustomEvent(_) => {
                 tx.send(
-                    tinyge_core::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
+                    tinyge_graphics::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
                         UpdateEvents::TimeUpdate,
                     ),
                 )
@@ -43,13 +43,13 @@ impl EventsExecutor<State> for Executor {
 
                 self.emit_event(
                     TimedEvent,
-                    tinyge_core::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
+                    tinyge_graphics::game_loop::events::EventSchedule::In(Duration::from_millis(7)),
                     tx,
                 );
             }
             BaseEvent::WindowEvent(WindowEvent::Resized(sz)) => tx
                 .send(
-                    tinyge_core::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
+                    tinyge_graphics::game_loop::events::UpdateEventOrTimedEvent::UpdateEvent(
                         UpdateEvents::Resize(sz),
                     ),
                 )

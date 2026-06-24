@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use tinyge_core::shaders::{
+use tinyge_graphics::shaders::{
     Shader,
     descriptors::{
         ColorTarget, MeshBufferSpecs, ResourceBinding, ResourceGroupLayout,
@@ -82,7 +82,7 @@ impl Shader for Pentagon {
             entries: vec![ResourceBinding {
                 binding: 0,
                 visibility: ShaderStages::all(),
-                ty: tinyge_core::shaders::descriptors::ResourceBindingType::Buffer {
+                ty: tinyge_graphics::shaders::descriptors::ResourceBindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
                     min_binding_size: NonZeroU64::new(4),

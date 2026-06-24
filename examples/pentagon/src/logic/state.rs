@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tinyge_core::{
+use tinyge_graphics::{
     renderer::strategies::{
         RenderAble,
         single::{SinglePass, StateRenderSinglePass},

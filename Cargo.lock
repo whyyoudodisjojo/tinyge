@@ -737,6 +737,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "glam"
+version = "0.33.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "898f5a568a84989b6c0f8caa50a93074b97dbdc58fc6d9543157bb4562758933"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "glow"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1636,7 +1645,7 @@ name = "pentagon"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "tinyge-core",
+ "tinyge-graphics",
  "wgpu",
  "winit",
 ]
@@ -2238,7 +2247,7 @@ dependencies = [
  "bytemuck",
  "image",
  "rand 0.8.6",
- "tinyge-core",
+ "tinyge-graphics",
  "wgpu",
  "winit",
 ]
@@ -2370,7 +2379,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinyge-core"
+name = "tinyge-graphics"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
@@ -2379,6 +2388,17 @@ dependencies = [
  "rayon",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "tinyge-physics"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "rayon",
+ "tinyge-graphics",
+ "wgpu",
 ]
 
 [[package]]

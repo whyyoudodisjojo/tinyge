@@ -2,20 +2,20 @@ mod logic;
 mod shader;
 
 use image::{DynamicImage, Rgba};
-use tinyge_core::{
+use tinyge_graphics::{
     game_loop::GameLoop,
     renderer::{AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor},
     shaders::manager::ShaderManager,
 };
-use wgpu::{wgt::DeviceDescriptor, Backends, Extent3d};
+use wgpu::{Backends, Extent3d, wgt::DeviceDescriptor};
 use winit::event_loop::EventLoop;
 
 use crate::{
     logic::{executor::Executor, state::State},
-    shader::{sprites::Sprites, ShaderId},
+    shader::{ShaderId, sprites::Sprites},
 };
 
-fn generate_texture() -> DynamicImage{
+fn generate_texture() -> DynamicImage {
     let size = 64u32;
     let mut img = image::RgbaImage::new(size, size);
     let center = (size as f32) / 2.0;

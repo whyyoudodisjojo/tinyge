@@ -1,11 +1,11 @@
 use std::num::NonZeroU64;
 
-use tinyge_core::shaders::{
+use tinyge_graphics::shaders::{
+    Shader,
     descriptors::{
         ColorTarget, MeshBufferSpecs, ResourceBinding, ResourceBindingType, ResourceGroupLayout,
         ShaderPipelineDescriptor,
     },
-    Shader,
 };
 use wgpu::{
     BlendComponent, BlendState, BufferUsages, ColorWrites, Extent3d, MultisampleState,

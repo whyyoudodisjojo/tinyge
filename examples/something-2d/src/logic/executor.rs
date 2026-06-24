@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use rand::random;
-use tinyge_core::game_loop::events::{
+use tinyge_graphics::game_loop::events::{
     BaseEvent, EventSchedule, EventsExecutor, RenderEventHandle, UpdateEventOrTimedEvent,
 };
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use crate::logic::{state::State, CustomEvents, UpdateEvents};
+use crate::logic::{CustomEvents, UpdateEvents, state::State};
 use crate::shader::SpriteData;
 
 pub struct Executor;
