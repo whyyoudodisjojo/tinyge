@@ -1,6 +1,6 @@
 use wgpu::{
-    wgt::TextureViewDescriptor, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindingResource, Buffer, BufferDescriptor, BufferUsages, CommandEncoder,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
+    BufferDescriptor, BufferUsages, CommandEncoder, wgt::TextureViewDescriptor,
 };
 
 use crate::shaders::{

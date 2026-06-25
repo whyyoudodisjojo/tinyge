@@ -1,0 +1,11 @@
+[package]
+name = "tinyge-physics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+glam = { version = "0.33.1", features = ["bytemuck"] }
+rayon.workspace = true
+tinyge-graphics = {path = "../../crates/graphics"}
+bytemuck = { workspace = true, features = ["derive"] }
+wgpu = { workspace = true }
