@@ -61,7 +61,7 @@ impl StateUpdates for State {
                     bytemuck::cast_slice(INDICES),
                 );
                 queue.write_buffer(
-                    &new_buffer.resource_buffers[0].buffers[0],
+                    &new_buffer.resource_buffers[0].buffers[0].as_ref().unwrap(),
                     0,
                     bytemuck::cast_slice(&[SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -84,7 +84,7 @@ impl StateUpdates for State {
                         .unwrap()
                         .as_secs_f32();
                     q.write_buffer(
-                        &b.resource_buffers[0].buffers[0],
+                        &b.resource_buffers[0].buffers[0].as_ref().unwrap(),
                         0,
                         bytemuck::cast_slice(&[time_val]),
                     )

@@ -90,6 +90,7 @@ impl Shader for Pentagon {
                     usages: BufferUsages::UNIFORM,
                 },
                 count: None,
+                create_initial_buffers: true,
             }],
         }]
     }

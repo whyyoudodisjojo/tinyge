@@ -16,7 +16,7 @@ use crate::shaders::{
 
 #[derive(Clone)]
 pub struct ResourceGroup {
-    pub buffers: Vec<Buffer>,
+    pub buffers: Vec<Option<Buffer>>,
     pub bind_group: DynamicBindGroup,
     pub textures: Vec<ResourceTexture>,
 }
@@ -145,10 +145,11 @@ impl Buffers {
             .iter()
             .zip(new_buffers.resource_buffers.iter())
             .for_each(|(o, n)| {
-                o.buffers
-                    .iter()
-                    .zip(n.buffers.iter())
-                    .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder))
+                o.buffers.iter().zip(n.buffers.iter()).for_each(|(o, n)| {
+                    if let (Some(o), Some(n)) = (o, n) {
+                        Self::copy_via_encoder(o, n, &mut encoder)
+                    }
+                })
             });
 
         queue.submit(std::iter::once(encoder.finish()));
@@ -186,6 +187,10 @@ impl Buffers {
 
                 for (binding_idx, layout_entry) in b.layout_entries.iter().enumerate() {
                     let binding = binding_idx as u32;
+
+                    if !layout_entry.create_initial_buffers {
+                        continue;
+                    }
 
                     let resource = match &layout_entry.ty {
                         ResourceBindingType::Buffer { size, usages, .. } => {
@@ -228,51 +233,61 @@ impl Buffers {
                     entries.push(ResourceEntry { binding, resource });
                 }
 
-                let bind_group_entries: Vec<ResourceType> =
-                    entries.iter().map(|e| e.resource.clone()).collect();
-
-                let mut wgpu_entries: Vec<BindGroupEntry> = Vec::with_capacity(entries.len());
-                let mut buffers: Vec<Buffer> = Vec::new();
+                let mut bind_group = DynamicBindGroup::new(b.layout);
+                let mut buffers: Vec<Option<Buffer>> = Vec::with_capacity(entries.len());
                 let mut textures: Vec<ResourceTexture> = Vec::new();
 
-                for entry in &entries {
-                    match &entry.resource {
-                        ResourceType::Buffer(buffer) => {
-                            wgpu_entries.push(BindGroupEntry {
-                                binding: entry.binding,
-                                resource: buffer.as_entire_binding(),
-                            });
-                            buffers.push(buffer.clone());
+                if entries.len() == b.layout_entries.len() {
+                    let mut bind_group_entries: Vec<ResourceType> =
+                        Vec::with_capacity(entries.len());
+                    let mut wgpu_entries: Vec<BindGroupEntry> = Vec::with_capacity(entries.len());
+
+                    for entry in &entries {
+                        bind_group_entries.push(entry.resource.clone());
+                        match &entry.resource {
+                            ResourceType::Buffer(buffer) => {
+                                buffers.push(Some(buffer.clone()));
+                                wgpu_entries.push(BindGroupEntry {
+                                    binding: entry.binding,
+                                    resource: buffer.as_entire_binding(),
+                                });
+                            }
+                            ResourceType::Texture(texture) => {
+                                textures.push(texture.clone());
+                                wgpu_entries.push(BindGroupEntry {
+                                    binding: entry.binding,
+                                    resource: BindingResource::TextureView(&texture.view),
+                                });
+                            }
+                            ResourceType::Sampler(sampler) => {
+                                wgpu_entries.push(BindGroupEntry {
+                                    binding: entry.binding,
+                                    resource: BindingResource::Sampler(sampler),
+                                });
+                            }
                         }
-                        ResourceType::Texture(texture) => {
-                            wgpu_entries.push(BindGroupEntry {
-                                binding: entry.binding,
-                                resource: BindingResource::TextureView(&texture.view),
-                            });
-                            textures.push(texture.clone());
-                        }
-                        ResourceType::Sampler(sampler) => {
-                            wgpu_entries.push(BindGroupEntry {
-                                binding: entry.binding,
-                                resource: BindingResource::Sampler(sampler),
-                            });
+                    }
+
+                    let initial_bind_group = device.create_bind_group(&BindGroupDescriptor {
+                        label: None,
+                        layout: &bind_group.layout,
+                        entries: &wgpu_entries,
+                    });
+
+                    bind_group.insert(&bind_group_entries, initial_bind_group);
+                } else {
+                    for entry in &entries {
+                        match &entry.resource {
+                            ResourceType::Buffer(buffer) => {
+                                buffers.push(Some(buffer.clone()));
+                            }
+                            ResourceType::Texture(texture) => {
+                                textures.push(texture.clone());
+                            }
+                            ResourceType::Sampler(_) => {}
                         }
                     }
                 }
-
-                let bind_group = device.create_bind_group(&BindGroupDescriptor {
-                    label: None,
-                    layout: &b.layout,
-                    entries: &wgpu_entries,
-                });
-
-                let mut cache = LruCache::new(NonZeroUsize::new(16usize).unwrap());
-                cache.put(DynamicBindGroup::key(&bind_group_entries), bind_group);
-
-                let bind_group = DynamicBindGroup {
-                    layout: b.layout,
-                    bind_group_cache: cache,
-                };
 
                 ResourceGroup {
                     buffers,

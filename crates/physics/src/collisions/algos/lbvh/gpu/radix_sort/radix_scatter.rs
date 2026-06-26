@@ -73,6 +73,7 @@ impl ComputeShader for RadixScatter {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
+                    create_initial_buffers: false,
                 },
                 ResourceBinding {
                     binding: 1,
@@ -85,6 +86,7 @@ impl ComputeShader for RadixScatter {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
+                    create_initial_buffers: false,
                 },
                 ResourceBinding {
                     binding: 2,
@@ -97,6 +99,7 @@ impl ComputeShader for RadixScatter {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
+                    create_initial_buffers: false,
                 },
                 ResourceBinding {
                     binding: 3,
@@ -109,6 +112,7 @@ impl ComputeShader for RadixScatter {
                         usages: BufferUsages::UNIFORM,
                     },
                     count: None,
+                    create_initial_buffers: true,
                 },
             ],
         }]
@@ -124,10 +128,17 @@ impl ComputeShader for RadixScatter {
             let built_data = self.build(device);
             let resource_buffers = &built_data.buffers.resource_buffers[0];
 
+            // Get the params buffer - it should exist (binding 3 in layout)
+            let params_buffer = resource_buffers
+                .buffers
+                .get(0)
+                .and_then(|b| b.clone())
+                .expect("Params buffer should exist at binding 3");
+
             self.init_data = Some(InitData {
-                in_keys: resource_buffers.buffers[0].clone(),
-                out_keys: resource_buffers.buffers[1].clone(),
-                params: resource_buffers.buffers[3].clone(),
+                in_keys: args.in_buffer.clone(),
+                out_keys: args.out_buffer.clone(),
+                params: params_buffer,
                 bind_group: resource_buffers.bind_group.clone(),
                 pipeline: built_data.pipeline.clone(),
             });

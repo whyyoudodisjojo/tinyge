@@ -33,6 +33,7 @@ pub struct ResourceBinding<'a> {
     pub visibility: ShaderStages,
     pub ty: ResourceBindingType<'a>,
     pub count: Option<NonZeroU32>,
+    pub create_initial_buffers: bool,
 }
 
 impl<'a> From<&ResourceBinding<'a>> for BindGroupLayoutEntry {

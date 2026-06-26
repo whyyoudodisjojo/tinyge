@@ -37,6 +37,7 @@ impl Shader for Sprites {
                             usages: BufferUsages::UNIFORM,
                         },
                         count: None,
+                        create_initial_buffers: true,
                     },
                     ResourceBinding {
                         binding: 1,
@@ -49,6 +50,7 @@ impl Shader for Sprites {
                             usages: BufferUsages::STORAGE,
                         },
                         count: None,
+                        create_initial_buffers: true,
                     },
                 ],
             },
@@ -62,6 +64,7 @@ impl Shader for Sprites {
                             sampler_descriptor: SamplerDescriptor::default(),
                         },
                         count: None,
+                        create_initial_buffers: true,
                     },
                     ResourceBinding {
                         binding: 1,
@@ -82,6 +85,7 @@ impl Shader for Sprites {
                             },
                         },
                         count: None,
+                        create_initial_buffers: true,
                     },
                 ],
             },

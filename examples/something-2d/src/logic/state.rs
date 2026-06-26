@@ -68,14 +68,14 @@ impl StateUpdates for State {
                     .as_secs_f32();
 
                 queue.write_buffer(
-                    &new_buffer.resource_buffers[0].buffers[0],
+                    &new_buffer.resource_buffers[0].buffers[0].as_ref().unwrap(),
                     0,
                     bytemuck::cast_slice(&[time_val]),
                 );
 
                 if !self.sprites.is_empty() {
                     queue.write_buffer(
-                        &new_buffer.resource_buffers[0].buffers[1],
+                        &new_buffer.resource_buffers[0].buffers[1].as_ref().unwrap(),
                         0,
                         bytemuck::cast_slice(&self.sprites),
                     );
@@ -96,7 +96,7 @@ impl StateUpdates for State {
                         .unwrap()
                         .as_secs_f32();
                     q.write_buffer(
-                        &b.resource_buffers[0].buffers[0],
+                        &b.resource_buffers[0].buffers[0].as_ref().unwrap(),
                         0,
                         bytemuck::cast_slice(&[time_val]),
                     );
@@ -107,7 +107,7 @@ impl StateUpdates for State {
                 self.buffers.as_ref().zip(queue).map(|(b, q)| {
                     if !self.sprites.is_empty() {
                         q.write_buffer(
-                            &b.resource_buffers[0].buffers[1],
+                            &b.resource_buffers[0].buffers[1].as_ref().unwrap(),
                             0,
                             bytemuck::cast_slice(&self.sprites),
                         )

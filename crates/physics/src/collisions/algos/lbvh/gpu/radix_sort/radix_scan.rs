@@ -62,6 +62,7 @@ impl ComputeShader for RadixScan {
                         usages: BufferUsages::UNIFORM,
                     },
                     count: None,
+                    create_initial_buffers: true,
                 },
                 ResourceBinding {
                     binding: 1,
@@ -74,6 +75,7 @@ impl ComputeShader for RadixScan {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
+                    create_initial_buffers: true,
                 },
             ],
         }]
@@ -90,8 +92,12 @@ impl ComputeShader for RadixScan {
             let resource_buffers = &built_data.buffers.resource_buffers[0];
 
             self.init_data = Some(InitData {
-                params: resource_buffers.buffers[0].clone(),
-                counter: resource_buffers.buffers[1].clone(),
+                params: resource_buffers.buffers[0]
+                    .clone()
+                    .expect("buffer 0 should exist"),
+                counter: resource_buffers.buffers[1]
+                    .clone()
+                    .expect("buffer 1 should exist"),
                 bind_group: resource_buffers.bind_group.clone(),
                 current_counter_hash: 0,
                 pipeline: built_data.pipeline.clone(),

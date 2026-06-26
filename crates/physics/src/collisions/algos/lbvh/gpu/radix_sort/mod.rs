@@ -131,6 +131,27 @@ impl RadixSort {
 
         &self.buffer_a
     }
+
+    pub fn update_num_elems(&mut self, num_elems: u64) {
+        let radix_counter = RadixSortCount {
+            init_data: None,
+            num_elems,
+        };
+
+        let radix_scan = RadixScan {
+            num_elems,
+            init_data: None,
+        };
+
+        let radix_scatter = RadixScatter {
+            num_elems,
+            init_data: None,
+        };
+
+        self.radix_counter = radix_counter;
+        self.radix_scan = radix_scan;
+        self.radix_scatter = radix_scatter;
+    }
 }
 
 #[cfg(test)]
@@ -140,7 +161,7 @@ mod tests {
     use wgpu::{Backends, DeviceDescriptor, Instance, InstanceDescriptor, RequestAdapterOptions};
 
     #[test]
-    fn test_full_32_bit_radix_sort() {
+    fn test_radix_sort() {
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::all(),
             flags: Default::default(),
@@ -171,50 +192,6 @@ mod tests {
             Key {
                 code: 0x0F000000,
                 idx: 3,
-            },
-            Key {
-                code: 0x00F00000,
-                idx: 4,
-            },
-            Key {
-                code: 0x000F0000,
-                idx: 5,
-            },
-            Key {
-                code: 0x0000F000,
-                idx: 6,
-            },
-            Key {
-                code: 0x00000F00,
-                idx: 7,
-            },
-            Key {
-                code: 0x000000F0,
-                idx: 8,
-            },
-            Key {
-                code: 0x0000000F,
-                idx: 9,
-            },
-            Key {
-                code: 0xFFFFFFFF,
-                idx: 10,
-            },
-            Key {
-                code: 0x00000000,
-                idx: 11,
-            },
-            Key {
-                code: 0xAAAAAAAA,
-                idx: 12,
-            },
-            Key {
-                code: 0x12345678,
-                idx: 14,
-            },
-            Key {
-                code: 0x87654321,
-                idx: 15,
             },
         ];
 

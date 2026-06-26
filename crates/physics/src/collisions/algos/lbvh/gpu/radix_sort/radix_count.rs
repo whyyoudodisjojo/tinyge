@@ -72,6 +72,7 @@ impl ComputeShader for RadixSortCount {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
+                    create_initial_buffers: true,
                 },
                 ResourceBinding {
                     binding: 1,
@@ -84,6 +85,7 @@ impl ComputeShader for RadixSortCount {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
+                    create_initial_buffers: true,
                 },
                 ResourceBinding {
                     binding: 2,
@@ -96,6 +98,7 @@ impl ComputeShader for RadixSortCount {
                         usages: BufferUsages::UNIFORM,
                     },
                     count: None,
+                    create_initial_buffers: true,
                 },
             ],
         }]
@@ -107,9 +110,15 @@ impl ComputeShader for RadixSortCount {
             let resource_buffers = &built_data.buffers.resource_buffers[0];
 
             self.init_data = Some(InitData {
-                in_keys: resource_buffers.buffers[0].clone(),
-                global_counter: resource_buffers.buffers[1].clone(),
-                params: resource_buffers.buffers[2].clone(),
+                in_keys: resource_buffers.buffers[0]
+                    .clone()
+                    .expect("buffer 0 should exist"),
+                global_counter: resource_buffers.buffers[1]
+                    .clone()
+                    .expect("buffer 1 should exist"),
+                params: resource_buffers.buffers[2]
+                    .clone()
+                    .expect("buffer 2 should exist"),
                 bind_group: resource_buffers
                     .bind_group
                     .peek_last_bind_group()
