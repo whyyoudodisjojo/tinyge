@@ -6,8 +6,7 @@ use std::{
 use lru::LruCache;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
-    BufferDescriptor, BufferUsages, CommandEncoder, Device, Sampler, TextureView,
-    wgt::TextureViewDescriptor,
+    BufferDescriptor, BufferUsages, CommandEncoder, Device, Sampler, wgt::TextureViewDescriptor,
 };
 
 use crate::shaders::{
@@ -28,13 +27,6 @@ pub struct DynamicBindGroup {
     pub bind_group_cache: LruCache<u64, BindGroup>,
 }
 
-#[derive(Hash, Clone)]
-pub enum BindGroupEntryInput {
-    Buffer(Buffer),
-    Sampler(Sampler),
-    Texture(TextureView),
-}
-
 impl DynamicBindGroup {
     pub fn new(layout: BindGroupLayout) -> Self {
         Self {
@@ -43,13 +35,13 @@ impl DynamicBindGroup {
         }
     }
 
-    pub fn key(bufs: &[BindGroupEntryInput]) -> u64 {
+    pub fn key(bufs: &[ResourceType]) -> u64 {
         let mut hasher = DefaultHasher::new();
         bufs.hash(&mut hasher);
         hasher.finish()
     }
 
-    pub fn get_bind_group(&mut self, bufs: &[BindGroupEntryInput]) -> Option<&BindGroup> {
+    pub fn get_bind_group(&mut self, bufs: &[ResourceType]) -> Option<&BindGroup> {
         let k = Self::key(bufs);
 
         self.bind_group_cache.get(&k)
@@ -59,13 +51,13 @@ impl DynamicBindGroup {
         self.bind_group_cache.peek_lru().map(|(_, v)| v)
     }
 
-    pub fn insert(&mut self, b: &[BindGroupEntryInput], bind_group: BindGroup) {
+    pub fn insert(&mut self, b: &[ResourceType], bind_group: BindGroup) {
         self.bind_group_cache.put(Self::key(b), bind_group);
     }
 
     pub fn get_or_create_bind_group(
         &mut self,
-        buffs: &[BindGroupEntryInput],
+        buffs: &[ResourceType],
         device: &Device,
     ) -> BindGroup {
         let k = Self::key(buffs);
@@ -82,9 +74,9 @@ impl DynamicBindGroup {
                         .map(|(i, b)| BindGroupEntry {
                             binding: i as u32,
                             resource: match b {
-                                BindGroupEntryInput::Buffer(b) => b.as_entire_binding(),
-                                BindGroupEntryInput::Sampler(s) => BindingResource::Sampler(s),
-                                BindGroupEntryInput::Texture(t) => BindingResource::TextureView(t),
+                                ResourceType::Buffer(b) => b.as_entire_binding(),
+                                ResourceType::Sampler(s) => BindingResource::Sampler(s),
+                                ResourceType::Texture(t) => BindingResource::TextureView(&t.view),
                             },
                         })
                         .collect::<Vec<_>>(),
@@ -115,6 +107,18 @@ pub struct Buffers {
     pub vertex_buffers: Vec<Buffer>,
     pub index_buffer: Option<Buffer>,
     pub resource_buffers: Vec<ResourceGroup>,
+}
+
+pub struct ResourceEntry {
+    pub binding: u32,
+    pub resource: ResourceType,
+}
+
+#[derive(Clone, Hash)]
+pub enum ResourceType {
+    Buffer(Buffer),
+    Sampler(Sampler),
+    Texture(ResourceTexture),
 }
 
 impl Buffers {
@@ -178,108 +182,88 @@ impl Buffers {
             .resource_buffer
             .into_iter()
             .map(|b| {
-                let textures = b
-                    .layout_entries
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, l)| {
-                        let ResourceBindingType::Texture {
+                let mut entries: Vec<ResourceEntry> = Vec::new();
+
+                for (binding_idx, layout_entry) in b.layout_entries.iter().enumerate() {
+                    let binding = binding_idx as u32;
+
+                    let resource = match &layout_entry.ty {
+                        ResourceBindingType::Buffer { size, usages, .. } => {
+                            let buffer = device.create_buffer(&BufferDescriptor {
+                                label: None,
+                                usage: *usages | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                                size: align_to_4_bytes(*size),
+                                mapped_at_creation: false,
+                            });
+                            ResourceType::Buffer(buffer)
+                        }
+                        ResourceBindingType::Texture {
                             texture_descriptor, ..
-                        } = &l.ty
-                        else {
-                            return None;
-                        };
-
-                        let texture = device.create_texture(&texture_descriptor);
-                        let view = texture.create_view(&TextureViewDescriptor::default());
-
-                        Some((
-                            i,
-                            ResourceTexture {
+                        } => {
+                            let texture = device.create_texture(texture_descriptor);
+                            let view = texture.create_view(&TextureViewDescriptor::default());
+                            ResourceType::Texture(ResourceTexture {
                                 texture,
                                 view,
                                 sz: texture_descriptor.size,
-                            },
-                        ))
-                    })
-                    .collect::<Vec<_>>();
-
-                let sampler = b
-                    .layout_entries
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, l)| {
-                        let ResourceBindingType::Sampler {
+                            })
+                        }
+                        ResourceBindingType::Sampler {
                             sampler_descriptor, ..
-                        } = &l.ty
-                        else {
-                            return None;
-                        };
+                        } => {
+                            let sampler = device.create_sampler(sampler_descriptor);
+                            ResourceType::Sampler(sampler)
+                        }
+                        ResourceBindingType::StorageTexture { .. } => {
+                            todo!("StorageTexture not yet implemented in build")
+                        }
+                        ResourceBindingType::AccelerationStructure { .. } => {
+                            todo!("AccelerationStructure not yet implemented in build")
+                        }
+                        ResourceBindingType::ExternalTexture => {
+                            todo!("ExternalTexture not yet implemented in build")
+                        }
+                    };
 
-                        Some((i, device.create_sampler(sampler_descriptor)))
-                    })
-                    .collect::<Vec<_>>();
+                    entries.push(ResourceEntry { binding, resource });
+                }
 
-                let buffers = b
-                    .layout_entries
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, l)| {
-                        let ResourceBindingType::Buffer { size, usages, .. } = l.ty else {
-                            return None;
-                        };
+                let bind_group_entries: Vec<ResourceType> =
+                    entries.iter().map(|e| e.resource.clone()).collect();
 
-                        Some((
-                            i,
-                            device.create_buffer(&BufferDescriptor {
-                                label: None,
-                                usage: usages | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                                size: align_to_4_bytes(size),
-                                mapped_at_creation: false,
-                            }),
-                        ))
-                    })
-                    .collect::<Vec<_>>();
+                let mut wgpu_entries: Vec<BindGroupEntry> = Vec::with_capacity(entries.len());
+                let mut buffers: Vec<Buffer> = Vec::new();
+                let mut textures: Vec<ResourceTexture> = Vec::new();
 
-                let buffers: Vec<Buffer> = buffers.into_iter().map(|b| b.1).collect();
-                let textures: Vec<ResourceTexture> = textures.into_iter().map(|t| t.1).collect();
-
-                let bind_group_entries: Vec<BindGroupEntryInput> = buffers
-                    .iter()
-                    .map(|b| BindGroupEntryInput::Buffer(b.clone()))
-                    .chain(
-                        textures
-                            .iter()
-                            .map(|t| BindGroupEntryInput::Texture(t.view.clone())),
-                    )
-                    .chain(
-                        sampler
-                            .iter()
-                            .map(|(_, s)| BindGroupEntryInput::Sampler(s.clone())),
-                    )
-                    .collect();
-
-                let entries: Vec<BindGroupEntry> = buffers
-                    .iter()
-                    .enumerate()
-                    .map(|(i, b)| BindGroupEntry {
-                        binding: i as u32,
-                        resource: b.as_entire_binding(),
-                    })
-                    .chain(textures.iter().enumerate().map(|(i, t)| BindGroupEntry {
-                        binding: (buffers.len() + i) as u32,
-                        resource: BindingResource::TextureView(&t.view),
-                    }))
-                    .chain(sampler.iter().enumerate().map(|(i, s)| BindGroupEntry {
-                        binding: (buffers.len() + textures.len() + i) as u32,
-                        resource: BindingResource::Sampler(&s.1),
-                    }))
-                    .collect();
+                for entry in &entries {
+                    match &entry.resource {
+                        ResourceType::Buffer(buffer) => {
+                            wgpu_entries.push(BindGroupEntry {
+                                binding: entry.binding,
+                                resource: buffer.as_entire_binding(),
+                            });
+                            buffers.push(buffer.clone());
+                        }
+                        ResourceType::Texture(texture) => {
+                            wgpu_entries.push(BindGroupEntry {
+                                binding: entry.binding,
+                                resource: BindingResource::TextureView(&texture.view),
+                            });
+                            textures.push(texture.clone());
+                        }
+                        ResourceType::Sampler(sampler) => {
+                            wgpu_entries.push(BindGroupEntry {
+                                binding: entry.binding,
+                                resource: BindingResource::Sampler(sampler),
+                            });
+                        }
+                    }
+                }
 
                 let bind_group = device.create_bind_group(&BindGroupDescriptor {
                     label: None,
                     layout: &b.layout,
-                    entries: &entries,
+                    entries: &wgpu_entries,
                 });
 
                 let mut cache = LruCache::new(NonZeroUsize::new(16usize).unwrap());

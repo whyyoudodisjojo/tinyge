@@ -4,7 +4,7 @@ use wgpu::{
     TextureView,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Hash)]
 pub struct ResourceTexture {
     pub texture: Texture,
     pub view: TextureView,
