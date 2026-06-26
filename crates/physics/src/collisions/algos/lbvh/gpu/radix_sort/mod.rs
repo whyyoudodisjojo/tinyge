@@ -2,66 +2,145 @@ pub mod radix_count;
 pub mod radix_scan;
 pub mod radix_scatter;
 
+use crate::collisions::algos::lbvh::Key;
+use radix_count::{RadixSortCount, RadixSortCountArgs};
+use radix_scan::{RadixScan, RadixScanArgs};
+use radix_scatter::{RadixScatter, RadixScatterArgs};
+use tinyge_graphics::shaders::ComputeShader;
+
+pub struct RadixSort {
+    radix_counter: RadixSortCount,
+    radix_scan: RadixScan,
+    radix_scatter: RadixScatter,
+    buffer_a: wgpu::Buffer,
+    buffer_b: wgpu::Buffer,
+}
+
+impl RadixSort {
+    pub fn new(num_elems: u64, device: &wgpu::Device) -> Self {
+        let keys_bytes = num_elems * std::mem::size_of::<Key>() as u64;
+
+        let buffer_a = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: keys_bytes,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let buffer_b = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Radix Sort Buffer B"),
+            size: keys_bytes,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let radix_counter = RadixSortCount {
+            init_data: None,
+            num_elems,
+        };
+
+        let radix_scan = RadixScan {
+            num_elems,
+            init_data: None,
+        };
+
+        let radix_scatter = RadixScatter {
+            num_elems,
+            init_data: None,
+        };
+
+        Self {
+            radix_counter,
+            radix_scan,
+            radix_scatter,
+            buffer_a,
+            buffer_b,
+        }
+    }
+
+    pub fn sort_pass(
+        &mut self,
+        keys: &[Key],
+        shift_bits: u32,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        src_buffer: &wgpu::Buffer,
+        dst_buffer: &wgpu::Buffer,
+    ) -> wgpu::Buffer {
+        let counter_buffer = self.radix_counter.dispatch(
+            RadixSortCountArgs {
+                in_keys: keys.to_vec(),
+                shift_bits,
+            },
+            device,
+            queue,
+        );
+
+        let global_counters = self.radix_scan.dispatch(
+            RadixScanArgs {
+                counter_buf: counter_buffer,
+            },
+            device,
+            queue,
+        );
+
+        self.radix_scatter.dispatch(
+            RadixScatterArgs {
+                in_keys: keys.to_vec(),
+                global_counters,
+                shift_bits,
+                in_buffer: src_buffer.clone(),
+                out_buffer: dst_buffer.clone(),
+            },
+            device,
+            queue,
+        )
+    }
+
+    pub fn sort(
+        &mut self,
+        keys: &[Key],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> &wgpu::Buffer {
+        queue.write_buffer(&self.buffer_a, 0, bytemuck::cast_slice(keys));
+
+        for pass in 0..8 {
+            let shift_bits = pass * 4;
+            let (src_buffer, dst_buffer) = if pass % 2 == 0 {
+                (self.buffer_a.clone(), self.buffer_b.clone())
+            } else {
+                (self.buffer_b.clone(), self.buffer_a.clone())
+            };
+
+            let current_keys = Key::read_buffer(device, queue, &src_buffer);
+
+            self.sort_pass(
+                &current_keys,
+                shift_bits,
+                device,
+                queue,
+                &src_buffer,
+                &dst_buffer,
+            );
+        }
+
+        &self.buffer_a
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::collisions::algos::lbvh::Key;
-    use radix_count::{RadixSortCount, RadixSortCountArgs};
-    use radix_scan::{RadixScan, RadixScanArgs};
-    use radix_scatter::{RadixScatter, RadixScatterArgs};
-    use tinyge_graphics::shaders::ComputeShader;
-    use wgpu::{
-        Backends, Buffer, BufferDescriptor, BufferUsages, DeviceDescriptor, Instance,
-        InstanceDescriptor, RequestAdapterOptions,
-    };
-
-    fn read_buffer_to_keys(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        buffer: &Buffer,
-    ) -> Vec<Key> {
-        let size = buffer.size();
-
-        let staging_buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size,
-            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Test Download Encoder"),
-        });
-        encoder.copy_buffer_to_buffer(buffer, 0, &staging_buffer, 0, size);
-        queue.submit(std::iter::once(encoder.finish()));
-
-        let buffer_slice = staging_buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            tx.send(result).unwrap();
-        });
-
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .unwrap();
-
-        if let Ok(Ok(())) = rx.recv() {
-            let data = buffer_slice.get_mapped_range();
-            let result: Vec<Key> = bytemuck::cast_slice(&data).to_vec();
-            drop(data);
-            staging_buffer.unmap();
-            result
-        } else {
-            panic!("Failed to read data back from the staging buffer copy!");
-        }
-    }
+    use wgpu::{Backends, DeviceDescriptor, Instance, InstanceDescriptor, RequestAdapterOptions};
 
     #[test]
-    fn test_full_radix_sort_pass() {
+    fn test_full_32_bit_radix_sort() {
         let instance = Instance::new(InstanceDescriptor {
             backends: Backends::all(),
             flags: Default::default(),
@@ -77,54 +156,72 @@ mod tests {
                 .expect("Failed to initialize GPU device");
 
         let keys = vec![
-            Key { code: 5, idx: 0 },
-            Key { code: 12, idx: 1 },
-            Key { code: 5, idx: 2 },
-            Key { code: 0, idx: 3 },
-            Key { code: 15, idx: 4 },
-            Key { code: 3, idx: 5 },
-            Key { code: 8, idx: 6 },
-            Key { code: 2, idx: 7 },
+            Key {
+                code: 0x12345678,
+                idx: 0,
+            },
+            Key {
+                code: 0x00000005,
+                idx: 1,
+            },
+            Key {
+                code: 0xF0000000,
+                idx: 2,
+            },
+            Key {
+                code: 0x0F000000,
+                idx: 3,
+            },
+            Key {
+                code: 0x00F00000,
+                idx: 4,
+            },
+            Key {
+                code: 0x000F0000,
+                idx: 5,
+            },
+            Key {
+                code: 0x0000F000,
+                idx: 6,
+            },
+            Key {
+                code: 0x00000F00,
+                idx: 7,
+            },
+            Key {
+                code: 0x000000F0,
+                idx: 8,
+            },
+            Key {
+                code: 0x0000000F,
+                idx: 9,
+            },
+            Key {
+                code: 0xFFFFFFFF,
+                idx: 10,
+            },
+            Key {
+                code: 0x00000000,
+                idx: 11,
+            },
+            Key {
+                code: 0xAAAAAAAA,
+                idx: 12,
+            },
+            Key {
+                code: 0x12345678,
+                idx: 14,
+            },
+            Key {
+                code: 0x87654321,
+                idx: 15,
+            },
         ];
-        let num_elems = keys.len() as u64;
 
-        let mut radix_counter = RadixSortCount {
-            init_data: None,
-            num_elems,
-        };
+        let mut radix_sort = RadixSort::new(keys.len() as u64, &device);
+        let sorted_keys_buffer = radix_sort.sort(&keys, &device, &queue);
 
-        let count_args = RadixSortCountArgs {
-            in_keys: keys.clone(),
-            shift_bits: 0,
-        };
-
-        let counter_buffer = radix_counter.dispatch(count_args, &device, &queue);
-
-        let mut radix_scan = RadixScan {
-            num_elems,
-            init_data: None,
-        };
-
-        let scan_args = RadixScanArgs {
-            counter_buf: counter_buffer,
-        };
-
-        let global_counters = radix_scan.dispatch(scan_args, &device, &queue);
-
-        let mut radix_scatter = RadixScatter {
-            num_elems,
-            init_data: None,
-        };
-
-        let scatter_args = RadixScatterArgs {
-            in_keys: keys.clone(),
-            global_counters: global_counters.clone(),
-            shift_bits: 0,
-        };
-
-        let sorted_keys_buffer = radix_scatter.dispatch(scatter_args, &device, &queue);
-
-        let sorted_keys = read_buffer_to_keys(&device, &queue, &sorted_keys_buffer);
+        let sorted_keys = Key::read_buffer(&device, &queue, sorted_keys_buffer);
 
         assert_eq!(
             sorted_keys.len(),

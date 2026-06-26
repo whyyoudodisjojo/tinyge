@@ -35,6 +35,8 @@ pub struct RadixScatterArgs {
     pub in_keys: Vec<Key>,
     pub global_counters: Buffer,
     pub shift_bits: u32,
+    pub in_buffer: Buffer,
+    pub out_buffer: Buffer,
 }
 
 impl ComputeShader for RadixScatter {
@@ -142,12 +144,12 @@ impl ComputeShader for RadixScatter {
         };
 
         queue.write_buffer(&init_data.params, 0, bytemuck::bytes_of(&params));
-        queue.write_buffer(&init_data.in_keys, 0, bytemuck::cast_slice(&args.in_keys));
+        queue.write_buffer(&args.in_buffer, 0, bytemuck::cast_slice(&args.in_keys));
 
         let bind_group_entries = vec![
-            ResourceType::Buffer(init_data.in_keys.clone()),
-            ResourceType::Buffer(init_data.out_keys.clone()),
-            ResourceType::Buffer(args.global_counters.clone()),
+            ResourceType::Buffer(args.in_buffer),
+            ResourceType::Buffer(args.out_buffer.clone()),
+            ResourceType::Buffer(args.global_counters),
             ResourceType::Buffer(init_data.params.clone()),
         ];
         let bind_group = init_data
@@ -169,6 +171,6 @@ impl ComputeShader for RadixScatter {
 
         queue.submit(std::iter::once(encoder.finish()));
 
-        init_data.out_keys.clone()
+        args.out_buffer
     }
 }
