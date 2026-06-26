@@ -104,13 +104,17 @@ impl ComputeShader for RadixSortCount {
     fn dispatch(&mut self, args: Self::Args, device: &Device, queue: &Queue) -> Self::Ret {
         if self.init_data.is_none() {
             let built_data = self.build(device);
-            let buffers = &built_data.buffers.resource_buffers[0];
+            let resource_buffers = &built_data.buffers.resource_buffers[0];
 
             self.init_data = Some(InitData {
-                in_keys: buffers.buffers[0].clone(),
-                global_counter: buffers.buffers[1].clone(),
-                params: buffers.buffers[2].clone(),
-                bind_group: buffers.bind_group.peek_last_bind_group().unwrap().clone(),
+                in_keys: resource_buffers.buffers[0].clone(),
+                global_counter: resource_buffers.buffers[1].clone(),
+                params: resource_buffers.buffers[2].clone(),
+                bind_group: resource_buffers
+                    .bind_group
+                    .peek_last_bind_group()
+                    .unwrap()
+                    .clone(),
                 current_keys_hash: 0,
                 pipeline: built_data.pipeline.clone(),
             });

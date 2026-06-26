@@ -1,11 +1,12 @@
 use bytemuck::{Pod, Zeroable};
 use tinyge_graphics::shaders::{
     ComputeShader,
+    buffers::{DynamicBindGroup, ResourceType},
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
 use wgpu::{
-    BindGroup, Buffer, BufferUsages, CommandEncoderDescriptor, ComputePassDescriptor,
-    ComputePipeline, ShaderStages,
+    Buffer, BufferUsages, CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline,
+    ShaderStages,
 };
 
 pub struct RadixScan {
@@ -16,7 +17,7 @@ pub struct RadixScan {
 pub struct InitData {
     pub params: Buffer,
     pub counter: Buffer,
-    pub bind_group: BindGroup,
+    pub bind_group: DynamicBindGroup,
     pub pipeline: ComputePipeline,
     pub current_counter_hash: u64,
 }
@@ -91,11 +92,7 @@ impl ComputeShader for RadixScan {
             self.init_data = Some(InitData {
                 params: resource_buffers.buffers[0].clone(),
                 counter: resource_buffers.buffers[1].clone(),
-                bind_group: resource_buffers
-                    .bind_group
-                    .peek_last_bind_group()
-                    .unwrap()
-                    .clone(),
+                bind_group: resource_buffers.bind_group.clone(),
                 current_counter_hash: 0,
                 pipeline: built_data.pipeline.clone(),
             });
@@ -120,7 +117,17 @@ impl ComputeShader for RadixScan {
             });
 
             compute_pass.set_pipeline(&init_data.pipeline);
-            compute_pass.set_bind_group(0, &init_data.bind_group, &[]);
+            compute_pass.set_bind_group(
+                0,
+                &init_data.bind_group.get_or_create_bind_group(
+                    &vec![
+                        ResourceType::Buffer(init_data.params.clone()),
+                        ResourceType::Buffer(args.counter_buf.clone()),
+                    ],
+                    device,
+                ),
+                &[],
+            );
             compute_pass.dispatch_workgroups(num_wg, 1, 1);
         }
 
