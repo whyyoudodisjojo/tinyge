@@ -5,71 +5,66 @@ struct Params {
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var<storage, read_write> counters: array<u32>;
 
-var<workgroup> scan_shared: array<u32, 512>;
+var<workgroup> temp: array<u32, 512>;
 
 @compute @workgroup_size(256)
 fn radix_scan(@builtin(local_invocation_id) l_id: vec3<u32>) {
     let lid = l_id.x;
-    
     let num_workgroups = (params.num_elems + 255u) / 256u;
-    let total_elements = 16u * num_workgroups;
-
+    let n = 16u * num_workgroups;
+    
     let idx1 = lid * 2u;
     let idx2 = idx1 + 1u;
-
-    if (idx1 < total_elements) { 
-        scan_shared[idx1] = counters[idx1]; 
-    } else { 
-        scan_shared[idx1] = 0u; 
+    
+    if (idx1 < n) {
+        temp[idx1] = counters[idx1];
+    } else {
+        temp[idx1] = 0u;
     }
     
-    if (idx2 < total_elements) { 
-        scan_shared[idx2] = counters[idx2]; 
-    } else { 
-        scan_shared[idx2] = 0u; 
+    if (idx2 < n) {
+        temp[idx2] = counters[idx2];
+    } else {
+        temp[idx2] = 0u;
     }
     workgroupBarrier();
-
-    var active_threads = 256u;
-    var stride = 1u;
     
-    while (active_threads > 0u) {
-        if (lid < active_threads) {
-            let index = (lid * 2u + 1u) * stride - 1u;
-            let source = index - stride;
-            scan_shared[index] += scan_shared[source];
+    var offset = 1u;
+    var d = n >> 1u;
+    while (d > 0u) {
+        if (lid < d) {
+            let ai = offset * (2u * lid + 1u) - 1u;
+            let bi = offset * (2u * lid + 2u) - 1u;
+            temp[bi] += temp[ai];
         }
-        stride *= 2u;
-        active_threads >>= 1u;
+        offset *= 2u;
+        d >>= 1u;
         workgroupBarrier();
     }
-
-    if (lid == 0u) { 
-        scan_shared[511u] = 0u; 
+    
+    if (lid == 0u) {
+        temp[n - 1u] = 0u;
     }
     workgroupBarrier();
-
-    active_threads = 1u;
-    stride = 256u; 
     
-    while (active_threads <= 256u) {
-        if (lid < active_threads) {
-            let index = (lid * 2u + 1u) * stride - 1u;
-            let source = index - stride;
-            
-            let tmp = scan_shared[source];
-            scan_shared[source] = scan_shared[index];
-            scan_shared[index] += tmp;
+    d = 1u;
+    while (d < n) {
+        offset >>= 1u;
+        if (lid < d) {
+            let ai = offset * (2u * lid + 1u) - 1u;
+            let bi = offset * (2u * lid + 2u) - 1u;
+            let t = temp[ai];
+            temp[ai] = temp[bi];
+            temp[bi] += t;
         }
-        stride >>= 1u;
-        active_threads <<= 1u;
+        d *= 2u;
         workgroupBarrier();
     }
-
-    if (idx1 < total_elements) { 
-        counters[idx1] = scan_shared[idx1]; 
+    
+    if (idx1 < n) {
+        counters[idx1] = temp[idx1];
     }
-    if (idx2 < total_elements) { 
-        counters[idx2] = scan_shared[idx2]; 
+    if (idx2 < n) {
+        counters[idx2] = temp[idx2];
     }
 }

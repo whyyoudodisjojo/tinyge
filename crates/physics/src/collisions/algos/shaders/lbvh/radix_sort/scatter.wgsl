@@ -10,10 +10,8 @@ struct Params{
 
 @group(0) @binding(0) var<storage, read> in_keys: array<Key>;
 @group(0) @binding(1) var<storage, read_write> out_keys: array<Key>;
-@group(0) @binding(2) var<storage, read_write> global_counters: array<u32>;
+@group(0) @binding(2) var<storage, read> global_offsets: array<u32>;
 @group(0) @binding(3) var<uniform> params: Params;
-
-var<workgroup> scatter_shared: array<u32, 256>;
 
 @compute @workgroup_size(256)
 fn radix_scatter(
@@ -23,20 +21,20 @@ fn radix_scatter(
 ) {
     let lid = l_id.x;
     let gid = g_id.x;
-    let num_workgroups = (params.num_elems+ 255u) / 256u;
+    let num_workgroups = (params.num_elems + 255u) / 256u;
 
-    var key = Key(0u, 0u);
-    var digit = 0u;
-
-    if (gid < params.num_elems) {
-        key = in_keys[gid];
-        digit = (key.code >> params.shift_bits) & 0xFu;
+    if (gid >= params.num_elems) {
+        return;
     }
+
+    let key = in_keys[gid];
+    let digit = (key.code >> params.shift_bits) & 0xFu;
 
     var local_offset = 0u;
     for (var j = 0u; j < lid; j++) {
-        if (gid < params.num_elems) {
-            let other_digit = (in_keys[w_id.x * 256u + j].code >> params.shift_bits) & 0xFu;
+        let other_idx = w_id.x * 256u + j;
+        if (other_idx < params.num_elems) {
+            let other_digit = (in_keys[other_idx].code >> params.shift_bits) & 0xFu;
             if (other_digit == digit) {
                 local_offset++;
             }
@@ -44,11 +42,9 @@ fn radix_scatter(
     }
 
     let g_bucket_idx = digit * num_workgroups + w_id.x;
-    let g_base_offset = global_counters[g_bucket_idx];
+    let base_offset = global_offsets[g_bucket_idx];
 
-    let target_index = g_base_offset + local_offset;
+    let target_index = base_offset + local_offset;
 
-    if (gid < params.num_elems) {
-        out_keys[target_index] = key;
-    }
+    out_keys[target_index] = key;
 }
