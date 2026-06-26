@@ -8,6 +8,7 @@ use crate::shaders::{
     texture::ResourceTexture,
 };
 
+#[derive(Clone)]
 pub struct ResourceGroup {
     pub buffers: Vec<Buffer>,
     pub bind_group: BindGroup,
@@ -25,6 +26,7 @@ pub struct ResourceGroupBuildSpec<'a> {
     pub layout: BindGroupLayout,
 }
 
+#[derive(Clone)]
 pub struct Buffers {
     pub vertex_buffers: Vec<Buffer>,
     pub index_buffer: Option<Buffer>,

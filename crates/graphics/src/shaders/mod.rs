@@ -17,6 +17,7 @@ pub struct ShaderBuiltData {
     pipeline: RenderPipeline,
 }
 
+#[derive(Clone)]
 pub struct ComputeShaderBuiltData {
     pub buffers: Buffers,
     pub pipeline: ComputePipeline,
@@ -129,13 +130,16 @@ pub trait Shader {
 }
 
 pub trait ComputeShader {
+    type Args;
+    type Ret;
+
     fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>> {
         vec![]
     }
     fn load_source_code(&self) -> &'static str;
     fn entry_point(&self) -> &'static str;
 
-    fn build(&self, device: &Device) -> ComputeShaderBuiltData {
+    fn build(&mut self, device: &Device) -> ComputeShaderBuiltData {
         let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
 
         let bind_group_layouts = resource_buffer_descs
@@ -191,4 +195,6 @@ pub trait ComputeShader {
 
         ComputeShaderBuiltData { buffers, pipeline }
     }
+
+    fn dispatch(&mut self, args: Self::Args, device: &Device, queue: &Queue) -> Self::Ret;
 }

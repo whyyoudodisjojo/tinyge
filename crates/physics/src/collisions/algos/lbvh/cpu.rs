@@ -1,37 +1,9 @@
-use glam::Vec3A;
 use rayon::{
     iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
     slice::ParallelSliceMut,
 };
 
-use crate::collisions::algos::{BVHNode, BVHTree, CollisionAlgorithm, RectangleBounds};
-
-pub struct Key {
-    pub code: u32,
-    pub idx: usize,
-}
-
-impl Key {
-    pub fn mortonize(mut x: u32) -> u32 {
-        x &= 0x000003ff;
-        x = (x | (x << 16)) & 0xff0000ff;
-        x = (x | (x << 8)) & 0x0300f00f;
-        x = (x | (x << 4)) & 0x030c30c3;
-        x = (x | (x << 2)) & 0x09249249;
-        x
-    }
-
-    pub fn new(centroid: Vec3A, global_min: Vec3A, global_max: Vec3A, idx: usize) -> Self {
-        let sz = global_max - global_min;
-        let mask = sz.cmpgt(Vec3A::ZERO);
-        let inv_sz = Vec3A::select(mask, Vec3A::ONE / sz, Vec3A::ZERO);
-        let norm = (centroid - global_min) * inv_sz;
-        let quant = norm.clamp(Vec3A::ZERO, Vec3A::ONE) * 1023.0;
-        let u = quant.as_uvec3();
-        let code = (Self::mortonize(u.x) << 2) | (Self::mortonize(u.y) << 1) | Self::mortonize(u.z);
-        Self { code, idx }
-    }
-}
+use crate::collisions::algos::{BVHNode, BVHTree, CollisionAlgorithm, RectangleBounds, lbvh::Key};
 
 #[derive(Default)]
 pub struct LinearBVH;
@@ -63,8 +35,8 @@ impl LinearBVH {
                         let idx = keys[start].idx;
                         returned_indices.push(nodes.len());
                         nodes.push(BVHNode::Leaf {
-                            rect: rects[idx],
-                            idx,
+                            rect: rects[idx as usize],
+                            idx: idx as usize,
                         });
                         continue;
                     }
@@ -115,9 +87,9 @@ impl LinearBVH {
 }
 
 impl CollisionAlgorithm for LinearBVH {
-    fn build(&mut self, rects: &[RectangleBounds]) -> super::BVHTree {
+    fn build(&mut self, rects: &[RectangleBounds]) -> BVHTree {
         if rects.is_empty() {
-            return super::BVHTree::default();
+            return BVHTree::default();
         }
 
         let global_bounds = rects
