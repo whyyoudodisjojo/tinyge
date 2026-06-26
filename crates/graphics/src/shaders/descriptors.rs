@@ -57,6 +57,7 @@ pub struct MeshBufferSpecs<'a> {
     pub index_buffer_size: u64,
 }
 
+#[derive(Clone)]
 pub enum ResourceBindingType<'a> {
     Buffer {
         ty: BufferBindingType,

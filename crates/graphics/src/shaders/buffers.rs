@@ -1,6 +1,13 @@
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    num::NonZeroUsize,
+};
+
+use lru::LruCache;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
-    BufferDescriptor, BufferUsages, CommandEncoder, wgt::TextureViewDescriptor,
+    BufferDescriptor, BufferUsages, CommandEncoder, Device, Sampler, TextureView,
+    wgt::TextureViewDescriptor,
 };
 
 use crate::shaders::{
@@ -11,10 +18,87 @@ use crate::shaders::{
 #[derive(Clone)]
 pub struct ResourceGroup {
     pub buffers: Vec<Buffer>,
-    pub bind_group: BindGroup,
+    pub bind_group: DynamicBindGroup,
     pub textures: Vec<ResourceTexture>,
 }
 
+#[derive(Clone)]
+pub struct DynamicBindGroup {
+    pub layout: BindGroupLayout,
+    pub bind_group_cache: LruCache<u64, BindGroup>,
+}
+
+#[derive(Hash, Clone)]
+pub enum BindGroupEntryInput {
+    Buffer(Buffer),
+    Sampler(Sampler),
+    Texture(TextureView),
+}
+
+impl DynamicBindGroup {
+    pub fn new(layout: BindGroupLayout) -> Self {
+        Self {
+            layout,
+            bind_group_cache: LruCache::new(NonZeroUsize::new(16).unwrap()),
+        }
+    }
+
+    pub fn key(bufs: &[BindGroupEntryInput]) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        bufs.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    pub fn get_bind_group(&mut self, bufs: &[BindGroupEntryInput]) -> Option<&BindGroup> {
+        let k = Self::key(bufs);
+
+        self.bind_group_cache.get(&k)
+    }
+
+    pub fn peek_last_bind_group(&self) -> Option<&BindGroup> {
+        self.bind_group_cache.peek_lru().map(|(_, v)| v)
+    }
+
+    pub fn insert(&mut self, b: &[BindGroupEntryInput], bind_group: BindGroup) {
+        self.bind_group_cache.put(Self::key(b), bind_group);
+    }
+
+    pub fn get_or_create_bind_group(
+        &mut self,
+        buffs: &[BindGroupEntryInput],
+        device: &Device,
+    ) -> BindGroup {
+        let k = Self::key(buffs);
+
+        let bind_group = match &mut self.bind_group_cache.get(&k) {
+            Some(b) => b.clone(),
+            None => {
+                let b = device.create_bind_group(&BindGroupDescriptor {
+                    label: None,
+                    layout: &self.layout,
+                    entries: &buffs
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, b)| BindGroupEntry {
+                            binding: i as u32,
+                            resource: match b {
+                                BindGroupEntryInput::Buffer(b) => b.as_entire_binding(),
+                                BindGroupEntryInput::Sampler(s) => BindingResource::Sampler(s),
+                                BindGroupEntryInput::Texture(t) => BindingResource::TextureView(t),
+                            },
+                        })
+                        .collect::<Vec<_>>(),
+                });
+
+                self.bind_group_cache.put(k, b.clone());
+
+                b
+            }
+        };
+
+        bind_group
+    }
+}
 pub struct BufferBuildSpec<'a> {
     pub vertex_buffer_szs: Vec<u64>,
     pub index_buffer_sz: u64,
@@ -157,24 +241,40 @@ impl Buffers {
                     })
                     .collect::<Vec<_>>();
 
-                let entries = buffers
+                let buffers: Vec<Buffer> = buffers.into_iter().map(|b| b.1).collect();
+                let textures: Vec<ResourceTexture> = textures.into_iter().map(|t| t.1).collect();
+
+                let bind_group_entries: Vec<BindGroupEntryInput> = buffers
                     .iter()
-                    .map(|(i, b)| (i, b.as_entire_binding()))
+                    .map(|b| BindGroupEntryInput::Buffer(b.clone()))
                     .chain(
                         textures
                             .iter()
-                            .map(|(i, t)| (i, BindingResource::TextureView(&t.view))),
+                            .map(|t| BindGroupEntryInput::Texture(t.view.clone())),
                     )
                     .chain(
                         sampler
                             .iter()
-                            .map(|(i, s)| (i, BindingResource::Sampler(s))),
+                            .map(|(_, s)| BindGroupEntryInput::Sampler(s.clone())),
                     )
+                    .collect();
+
+                let entries: Vec<BindGroupEntry> = buffers
+                    .iter()
+                    .enumerate()
                     .map(|(i, b)| BindGroupEntry {
-                        binding: *i as u32,
-                        resource: b,
+                        binding: i as u32,
+                        resource: b.as_entire_binding(),
                     })
-                    .collect::<Vec<_>>();
+                    .chain(textures.iter().enumerate().map(|(i, t)| BindGroupEntry {
+                        binding: (buffers.len() + i) as u32,
+                        resource: BindingResource::TextureView(&t.view),
+                    }))
+                    .chain(sampler.iter().enumerate().map(|(i, s)| BindGroupEntry {
+                        binding: (buffers.len() + textures.len() + i) as u32,
+                        resource: BindingResource::Sampler(&s.1),
+                    }))
+                    .collect();
 
                 let bind_group = device.create_bind_group(&BindGroupDescriptor {
                     label: None,
@@ -182,10 +282,18 @@ impl Buffers {
                     entries: &entries,
                 });
 
+                let mut cache = LruCache::new(NonZeroUsize::new(16usize).unwrap());
+                cache.put(DynamicBindGroup::key(&bind_group_entries), bind_group);
+
+                let bind_group = DynamicBindGroup {
+                    layout: b.layout,
+                    bind_group_cache: cache,
+                };
+
                 ResourceGroup {
-                    buffers: buffers.into_iter().map(|b| b.1).collect(),
+                    buffers,
                     bind_group,
-                    textures: textures.into_iter().map(|t| t.1).collect(),
+                    textures,
                 }
             })
             .collect();

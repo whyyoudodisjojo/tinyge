@@ -152,7 +152,10 @@ impl RenderAble<ShaderId> for State {
         );
         render_pass.set_bind_group(
             0,
-            &self.buffers.as_ref().unwrap().resource_buffers[0].bind_group,
+            self.buffers.as_ref().unwrap().resource_buffers[0]
+                .bind_group
+                .peek_last_bind_group()
+                .unwrap(),
             &[],
         );
         render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);

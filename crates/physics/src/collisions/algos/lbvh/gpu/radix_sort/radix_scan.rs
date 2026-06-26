@@ -91,7 +91,11 @@ impl ComputeShader for RadixScan {
             self.init_data = Some(InitData {
                 params: resource_buffers.buffers[0].clone(),
                 counter: resource_buffers.buffers[1].clone(),
-                bind_group: resource_buffers.bind_group.clone(),
+                bind_group: resource_buffers
+                    .bind_group
+                    .peek_last_bind_group()
+                    .unwrap()
+                    .clone(),
                 current_counter_hash: 0,
                 pipeline: built_data.pipeline.clone(),
             });

@@ -162,8 +162,22 @@ impl RenderAble<ShaderId> for State {
         render_pass.set_pipeline(pipeline_cache.get(&ShaderId(1)).unwrap());
 
         if let Some(buffers) = &self.buffers {
-            render_pass.set_bind_group(0, &buffers.resource_buffers[0].bind_group, &[]);
-            render_pass.set_bind_group(1, &buffers.resource_buffers[1].bind_group, &[]);
+            render_pass.set_bind_group(
+                0,
+                buffers.resource_buffers[0]
+                    .bind_group
+                    .peek_last_bind_group()
+                    .unwrap(),
+                &[],
+            );
+            render_pass.set_bind_group(
+                1,
+                buffers.resource_buffers[1]
+                    .bind_group
+                    .peek_last_bind_group()
+                    .unwrap(),
+                &[],
+            );
         }
 
         render_pass.draw(0..6, 0..self.sprites.len() as u32);

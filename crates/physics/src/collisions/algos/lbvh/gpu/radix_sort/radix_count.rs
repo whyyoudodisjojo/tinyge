@@ -110,7 +110,7 @@ impl ComputeShader for RadixSortCount {
                 in_keys: buffers.buffers[0].clone(),
                 global_counter: buffers.buffers[1].clone(),
                 params: buffers.buffers[2].clone(),
-                bind_group: buffers.bind_group.clone(),
+                bind_group: buffers.bind_group.peek_last_bind_group().unwrap().clone(),
                 current_keys_hash: 0,
                 pipeline: built_data.pipeline.clone(),
             });

@@ -10,3 +10,4 @@ bytemuck = {workspace = true}
 wgpu = {workspace = true}
 winit = {workspace = true}
 image = {workspace = true}
+lru = "0.18.0"
