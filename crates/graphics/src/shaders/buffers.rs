@@ -64,30 +64,28 @@ impl DynamicBindGroup {
     ) -> &'a BindGroup {
         let k = Self::key(buffs);
 
-        match self.bind_group_cache.get(&k) {
-            Some(b) => b,
-            None => {
-                let b = device.create_bind_group(&BindGroupDescriptor {
-                    label: None,
-                    layout: &self.layout,
-                    entries: &buffs
-                        .iter()
-                        .enumerate()
-                        .map(|(i, b)| BindGroupEntry {
-                            binding: i as u32,
-                            resource: match b {
-                                ResourceType::Buffer(b) => b.as_entire_binding(),
-                                ResourceType::Sampler(s) => BindingResource::Sampler(s),
-                                ResourceType::Texture(t) => BindingResource::TextureView(&t.view),
-                            },
-                        })
-                        .collect::<Vec<_>>(),
-                });
+        if self.bind_group_cache.get(&k).is_none() {
+            let b = device.create_bind_group(&BindGroupDescriptor {
+                label: None,
+                layout: &self.layout,
+                entries: &buffs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| BindGroupEntry {
+                        binding: i as u32,
+                        resource: match b {
+                            ResourceType::Buffer(b) => b.as_entire_binding(),
+                            ResourceType::Sampler(s) => BindingResource::Sampler(s),
+                            ResourceType::Texture(t) => BindingResource::TextureView(&t.view),
+                        },
+                    })
+                    .collect::<Vec<_>>(),
+            });
 
-                self.bind_group_cache.put(k, b);
-                self.bind_group_cache.get(&k).unwrap()
-            }
+            self.bind_group_cache.put(k, b);
         }
+
+        self.bind_group_cache.get(&k).unwrap()
     }
 }
 
