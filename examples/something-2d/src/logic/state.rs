@@ -1,4 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use image::DynamicImage;
 use tinyge_graphics::{
@@ -6,7 +9,7 @@ use tinyge_graphics::{
         RenderAble,
         single::{SinglePass, StateRenderSinglePass},
     },
-    shaders::buffers::Buffers,
+    shaders::buffers::{Buffers, ResourceType},
     state::{StateRender, StateUpdates},
 };
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
@@ -43,13 +46,26 @@ impl StateUpdates for State {
     type K = ShaderId;
     type UpdateEvent = UpdateEvents;
 
-    fn handle_shader_recompilation(
+    fn init<'a>(
         &mut self,
-        new_buffers: std::collections::HashMap<Self::K, Buffers>,
-        queue: &Queue,
+        shaders: &std::collections::HashMap<
+            Self::K,
+            tinyge_graphics::shaders::ShaderWrapper<
+                'a,
+                std::sync::Arc<dyn tinyge_graphics::shaders::Shader<'a>>,
+            >,
+        >,
         device: &Device,
+        queue: &Queue,
     ) {
-        let new_buffer = new_buffers.into_iter().next().unwrap().1;
+        use tinyge_graphics::shaders::buffers::Buffers;
+        let shader_wrapper = shaders.get(&ShaderId(1)).unwrap();
+        let spec = &shader_wrapper
+            .buffer_build_spec
+            .as_ref()
+            .unwrap()
+            .buffer_build_spec;
+        let new_buffer = Buffers::build(device, spec);
 
         if let Some(resource_group) = new_buffer.resource_buffers.get(1) {
             if let Some(texture) = resource_group.textures.first() {
@@ -57,36 +73,29 @@ impl StateUpdates for State {
             }
         }
 
-        match &mut self.buffers {
-            Some(b) => {
-                b.copy_data_into(&new_buffer, device, queue);
-            }
-            None => {
-                let time_val = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs_f32();
+        let time_val = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f32();
 
-                queue.write_buffer(
-                    &new_buffer.resource_buffers[0].buffers[0].as_ref().unwrap(),
-                    0,
-                    bytemuck::cast_slice(&[time_val]),
-                );
+        queue.write_buffer(
+            &new_buffer.resource_buffers[0].buffers[0],
+            0,
+            bytemuck::cast_slice(&[time_val]),
+        );
 
-                if !self.sprites.is_empty() {
-                    queue.write_buffer(
-                        &new_buffer.resource_buffers[0].buffers[1].as_ref().unwrap(),
-                        0,
-                        bytemuck::cast_slice(&self.sprites),
-                    );
-                }
-            }
+        if !self.sprites.is_empty() {
+            queue.write_buffer(
+                &new_buffer.resource_buffers[0].buffers[1],
+                0,
+                bytemuck::cast_slice(&self.sprites),
+            );
         }
 
         self.buffers = Some(new_buffer);
     }
 
-    fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&wgpu::Queue>) {
+    fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>) {
         match update_event {
             UpdateEvents::Resize(sz) => self.sz = sz,
             UpdateEvents::TimeUpdate => {
@@ -96,7 +105,7 @@ impl StateUpdates for State {
                         .unwrap()
                         .as_secs_f32();
                     q.write_buffer(
-                        &b.resource_buffers[0].buffers[0].as_ref().unwrap(),
+                        &b.resource_buffers[0].buffers[0],
                         0,
                         bytemuck::cast_slice(&[time_val]),
                     );
@@ -107,7 +116,7 @@ impl StateUpdates for State {
                 self.buffers.as_ref().zip(queue).map(|(b, q)| {
                     if !self.sprites.is_empty() {
                         q.write_buffer(
-                            &b.resource_buffers[0].buffers[1].as_ref().unwrap(),
+                            &b.resource_buffers[0].buffers[1],
                             0,
                             bytemuck::cast_slice(&self.sprites),
                         )
@@ -131,11 +140,15 @@ impl StateRender for State {
 }
 
 impl RenderAble<ShaderId> for State {
-    fn render_pass(
-        &self,
+    fn render_pass<'a>(
+        &mut self,
         encoder: &mut wgpu::CommandEncoder,
-        pipeline_cache: &std::collections::HashMap<ShaderId, wgpu::RenderPipeline>,
+        pipeline_cache: &mut std::collections::HashMap<
+            ShaderId,
+            tinyge_graphics::shaders::ShaderWrapper<Arc<dyn tinyge_graphics::shaders::Shader<'a>>>,
+        >,
         view: &wgpu::TextureView,
+        device: &wgpu::Device,
     ) {
         let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: None,
@@ -159,26 +172,32 @@ impl RenderAble<ShaderId> for State {
             multiview_mask: None,
         });
 
-        render_pass.set_pipeline(pipeline_cache.get(&ShaderId(1)).unwrap());
+        let shader_wrapper = pipeline_cache.get_mut(&ShaderId(1)).unwrap();
+        let built_data = shader_wrapper.buffer_build_spec.as_mut().unwrap();
+        render_pass.set_pipeline(&built_data.pipeline);
 
-        if let Some(buffers) = &self.buffers {
-            render_pass.set_bind_group(
-                0,
-                buffers.resource_buffers[0]
-                    .bind_group
-                    .peek_last_bind_group()
-                    .unwrap(),
-                &[],
-            );
-            render_pass.set_bind_group(
-                1,
+        let buffers = self.buffers.as_ref().unwrap();
+        let resources0: Vec<ResourceType> = buffers.resource_buffers[0]
+            .buffers
+            .iter()
+            .map(|b| ResourceType::Buffer(b.clone()))
+            .collect();
+        let bind_group0 = built_data.bind_groups[0].get_or_create_bind_group(&resources0, device);
+        render_pass.set_bind_group(0, &bind_group0, &[]);
+
+        let resources1: Vec<ResourceType> = buffers.resource_buffers[1]
+            .samplers
+            .iter()
+            .map(|s| ResourceType::Sampler(s.clone()))
+            .chain(
                 buffers.resource_buffers[1]
-                    .bind_group
-                    .peek_last_bind_group()
-                    .unwrap(),
-                &[],
-            );
-        }
+                    .textures
+                    .iter()
+                    .map(|t| ResourceType::Texture(t.clone())),
+            )
+            .collect();
+        let bind_group1 = built_data.bind_groups[1].get_or_create_bind_group(&resources1, device);
+        render_pass.set_bind_group(1, &bind_group1, &[]);
 
         render_pass.draw(0..6, 0..self.sprites.len() as u32);
     }

@@ -15,7 +15,9 @@ pub struct LayeredRenderPass<RenderPassState> {
 }
 
 pub trait LayeredStateRender<K>: StateRender {
-    fn get_render_layers<'a>(&'a self) -> &'a [LayeredRenderPass<&'a dyn RenderAble<K>>];
+    fn get_render_layers<'a>(
+        &'a mut self,
+    ) -> &'a mut [LayeredRenderPass<&'a mut dyn RenderAble<K>>];
 }
 
 pub trait StateRenderedLayeredPass<K>: StateRender + LayeredStateRender<K> {}
@@ -65,8 +67,12 @@ where
                 .device
                 .create_command_encoder(&CommandEncoderDescriptor { label: None });
 
-            l.state
-                .render_pass(&mut encoder, &self.shader_manager.pipeline_cache, &view);
+            l.state.render_pass(
+                &mut encoder,
+                &mut self.shader_manager.shaders,
+                &view,
+                &ctx.device,
+            );
 
             ctx.queue.submit(std::iter::once(encoder.finish()));
         });

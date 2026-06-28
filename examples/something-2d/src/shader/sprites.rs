@@ -17,12 +17,12 @@ pub struct Sprites {
     pub texture_size: Extent3d,
 }
 
-impl Shader for Sprites {
+impl Shader<'_> for Sprites {
     fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
         MeshBufferSpecs::default()
     }
 
-    fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>> {
+    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'static>> {
         vec![
             ResourceGroupLayout {
                 entries: vec![
@@ -37,7 +37,6 @@ impl Shader for Sprites {
                             usages: BufferUsages::UNIFORM,
                         },
                         count: None,
-                        create_initial_buffers: true,
                     },
                     ResourceBinding {
                         binding: 1,
@@ -50,7 +49,6 @@ impl Shader for Sprites {
                             usages: BufferUsages::STORAGE,
                         },
                         count: None,
-                        create_initial_buffers: true,
                     },
                 ],
             },
@@ -64,7 +62,6 @@ impl Shader for Sprites {
                             sampler_descriptor: SamplerDescriptor::default(),
                         },
                         count: None,
-                        create_initial_buffers: true,
                     },
                     ResourceBinding {
                         binding: 1,
@@ -85,7 +82,6 @@ impl Shader for Sprites {
                             },
                         },
                         count: None,
-                        create_initial_buffers: true,
                     },
                 ],
             },

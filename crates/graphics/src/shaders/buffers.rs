@@ -16,9 +16,9 @@ use crate::shaders::{
 
 #[derive(Clone)]
 pub struct ResourceGroup {
-    pub buffers: Vec<Option<Buffer>>,
-    pub bind_group: DynamicBindGroup,
+    pub buffers: Vec<Buffer>,
     pub textures: Vec<ResourceTexture>,
+    pub samplers: Vec<Sampler>,
 }
 
 #[derive(Clone)]
@@ -28,6 +28,13 @@ pub struct DynamicBindGroup {
 }
 
 impl DynamicBindGroup {
+    pub fn new_from_buffer_spec(spec: &BufferBuildSpec) -> Vec<Self> {
+        spec.resource_buffer
+            .iter()
+            .map(|b| DynamicBindGroup::new(b.layout.clone()))
+            .collect()
+    }
+
     pub fn new(layout: BindGroupLayout) -> Self {
         Self {
             layout,
@@ -45,10 +52,6 @@ impl DynamicBindGroup {
         let k = Self::key(bufs);
 
         self.bind_group_cache.get(&k)
-    }
-
-    pub fn peek_last_bind_group(&self) -> Option<&BindGroup> {
-        self.bind_group_cache.peek_lru().map(|(_, v)| v)
     }
 
     pub fn insert(&mut self, b: &[ResourceType], bind_group: BindGroup) {
@@ -91,12 +94,15 @@ impl DynamicBindGroup {
         bind_group
     }
 }
+
+#[derive(Clone)]
 pub struct BufferBuildSpec<'a> {
     pub vertex_buffer_szs: Vec<u64>,
     pub index_buffer_sz: u64,
     pub resource_buffer: Vec<ResourceGroupBuildSpec<'a>>,
 }
 
+#[derive(Clone)]
 pub struct ResourceGroupBuildSpec<'a> {
     pub layout_entries: Vec<ResourceBinding<'a>>,
     pub layout: BindGroupLayout,
@@ -145,24 +151,23 @@ impl Buffers {
             .iter()
             .zip(new_buffers.resource_buffers.iter())
             .for_each(|(o, n)| {
-                o.buffers.iter().zip(n.buffers.iter()).for_each(|(o, n)| {
-                    if let (Some(o), Some(n)) = (o, n) {
-                        Self::copy_via_encoder(o, n, &mut encoder)
-                    }
-                })
+                o.buffers
+                    .iter()
+                    .zip(n.buffers.iter())
+                    .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder))
             });
 
         queue.submit(std::iter::once(encoder.finish()));
     }
 
-    pub fn build(device: &wgpu::Device, spec: BufferBuildSpec) -> Self {
+    pub fn build(device: &wgpu::Device, spec: &BufferBuildSpec) -> Self {
         let vertex_buffers = spec
             .vertex_buffer_szs
-            .into_iter()
+            .iter()
             .map(|size| {
                 device.create_buffer(&BufferDescriptor {
                     label: None,
-                    size: align_to_4_bytes(size),
+                    size: align_to_4_bytes(*size),
                     usage: BufferUsages::VERTEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
                     mapped_at_creation: false,
                 })
@@ -181,16 +186,12 @@ impl Buffers {
 
         let resource_buffers = spec
             .resource_buffer
-            .into_iter()
+            .iter()
             .map(|b| {
                 let mut entries: Vec<ResourceEntry> = Vec::new();
 
                 for (binding_idx, layout_entry) in b.layout_entries.iter().enumerate() {
                     let binding = binding_idx as u32;
-
-                    if !layout_entry.create_initial_buffers {
-                        continue;
-                    }
 
                     let resource = match &layout_entry.ty {
                         ResourceBindingType::Buffer { size, usages, .. } => {
@@ -233,66 +234,44 @@ impl Buffers {
                     entries.push(ResourceEntry { binding, resource });
                 }
 
-                let mut bind_group = DynamicBindGroup::new(b.layout);
-                let mut buffers: Vec<Option<Buffer>> = Vec::with_capacity(entries.len());
+                let mut buffers: Vec<Buffer> = Vec::with_capacity(entries.len());
                 let mut textures: Vec<ResourceTexture> = Vec::new();
+                let mut samplers: Vec<Sampler> = Vec::new();
 
-                if entries.len() == b.layout_entries.len() {
-                    let mut bind_group_entries: Vec<ResourceType> =
-                        Vec::with_capacity(entries.len());
-                    let mut wgpu_entries: Vec<BindGroupEntry> = Vec::with_capacity(entries.len());
+                let mut bind_group_entries: Vec<ResourceType> = Vec::with_capacity(entries.len());
+                let mut wgpu_entries: Vec<BindGroupEntry> = Vec::with_capacity(entries.len());
 
-                    for entry in &entries {
-                        bind_group_entries.push(entry.resource.clone());
-                        match &entry.resource {
-                            ResourceType::Buffer(buffer) => {
-                                buffers.push(Some(buffer.clone()));
-                                wgpu_entries.push(BindGroupEntry {
-                                    binding: entry.binding,
-                                    resource: buffer.as_entire_binding(),
-                                });
-                            }
-                            ResourceType::Texture(texture) => {
-                                textures.push(texture.clone());
-                                wgpu_entries.push(BindGroupEntry {
-                                    binding: entry.binding,
-                                    resource: BindingResource::TextureView(&texture.view),
-                                });
-                            }
-                            ResourceType::Sampler(sampler) => {
-                                wgpu_entries.push(BindGroupEntry {
-                                    binding: entry.binding,
-                                    resource: BindingResource::Sampler(sampler),
-                                });
-                            }
+                for entry in &entries {
+                    bind_group_entries.push(entry.resource.clone());
+                    match &entry.resource {
+                        ResourceType::Buffer(buffer) => {
+                            buffers.push(buffer.clone());
+                            wgpu_entries.push(BindGroupEntry {
+                                binding: entry.binding,
+                                resource: buffer.as_entire_binding(),
+                            });
                         }
-                    }
-
-                    let initial_bind_group = device.create_bind_group(&BindGroupDescriptor {
-                        label: None,
-                        layout: &bind_group.layout,
-                        entries: &wgpu_entries,
-                    });
-
-                    bind_group.insert(&bind_group_entries, initial_bind_group);
-                } else {
-                    for entry in &entries {
-                        match &entry.resource {
-                            ResourceType::Buffer(buffer) => {
-                                buffers.push(Some(buffer.clone()));
-                            }
-                            ResourceType::Texture(texture) => {
-                                textures.push(texture.clone());
-                            }
-                            ResourceType::Sampler(_) => {}
+                        ResourceType::Texture(texture) => {
+                            textures.push(texture.clone());
+                            wgpu_entries.push(BindGroupEntry {
+                                binding: entry.binding,
+                                resource: BindingResource::TextureView(&texture.view),
+                            });
+                        }
+                        ResourceType::Sampler(sampler) => {
+                            samplers.push(sampler.clone());
+                            wgpu_entries.push(BindGroupEntry {
+                                binding: entry.binding,
+                                resource: BindingResource::Sampler(sampler),
+                            });
                         }
                     }
                 }
 
                 ResourceGroup {
                     buffers,
-                    bind_group,
                     textures,
+                    samplers,
                 }
             })
             .collect();

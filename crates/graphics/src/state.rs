@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use wgpu::{Device, Queue, TextureViewDescriptor};
 
-use crate::shaders::buffers::Buffers;
+use crate::shaders::{Shader, ShaderWrapper};
 
 pub trait StateUpdates
 where
@@ -11,13 +11,13 @@ where
     type UpdateEvent;
     type K;
 
-    fn handle_shader_recompilation(
+    fn init<'a>(
         &mut self,
-        new_buffers: HashMap<Self::K, Buffers>,
-        queue: &Queue,
+        shaders: &HashMap<Self::K, ShaderWrapper<'a, std::sync::Arc<dyn Shader<'a>>>>,
         device: &Device,
+        queue: &Queue,
     );
-    fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>); // If background queue might not be present so the state must be updated but nothing will retrigger; ideally shouldnt hit this this is aexecuted during a redraw but ye
+    fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>);
 }
 
 pub trait StateRender {

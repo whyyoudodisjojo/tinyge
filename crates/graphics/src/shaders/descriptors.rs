@@ -28,12 +28,12 @@ pub struct ResourceGroupLayout<'a> {
     pub entries: Vec<ResourceBinding<'a>>,
 }
 
+#[derive(Clone)]
 pub struct ResourceBinding<'a> {
     pub binding: u32,
     pub visibility: ShaderStages,
     pub ty: ResourceBindingType<'a>,
     pub count: Option<NonZeroU32>,
-    pub create_initial_buffers: bool,
 }
 
 impl<'a> From<&ResourceBinding<'a>> for BindGroupLayoutEntry {

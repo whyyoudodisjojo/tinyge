@@ -1,5 +1,5 @@
-use tinyge_graphics::shaders::{ComputeShader, buffers::DynamicBindGroup};
-use wgpu::{Buffer, ComputePipeline, Device};
+use tinyge_graphics::shaders::{ComputeShaderWrapper, buffers::Buffers};
+use wgpu::{Buffer, Device};
 
 use crate::collisions::algos::lbvh::gpu::radix_sort::{
     count::RadixSortCountPhase, cumsum::RadixSortCumsumPhase, rearrange::RadixSortRearrangePhase,
@@ -8,11 +8,6 @@ use crate::collisions::algos::lbvh::gpu::radix_sort::{
 pub mod count;
 pub mod cumsum;
 pub mod rearrange;
-
-struct InitData {
-    bind_group: DynamicBindGroup,
-    pipeline: ComputePipeline,
-}
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -37,61 +32,35 @@ pub struct RadixSortInternalBuffers {
     pub global_offsets_buffer: Buffer,
 }
 
-pub struct RadixSort {
-    count: RadixSortCountPhase,
-    cumsum: RadixSortCumsumPhase,
-    rearrange: RadixSortRearrangePhase,
+pub struct RadixSort<'a> {
+    count: ComputeShaderWrapper<'a, RadixSortCountPhase>,
+    cumsum: ComputeShaderWrapper<'a, RadixSortCumsumPhase>,
+    rearrange: ComputeShaderWrapper<'a, RadixSortRearrangePhase>,
     num_elems: u32,
     buffers: RadixSortInternalBuffers,
 }
 
-impl RadixSort {
+impl<'a> RadixSort<'a> {
     pub fn new(num_elems: u32, device: &Device) -> Self {
+        let count = ComputeShaderWrapper::new(RadixSortCountPhase::new(num_elems), device);
+        let cumsum = ComputeShaderWrapper::new(RadixSortCumsumPhase::new(num_elems), device);
+        let rearrange = ComputeShaderWrapper::new(RadixSortRearrangePhase::new(num_elems), device);
+
+        let buffers = Buffers::build(device, &count.buffer_build_spec.buffer_build_spec);
+
+        let buffers = RadixSortInternalBuffers {
+            param_buffer: buffers.resource_buffers[0].buffers[0].clone(),
+            count_arr_buffer: buffers.resource_buffers[0].buffers[1].clone(),
+            output_arr_buffer: buffers.resource_buffers[0].buffers[2].clone(),
+            global_offsets_buffer: buffers.resource_buffers[0].buffers[3].clone(),
+        };
+
         Self {
-            count: RadixSortCountPhase::new(num_elems),
-            cumsum: RadixSortCumsumPhase::new(num_elems),
-            rearrange: RadixSortRearrangePhase::new(num_elems),
+            count,
+            cumsum,
+            rearrange,
             num_elems,
-            buffers: Self::create_buffers(num_elems, device),
-        }
-    }
-
-    pub fn create_buffers(num_elems: u32, device: &Device) -> RadixSortInternalBuffers {
-        let param_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: std::mem::size_of::<Params>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let count_arr_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: 16 * 4,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        let output_arr_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: num_elems as u64 * std::mem::size_of::<u32>() as u64,
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let global_offsets_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size: 16 * 4,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        RadixSortInternalBuffers {
-            param_buffer,
-            count_arr_buffer,
-            output_arr_buffer,
-            global_offsets_buffer,
+            buffers,
         }
     }
 
@@ -110,7 +79,10 @@ impl RadixSort {
         let mut current_output = pong_buffer;
 
         for shift in 0..8 {
-            let params = Params { shift: shift * 4, num_elems: self.num_elems };
+            let params = Params {
+                shift: shift * 4,
+                num_elems: self.num_elems,
+            };
             queue.write_buffer(&self.buffers.param_buffer, 0, bytemuck::bytes_of(&params));
 
             let args = RadixSortPhaseArgs {

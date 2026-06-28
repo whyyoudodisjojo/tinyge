@@ -65,7 +65,7 @@ where
 
         let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
 
-        let maybe_new_buffers = pollster::block_on(self.renderer.init(window));
+        pollster::block_on(self.renderer.init(window));
 
         let (queue, device) = self
             .renderer
@@ -74,7 +74,8 @@ where
             .map(|c| (&c.queue, &c.device))
             .unwrap();
 
-        maybe_new_buffers.map(|b| self.state.handle_shader_recompilation(b, &queue, &device));
+        self.state
+            .init(&self.renderer.shader_manager.shaders, device, queue);
 
         self.executor.handle_event(
             BaseEvent::Resumed,

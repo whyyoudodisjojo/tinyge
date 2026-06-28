@@ -1,8 +1,11 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 
-use wgpu::{CommandEncoder, RenderPipeline, TextureView};
+use wgpu::{CommandEncoder, TextureView};
 
-use crate::renderer::Renderer;
+use crate::{
+    renderer::Renderer,
+    shaders::{Shader, ShaderWrapper},
+};
 
 pub mod layered;
 pub mod single;
@@ -26,10 +29,11 @@ pub trait RenderDispatcher<K> {
 }
 
 pub trait RenderAble<K> {
-    fn render_pass(
-        &self,
+    fn render_pass<'a>(
+        &mut self,
         encoder: &mut CommandEncoder,
-        pipeline_cache: &HashMap<K, RenderPipeline>,
+        shaders: &mut HashMap<K, ShaderWrapper<Arc<dyn Shader<'a>>>>,
         view: &TextureView,
+        device: &wgpu::Device,
     );
 }

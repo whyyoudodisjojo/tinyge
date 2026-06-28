@@ -1,6 +1,5 @@
 pub mod strategies;
 use std::{
-    collections::HashMap,
     hash::Hash,
     sync::{Arc, Weak},
 };
@@ -9,7 +8,7 @@ use wgpu::*;
 use winit::window::Window;
 
 use crate::{
-    shaders::{buffers::Buffers, manager::ShaderManager},
+    shaders::manager::ShaderManager,
     state::{StateRender, StateUpdates},
 };
 
@@ -71,7 +70,7 @@ where
         }
     }
 
-    pub async fn init(&mut self, window: Arc<Window>) -> Option<HashMap<K, Buffers>> {
+    pub async fn init(&mut self, window: Arc<Window>) {
         let instance = wgpu::Instance::new(self.descriptor.instance_descriptor.clone().into());
 
         let surface = instance.create_surface(window.clone()).unwrap();
@@ -110,7 +109,7 @@ where
         };
 
         self.shader_manager.update_texture_format(format);
-        let new_buffers = self.shader_manager.recompile_shaders(&device);
+        self.shader_manager.recompile_shaders(&device);
 
         surface.configure(&device, &surface_config);
 
@@ -123,8 +122,6 @@ where
             surface_config,
             window,
         });
-
-        new_buffers
     }
 
     pub fn window(&self) -> Option<Weak<Window>> {
@@ -145,11 +142,9 @@ where
             ctx.surface_config.width = render_width;
             ctx.surface_config.height = render_height;
 
-            // Reconfigure the surface with new dimensions - this is required!
             ctx.surface.configure(&ctx.device, &ctx.surface_config);
 
-            let new_buffers = shader_manager.recompile_shaders(&ctx.device);
-            new_buffers.map(|n| state.handle_shader_recompilation(n, &ctx.queue, &ctx.device));
+            shader_manager.recompile_shaders(&ctx.device);
         }
     }
 }

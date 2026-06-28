@@ -1,14 +1,13 @@
-use std::{collections::HashMap, hash::Hash, mem};
+use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
-use wgpu::{Device, PipelineCache, PipelineCacheDescriptor, RenderPipeline, TextureFormat};
+use wgpu::{Device, PipelineCache, PipelineCacheDescriptor, TextureFormat};
 
-use crate::shaders::{Buffers, Shader};
+use crate::shaders::{Shader, ShaderWrapper};
 
 pub struct ShaderManager<'a, K> {
     pub compilation_cache: Option<PipelineCache>,
-    pub pipeline_cache: HashMap<K, RenderPipeline>,
-    pub shaders: HashMap<K, &'a dyn Shader>,
-    pub compilation_pending_shaders: HashMap<K, &'a dyn Shader>,
+    pub shaders: HashMap<K, ShaderWrapper<'a, Arc<dyn Shader<'a>>>>,
+    pub compilation_pending_shaders: HashMap<K, Arc<dyn Shader<'a>>>,
     pub texture_format: Option<TextureFormat>,
 }
 
@@ -19,7 +18,6 @@ where
     pub fn new() -> Self {
         Self {
             compilation_cache: None,
-            pipeline_cache: HashMap::new(),
             shaders: HashMap::new(),
             compilation_pending_shaders: HashMap::new(),
             texture_format: None,
@@ -32,7 +30,6 @@ where
     ) -> Self {
         Self {
             compilation_cache: Some(unsafe { device.create_pipeline_cache(&cache_descriptor) }),
-            pipeline_cache: HashMap::new(),
             shaders: HashMap::new(),
             compilation_pending_shaders: HashMap::new(),
             texture_format: None,
@@ -45,35 +42,35 @@ where
 
     pub fn register_shader<S>(&mut self, key: K, shader: S)
     where
-        S: Shader + Sized + 'static,
+        S: Shader<'a> + Sized + 'static,
     {
-        let shader: &'static dyn Shader = Box::leak(Box::new(shader));
-
-        self.compilation_pending_shaders.insert(key, shader);
+        self.compilation_pending_shaders
+            .insert(key, Arc::new(shader));
     }
 
-    pub fn recompile_shaders(&mut self, device: &Device) -> Option<HashMap<K, Buffers>> {
-        self.pipeline_cache.clear();
-
+    pub fn recompile_shaders(&mut self, device: &Device) {
         let pending_shaders = mem::take(&mut self.compilation_pending_shaders);
 
-        self.shaders.extend(pending_shaders);
-
-        Some(
-            self.shaders
-                .iter()
+        self.shaders.extend(
+            pending_shaders
+                .into_iter()
                 .map(|(k, s)| {
-                    let build_data = s.build(
-                        device,
-                        &self.texture_format.unwrap(),
-                        self.compilation_cache.as_ref(),
-                    );
-
-                    self.pipeline_cache.insert(k.clone(), build_data.pipeline);
-
-                    (k.clone(), build_data.buffers)
+                    (
+                        k,
+                        ShaderWrapper::new(
+                            s,
+                            device,
+                            &self.texture_format.unwrap(),
+                            self.compilation_cache.as_ref(),
+                        ),
+                    )
                 })
-                .collect(),
-        )
+                .collect::<Vec<_>>(),
+        );
+        let texture_format = self.texture_format.unwrap();
+        let compilation_cache = self.compilation_cache.as_ref();
+        self.shaders.values_mut().for_each(|s| {
+            s.recompile(device, &texture_format, compilation_cache);
+        });
     }
 }

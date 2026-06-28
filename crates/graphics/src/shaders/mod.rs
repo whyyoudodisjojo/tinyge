@@ -3,31 +3,35 @@ pub mod descriptors;
 pub mod manager;
 pub mod texture;
 
+use std::sync::Arc;
+
 use wgpu::*;
 
 use crate::shaders::{
-    buffers::{BufferBuildSpec, Buffers, ResourceGroupBuildSpec},
+    buffers::{BufferBuildSpec, DynamicBindGroup, ResourceGroupBuildSpec},
     descriptors::{
         MeshBufferSpecs, ResourceGroupLayout, ShaderPipelineDescriptor, VertexBufferSpec,
     },
 };
 
-pub struct ShaderBuiltData {
-    buffers: Buffers,
-    pipeline: RenderPipeline,
+pub struct ShaderBuiltData<'a> {
+    pub pipeline: RenderPipeline,
+    pub buffer_build_spec: BufferBuildSpec<'a>,
+    pub bind_groups: Vec<DynamicBindGroup>,
 }
 
 #[derive(Clone)]
-pub struct ComputeShaderBuiltData {
-    pub buffers: Buffers,
+pub struct ComputeShaderBuiltData<'a> {
+    pub buffer_build_spec: BufferBuildSpec<'a>,
+    pub bind_groups: Vec<DynamicBindGroup>,
     pub pipeline: ComputePipeline,
 }
 
-pub trait Shader {
+pub trait Shader<'a> {
     fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
         MeshBufferSpecs::default()
     }
-    fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>> {
+    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
         vec![]
     }
     fn load_source_code(&self) -> &'static str;
@@ -38,7 +42,7 @@ pub trait Shader {
         device: &Device,
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
-    ) -> ShaderBuiltData {
+    ) -> ShaderBuiltData<'a> {
         let MeshBufferSpecs {
             vertex_buffers: vertex_layouts,
             index_buffer_size,
@@ -109,37 +113,133 @@ pub trait Shader {
             cache,
         });
 
-        let buffers = Buffers::build(
-            device,
-            BufferBuildSpec {
-                vertex_buffer_szs: vertex_buffer_sizes,
-                index_buffer_sz: index_buffer_size,
-                resource_buffer: resource_buffer_descs
-                    .into_iter()
-                    .zip(bind_group_layouts)
-                    .map(|(d, l)| ResourceGroupBuildSpec {
-                        layout: l,
-                        layout_entries: d.entries,
-                    })
-                    .collect(),
-            },
-        );
+        let build_spec = BufferBuildSpec {
+            vertex_buffer_szs: vertex_buffer_sizes,
+            index_buffer_sz: index_buffer_size,
+            resource_buffer: resource_buffer_descs
+                .into_iter()
+                .zip(bind_group_layouts)
+                .map(|(d, l)| ResourceGroupBuildSpec {
+                    layout: l,
+                    layout_entries: d.entries,
+                })
+                .collect(),
+        };
 
-        ShaderBuiltData { buffers, pipeline }
+        let bind_groups = DynamicBindGroup::new_from_buffer_spec(&build_spec);
+
+        ShaderBuiltData {
+            pipeline,
+            buffer_build_spec: build_spec,
+            bind_groups,
+        }
     }
 }
 
-pub trait ComputeShader {
+pub struct ShaderWrapper<'a, S> {
+    pub buffer_build_spec: Option<ShaderBuiltData<'a>>,
+    pub inner: S,
+}
+
+impl<'a, S> ShaderWrapper<'a, S>
+where
+    S: Shader<'a>,
+{
+    pub fn new(
+        shader: S,
+        device: &Device,
+        texture_format: &TextureFormat,
+        cache: Option<&PipelineCache>,
+    ) -> Self {
+        let res = Self {
+            buffer_build_spec: None,
+            inner: shader,
+        };
+        res.inner.build(device, texture_format, cache);
+        res
+    }
+
+    pub fn recompile(
+        &mut self,
+        device: &Device,
+        texture_format: &TextureFormat,
+        cache: Option<&PipelineCache>,
+    ) {
+        let buffer_build_spec = self.inner.build(device, texture_format, cache);
+        self.buffer_build_spec = Some(buffer_build_spec);
+    }
+}
+
+impl<'a, S: ?Sized> Shader<'a> for Arc<S>
+where
+    S: Shader<'a>,
+{
+    fn build(
+        &self,
+        device: &Device,
+        texture_format: &TextureFormat,
+        cache: Option<&PipelineCache>,
+    ) -> ShaderBuiltData<'a> {
+        self.as_ref().build(device, texture_format, cache)
+    }
+
+    fn load_source_code(&self) -> &'static str {
+        self.as_ref().load_source_code()
+    }
+
+    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
+        self.as_ref().mesh_buffers_layouts()
+    }
+
+    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
+        self.as_ref().resource_buffers_with_bind_group_layouts()
+    }
+
+    fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'static> {
+        self.as_ref().shader_pipeline_desc()
+    }
+}
+
+pub struct ComputeShaderWrapper<'a, S> {
+    pub buffer_build_spec: ComputeShaderBuiltData<'a>,
+    pub inner: S,
+}
+
+impl<'a, S> ComputeShaderWrapper<'a, S>
+where
+    S: ComputeShader<'a>,
+{
+    pub fn new(shader: S, device: &Device) -> Self {
+        let spec = shader.build(device);
+
+        Self {
+            buffer_build_spec: spec,
+            inner: shader,
+        }
+    }
+
+    pub fn recompile(&'a mut self, device: &Device) {
+        let buffer_build_spec = self.inner.build(device);
+        self.buffer_build_spec = buffer_build_spec;
+    }
+
+    pub fn dispatch(&mut self, args: S::Args, device: &Device, queue: &Queue) -> S::Ret {
+        self.inner
+            .dispatch(args, &mut self.buffer_build_spec, device, queue)
+    }
+}
+
+pub trait ComputeShader<'a> {
     type Args;
     type Ret;
 
-    fn resource_buffers_with_bind_group_layouts<'a>(&'a self) -> Vec<ResourceGroupLayout<'a>> {
+    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
         vec![]
     }
     fn load_source_code(&self) -> &'static str;
     fn entry_point(&self) -> &'static str;
 
-    fn build(&mut self, device: &Device) -> ComputeShaderBuiltData {
+    fn build(&self, device: &Device) -> ComputeShaderBuiltData<'a> {
         let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
 
         let bind_group_layouts = resource_buffer_descs
@@ -177,24 +277,33 @@ pub trait ComputeShader {
             cache: None,
         });
 
-        let buffers = Buffers::build(
-            device,
-            BufferBuildSpec {
-                vertex_buffer_szs: vec![],
-                index_buffer_sz: 0,
-                resource_buffer: resource_buffer_descs
-                    .into_iter()
-                    .zip(bind_group_layouts)
-                    .map(|(d, l)| ResourceGroupBuildSpec {
-                        layout: l,
-                        layout_entries: d.entries,
-                    })
-                    .collect(),
-            },
-        );
+        let build_spec = BufferBuildSpec {
+            vertex_buffer_szs: vec![],
+            index_buffer_sz: 0,
+            resource_buffer: resource_buffer_descs
+                .into_iter()
+                .zip(bind_group_layouts)
+                .map(|(d, l)| ResourceGroupBuildSpec {
+                    layout: l,
+                    layout_entries: d.entries,
+                })
+                .collect(),
+        };
 
-        ComputeShaderBuiltData { buffers, pipeline }
+        let bind_groups = DynamicBindGroup::new_from_buffer_spec(&build_spec);
+
+        ComputeShaderBuiltData {
+            bind_groups,
+            pipeline,
+            buffer_build_spec: build_spec,
+        }
     }
 
-    fn dispatch(&mut self, args: Self::Args, device: &Device, queue: &Queue) -> Self::Ret;
+    fn dispatch(
+        &mut self,
+        args: Self::Args,
+        build_data: &mut ComputeShaderBuiltData,
+        device: &Device,
+        queue: &Queue,
+    ) -> Self::Ret;
 }

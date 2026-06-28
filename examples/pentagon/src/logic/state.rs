@@ -1,11 +1,14 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use tinyge_graphics::{
     renderer::strategies::{
         RenderAble,
         single::{SinglePass, StateRenderSinglePass},
     },
-    shaders::buffers::Buffers,
+    shaders::buffers::{Buffers, ResourceType},
     state::{StateRender, StateUpdates},
 };
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
@@ -40,41 +43,47 @@ impl StateUpdates for State {
     type K = ShaderId;
     type UpdateEvent = UpdateEvents;
 
-    fn handle_shader_recompilation(
+    fn init<'a>(
         &mut self,
-        new_buffers: std::collections::HashMap<Self::K, Buffers>,
-        queue: &Queue,
+        shaders: &std::collections::HashMap<
+            Self::K,
+            tinyge_graphics::shaders::ShaderWrapper<
+                'a,
+                std::sync::Arc<dyn tinyge_graphics::shaders::Shader<'a>>,
+            >,
+        >,
         device: &Device,
+        queue: &Queue,
     ) {
-        let new_buffer = new_buffers.into_iter().next().unwrap().1;
-        match &mut self.buffers {
-            Some(b) => b.copy_data_into(&new_buffer, device, queue),
-            None => {
-                queue.write_buffer(
-                    &new_buffer.vertex_buffers[0],
-                    0,
-                    bytemuck::cast_slice(&VERTICES),
-                );
-                queue.write_buffer(
-                    &new_buffer.index_buffer.as_ref().unwrap(),
-                    0,
-                    bytemuck::cast_slice(INDICES),
-                );
-                queue.write_buffer(
-                    &new_buffer.resource_buffers[0].buffers[0].as_ref().unwrap(),
-                    0,
-                    bytemuck::cast_slice(&[SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as u32]),
-                );
-            }
-        }
-
+        let shader_wrapper = shaders.get(&ShaderId(1)).unwrap();
+        let spec = &shader_wrapper
+            .buffer_build_spec
+            .as_ref()
+            .unwrap()
+            .buffer_build_spec;
+        let new_buffer = Buffers::build(device, spec);
+        queue.write_buffer(
+            &new_buffer.vertex_buffers[0],
+            0,
+            bytemuck::cast_slice(&VERTICES),
+        );
+        queue.write_buffer(
+            &new_buffer.index_buffer.as_ref().unwrap(),
+            0,
+            bytemuck::cast_slice(INDICES),
+        );
+        queue.write_buffer(
+            &new_buffer.resource_buffers[0].buffers[0],
+            0,
+            bytemuck::cast_slice(&[SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as u32]),
+        );
         self.buffers = Some(new_buffer);
     }
 
-    fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&wgpu::Queue>) {
+    fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>) {
         match update_event {
             UpdateEvents::Resize(sz) => self.sz = sz,
             UpdateEvents::TimeUpdate => {
@@ -84,7 +93,7 @@ impl StateUpdates for State {
                         .unwrap()
                         .as_secs_f32();
                     q.write_buffer(
-                        &b.resource_buffers[0].buffers[0].as_ref().unwrap(),
+                        &b.resource_buffers[0].buffers[0],
                         0,
                         bytemuck::cast_slice(&[time_val]),
                     )
@@ -107,11 +116,15 @@ impl StateRender for State {
 }
 
 impl RenderAble<ShaderId> for State {
-    fn render_pass(
-        &self,
+    fn render_pass<'a>(
+        &mut self,
         encoder: &mut wgpu::CommandEncoder,
-        pipeline_cache: &std::collections::HashMap<ShaderId, wgpu::RenderPipeline>,
+        pipeline_cache: &mut std::collections::HashMap<
+            ShaderId,
+            tinyge_graphics::shaders::ShaderWrapper<Arc<dyn tinyge_graphics::shaders::Shader<'a>>>,
+        >,
         view: &wgpu::TextureView,
+        device: &wgpu::Device,
     ) {
         let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: None,
@@ -135,29 +148,26 @@ impl RenderAble<ShaderId> for State {
             multiview_mask: None,
         });
 
-        render_pass.set_pipeline(pipeline_cache.get(&ShaderId(1)).unwrap());
-        render_pass.set_vertex_buffer(
-            0,
-            self.buffers.as_ref().unwrap().vertex_buffers[0].slice(..),
-        );
+        let buffers = self.buffers.as_ref().unwrap();
+        let shader_wrapper = pipeline_cache.get_mut(&ShaderId(1)).unwrap();
+        let built_data = shader_wrapper.buffer_build_spec.as_mut().unwrap();
+
+        render_pass.set_pipeline(&built_data.pipeline);
+        render_pass.set_vertex_buffer(0, buffers.vertex_buffers[0].slice(..));
         render_pass.set_index_buffer(
-            self.buffers
-                .as_ref()
-                .unwrap()
-                .index_buffer
-                .as_ref()
-                .unwrap()
-                .slice(..),
+            buffers.index_buffer.as_ref().unwrap().slice(..),
             wgpu::IndexFormat::Uint16,
         );
-        render_pass.set_bind_group(
-            0,
-            self.buffers.as_ref().unwrap().resource_buffers[0]
-                .bind_group
-                .peek_last_bind_group()
-                .unwrap(),
-            &[],
-        );
+
+        // Create bind group resources
+        let resources: Vec<ResourceType> = buffers.resource_buffers[0]
+            .buffers
+            .iter()
+            .map(|b| ResourceType::Buffer(b.clone()))
+            .collect();
+
+        let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);
+        render_pass.set_bind_group(0, &bind_group, &[]);
         render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
     }
 }

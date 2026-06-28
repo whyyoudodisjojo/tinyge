@@ -1,26 +1,23 @@
 use tinyge_graphics::shaders::{
+    ComputeShader, ComputeShaderBuiltData,
     buffers::ResourceType,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
-    ComputeShader,
 };
-use wgpu::{wgt::CommandEncoderDescriptor, BufferUsages, ComputePassDescriptor, ShaderStages};
+use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
-use crate::collisions::algos::lbvh::gpu::radix_sort::{InitData, Params, RadixSortPhaseArgs};
+use crate::collisions::algos::lbvh::gpu::radix_sort::{Params, RadixSortPhaseArgs};
 
 pub struct RadixSortCountPhase {
     num_elems: u32,
-    init_data: Option<InitData>,
 }
 
 impl RadixSortCountPhase {
     pub fn new(num_elems: u32) -> Self {
-        Self {
-            num_elems,
-            init_data: None,
-        }
+        Self { num_elems }
     }
 }
-impl ComputeShader for RadixSortCountPhase {
+
+impl<'a> ComputeShader<'a> for RadixSortCountPhase {
     type Args = RadixSortPhaseArgs;
     type Ret = ();
 
@@ -32,8 +29,8 @@ impl ComputeShader for RadixSortCountPhase {
         include_str!("../../../shaders/lbvh/radix_sort.wgsl")
     }
 
-    fn resource_buffers_with_bind_group_layouts<'a>(
-        &'a self,
+    fn resource_buffers_with_bind_group_layouts(
+        &self,
     ) -> Vec<tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>> {
         vec![ResourceGroupLayout {
             entries: vec![
@@ -48,7 +45,6 @@ impl ComputeShader for RadixSortCountPhase {
                         usages: BufferUsages::UNIFORM,
                     },
                     count: None,
-                    create_initial_buffers: false,
                 },
                 ResourceBinding {
                     binding: 1,
@@ -61,7 +57,6 @@ impl ComputeShader for RadixSortCountPhase {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
-                    create_initial_buffers: false,
                 },
                 ResourceBinding {
                     binding: 2,
@@ -74,7 +69,6 @@ impl ComputeShader for RadixSortCountPhase {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
-                    create_initial_buffers: false,
                 },
                 ResourceBinding {
                     binding: 3,
@@ -87,7 +81,6 @@ impl ComputeShader for RadixSortCountPhase {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
-                    create_initial_buffers: false,
                 },
                 ResourceBinding {
                     binding: 4,
@@ -100,7 +93,6 @@ impl ComputeShader for RadixSortCountPhase {
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
-                    create_initial_buffers: false,
                 },
             ],
         }]
@@ -109,23 +101,14 @@ impl ComputeShader for RadixSortCountPhase {
     fn dispatch(
         &mut self,
         args: Self::Args,
+        built_data: &mut ComputeShaderBuiltData,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {
-        if self.init_data.is_none() {
-            let built_data = self.build(device);
-
-            self.init_data = Some(InitData {
-                bind_group: built_data.buffers.resource_buffers[0].bind_group.clone(),
-                pipeline: built_data.pipeline,
-            });
-        }
-
-        let init_data = self.init_data.as_mut().unwrap();
         let num_wg = ((self.num_elems + 255) / 256).max(1);
 
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
-        let bind_group = init_data.bind_group.get_or_create_bind_group(
+        let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
             &[
                 ResourceType::Buffer(args.param_buffer),
                 ResourceType::Buffer(args.input_arr_buffer),
@@ -141,7 +124,7 @@ impl ComputeShader for RadixSortCountPhase {
                 timestamp_writes: None,
             });
 
-            pass.set_pipeline(&init_data.pipeline);
+            pass.set_pipeline(&built_data.pipeline);
             pass.set_bind_group(0, Some(&bind_group), &[]);
             pass.dispatch_workgroups(num_wg, 1, 1);
         }

@@ -56,7 +56,12 @@ where
             .device
             .create_command_encoder(&CommandEncoderDescriptor { label: None });
 
-        state.render_pass(&mut encoder, &self.shader_manager.pipeline_cache, &view);
+        state.render_pass(
+            &mut encoder,
+            &mut self.shader_manager.shaders,
+            &view,
+            &ctx.device,
+        );
 
         ctx.queue.submit(std::iter::once(encoder.finish()));
         output.present();
