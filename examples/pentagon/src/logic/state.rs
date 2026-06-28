@@ -167,7 +167,7 @@ impl RenderAble<ShaderId> for State {
             .collect();
 
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);
-        render_pass.set_bind_group(0, &bind_group, &[]);
+        render_pass.set_bind_group(0, bind_group, &[]);
         render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
     }
 }

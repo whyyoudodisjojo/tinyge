@@ -21,7 +21,6 @@ pub struct ResourceGroup {
     pub samplers: Vec<Sampler>,
 }
 
-#[derive(Clone)]
 pub struct DynamicBindGroup {
     pub layout: BindGroupLayout,
     pub bind_group_cache: LruCache<u64, BindGroup>,
@@ -58,21 +57,21 @@ impl DynamicBindGroup {
         self.bind_group_cache.put(Self::key(b), bind_group);
     }
 
-    pub fn get_or_create_bind_group(
-        &mut self,
+    pub fn get_or_create_bind_group<'a>(
+        &'a mut self,
         buffs: &[ResourceType],
         device: &Device,
-    ) -> BindGroup {
+    ) -> &'a BindGroup {
         let k = Self::key(buffs);
 
-        let bind_group = match &mut self.bind_group_cache.get(&k) {
-            Some(b) => b.clone(),
+        match self.bind_group_cache.get(&k) {
+            Some(b) => b,
             None => {
                 let b = device.create_bind_group(&BindGroupDescriptor {
                     label: None,
                     layout: &self.layout,
                     entries: &buffs
-                        .into_iter()
+                        .iter()
                         .enumerate()
                         .map(|(i, b)| BindGroupEntry {
                             binding: i as u32,
@@ -85,13 +84,10 @@ impl DynamicBindGroup {
                         .collect::<Vec<_>>(),
                 });
 
-                self.bind_group_cache.put(k, b.clone());
-
-                b
+                self.bind_group_cache.put(k, b);
+                self.bind_group_cache.get(&k).unwrap()
             }
-        };
-
-        bind_group
+        }
     }
 }
 

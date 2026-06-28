@@ -20,7 +20,6 @@ pub struct ShaderBuiltData<'a> {
     pub bind_groups: Vec<DynamicBindGroup>,
 }
 
-#[derive(Clone)]
 pub struct ComputeShaderBuiltData<'a> {
     pub buffer_build_spec: BufferBuildSpec<'a>,
     pub bind_groups: Vec<DynamicBindGroup>,

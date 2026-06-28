@@ -125,7 +125,7 @@ impl<'a> ComputeShader<'a> for RadixSortCountPhase {
             });
 
             pass.set_pipeline(&built_data.pipeline);
-            pass.set_bind_group(0, Some(&bind_group), &[]);
+            pass.set_bind_group(0, Some(bind_group), &[]);
             pass.dispatch_workgroups(num_wg, 1, 1);
         }
 

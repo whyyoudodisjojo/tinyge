@@ -183,7 +183,7 @@ impl RenderAble<ShaderId> for State {
             .map(|b| ResourceType::Buffer(b.clone()))
             .collect();
         let bind_group0 = built_data.bind_groups[0].get_or_create_bind_group(&resources0, device);
-        render_pass.set_bind_group(0, &bind_group0, &[]);
+        render_pass.set_bind_group(0, bind_group0, &[]);
 
         let resources1: Vec<ResourceType> = buffers.resource_buffers[1]
             .samplers
@@ -197,7 +197,7 @@ impl RenderAble<ShaderId> for State {
             )
             .collect();
         let bind_group1 = built_data.bind_groups[1].get_or_create_bind_group(&resources1, device);
-        render_pass.set_bind_group(1, &bind_group1, &[]);
+        render_pass.set_bind_group(1, bind_group1, &[]);
 
         render_pass.draw(0..6, 0..self.sprites.len() as u32);
     }
