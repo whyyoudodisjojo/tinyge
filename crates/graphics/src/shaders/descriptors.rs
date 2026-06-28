@@ -66,6 +66,7 @@ pub enum ResourceBindingType<'a> {
         min_binding_size: Option<BufferSize>,
         size: u64,
         usages: BufferUsages,
+        is_input: bool,
     },
     Sampler {
         ty: SamplerBindingType,

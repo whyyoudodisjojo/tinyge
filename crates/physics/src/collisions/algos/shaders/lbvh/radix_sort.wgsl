@@ -3,15 +3,20 @@ struct Params {
     num_elems: u32,
 }
 
+struct Key {
+    code: u32,
+    idx: u32,
+}
+
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read> input_arr: array<u32>;
+@group(0) @binding(1) var<storage, read> input_arr: array<Key>;
 @group(0) @binding(2) var<storage, read_write> count_arr: array<u32, 16>;
-@group(0) @binding(3) var<storage, read_write> output_arr: array<u32>;
+@group(0) @binding(3) var<storage, read_write> output_arr: array<Key>;
 @group(0) @binding(4) var<storage, read_write> global_offsets: array<atomic<u32>, 16>;
 
 var<workgroup> local_counters: array<atomic<u32>, 16>;
 var<workgroup> local_offsets: array<u32, 16>;
-var<workgroup> shared_exchange: array<u32, 256>;
+var<workgroup> shared_exchange: array<Key, 256>;
 
 @compute @workgroup_size(256)
 fn count(
@@ -29,7 +34,7 @@ fn count(
 
     if (g_idx < params.num_elems) {
         let my_key = input_arr[g_idx];
-        let my_digit = (my_key >> params.shift) & 15u;
+        let my_digit = (my_key.code >> params.shift) & 15u;
         atomicAdd(&local_counters[my_digit], 1u);
     }
     workgroupBarrier();
@@ -65,11 +70,11 @@ fn rearrange(
     }
     workgroupBarrier();
 
-    var my_key = 0u;
+    var my_key: Key;
     var my_digit = 0u;
     if (g_idx < params.num_elems) {
         my_key = input_arr[g_idx];
-        my_digit = (my_key >> params.shift) & 15u;
+        my_digit = (my_key.code >> params.shift) & 15u;
     }
 
     var local_rank = 0u;
@@ -95,7 +100,7 @@ fn rearrange(
 
     if (g_idx < params.num_elems) {
         let sorted_key = shared_exchange[l_idx];
-        let digit = (sorted_key >> params.shift) & 15u;
+        let digit = (sorted_key.code >> params.shift) & 15u;
         
         let global_pos = atomicAdd(&global_offsets[digit], 1u);
         output_arr[global_pos] = sorted_key;

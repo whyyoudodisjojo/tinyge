@@ -1,6 +1,7 @@
 use tinyge_graphics::shaders::{ComputeShaderWrapper, buffers::Buffers};
 use wgpu::{Buffer, Device};
 
+use crate::collisions::algos::lbvh::Key;
 use crate::collisions::algos::lbvh::gpu::radix_sort::phase::{RadixSortPhase, RadixSortStage};
 
 pub mod phase;
@@ -73,7 +74,7 @@ impl<'a> RadixSort<'a> {
         let ping_buffer = input_buffer;
         let pong_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: self.num_elems as u64 * std::mem::size_of::<u32>() as u64,
+            size: self.num_elems as u64 * std::mem::size_of::<Key>() as u64,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
@@ -111,7 +112,7 @@ impl<'a> RadixSort<'a> {
             0,
             &self.buffers.output_arr_buffer,
             0,
-            self.num_elems as u64 * std::mem::size_of::<u32>() as u64,
+            self.num_elems as u64 * std::mem::size_of::<Key>() as u64,
         );
         queue.submit(std::iter::once(encoder.finish()));
     }
@@ -138,7 +139,7 @@ mod tests {
         (device, queue)
     }
 
-    fn create_input_buffer(device: &Device, data: &[u32]) -> Buffer {
+    fn create_input_buffer(device: &Device, data: &[Key]) -> Buffer {
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
             contents: bytemuck::cast_slice(data),
@@ -148,54 +149,25 @@ mod tests {
         })
     }
 
-    async fn read_buffer(
-        device: &Device,
-        queue: &wgpu::Queue,
-        buffer: &Buffer,
-        size: u64,
-    ) -> Vec<u32> {
-        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        encoder.copy_buffer_to_buffer(buffer, 0, &staging_buffer, 0, size);
-        let index = queue.submit(std::iter::once(encoder.finish()));
-
-        let buffer_slice = staging_buffer.slice(..);
-        let (sender, receiver) = std::sync::mpsc::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            sender.send(result).unwrap();
-        });
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: Some(index),
-                timeout: None,
-            })
-            .ok();
-        receiver.recv().unwrap().expect("Failed to map buffer");
-
-        let data = buffer_slice.get_mapped_range();
-        let result: Vec<u32> = bytemuck::cast_slice(&data).to_vec();
-        drop(data);
-        staging_buffer.unmap();
-
-        result
-    }
-
     #[test]
     fn test_radix_sort() {
         pollster::block_on(async {
             let (device, queue) = setup_wgpu().await;
 
-            let input_data: Vec<u32> = vec![
+            let codes: Vec<u32> = vec![
                 0x12345678, 0x87654321, 0xABCDEF00, 0x00FEDCBA, 0x55555555, 0xAAAAAAAA, 0x00000000,
                 0xFFFFFFFF, 0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x99999999, 0x88888888,
                 0x77777777, 0x66666666,
             ];
+
+            let input_data: Vec<Key> = codes
+                .iter()
+                .enumerate()
+                .map(|(idx, &code)| Key {
+                    code,
+                    idx: idx as u32,
+                })
+                .collect();
             let num_elems = input_data.len() as u32;
 
             let input_buffer = create_input_buffer(&device, &input_data);
@@ -203,17 +175,11 @@ mod tests {
             let mut radix_sort = RadixSort::new(num_elems, &device);
             radix_sort.sort(input_buffer, &device, &queue);
 
-            let output_size = num_elems as u64 * std::mem::size_of::<u32>() as u64;
-            let output_data = read_buffer(
-                &device,
-                &queue,
-                &radix_sort.buffers.output_arr_buffer,
-                output_size,
-            )
-            .await;
+            let output_data =
+                Key::read_buffer(&device, &queue, &radix_sort.buffers.output_arr_buffer);
 
-            let mut expected = input_data.clone();
-            expected.sort();
+            let mut expected: Vec<Key> = input_data.clone();
+            expected.sort_by_key(|k| k.code);
 
             assert_eq!(
                 output_data, expected,

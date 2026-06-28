@@ -88,6 +88,7 @@ impl Shader<'_> for Pentagon {
                     min_binding_size: NonZeroU64::new(4),
                     size: 4,
                     usages: BufferUsages::UNIFORM,
+                    is_input: false,
                 },
                 count: None,
             }],

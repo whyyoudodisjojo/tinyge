@@ -100,6 +100,7 @@ pub struct BufferBuildSpec<'a> {
 pub struct ResourceGroupBuildSpec<'a> {
     pub layout_entries: Vec<ResourceBinding<'a>>,
     pub layout: BindGroupLayout,
+    pub build_input_only: bool,
 }
 
 #[derive(Clone)]
@@ -188,7 +189,17 @@ impl Buffers {
                     let binding = binding_idx as u32;
 
                     let resource = match &layout_entry.ty {
-                        ResourceBindingType::Buffer { size, usages, .. } => {
+                        ResourceBindingType::Buffer {
+                            size,
+                            usages,
+                            is_input,
+                            ..
+                        } => {
+                            // Skip if build mode doesn't match buffer type
+                            if b.build_input_only && !*is_input || !b.build_input_only && *is_input
+                            {
+                                continue;
+                            }
                             let buffer = device.create_buffer(&BufferDescriptor {
                                 label: None,
                                 usage: *usages | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,

@@ -5,7 +5,10 @@ use tinyge_graphics::shaders::{
 };
 use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
-use crate::collisions::algos::lbvh::gpu::radix_sort::{Params, RadixSortPhaseArgs};
+use crate::collisions::algos::lbvh::{
+    Key,
+    gpu::radix_sort::{Params, RadixSortPhaseArgs},
+};
 
 pub enum RadixSortStage {
     Count,
@@ -54,6 +57,7 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         min_binding_size: None,
                         size: size_of::<Params>() as u64,
                         usages: BufferUsages::UNIFORM,
+                        is_input: false,
                     },
                     count: None,
                 },
@@ -64,8 +68,9 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_elems as u64 * size_of::<u32>() as u64,
+                        size: self.num_elems as u64 * size_of::<Key>() as u64,
                         usages: BufferUsages::STORAGE,
+                        is_input: true,
                     },
                     count: None,
                 },
@@ -78,6 +83,7 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         min_binding_size: None,
                         size: 16 * 4,
                         usages: BufferUsages::STORAGE,
+                        is_input: false,
                     },
                     count: None,
                 },
@@ -88,8 +94,9 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_elems as u64 * size_of::<u32>() as u64,
+                        size: self.num_elems as u64 * size_of::<Key>() as u64,
                         usages: BufferUsages::STORAGE,
+                        is_input: false,
                     },
                     count: None,
                 },
@@ -102,6 +109,7 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         min_binding_size: None,
                         size: 16 * 4,
                         usages: BufferUsages::STORAGE,
+                        is_input: false,
                     },
                     count: None,
                 },

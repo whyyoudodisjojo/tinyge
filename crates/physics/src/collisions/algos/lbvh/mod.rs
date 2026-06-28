@@ -5,7 +5,7 @@ pub mod cpu;
 pub mod gpu;
 
 #[repr(C)]
-#[derive(Hash, Pod, Zeroable, Clone, Copy)]
+#[derive(Hash, Pod, Zeroable, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Key {
     pub code: u32,
     pub idx: u32,
