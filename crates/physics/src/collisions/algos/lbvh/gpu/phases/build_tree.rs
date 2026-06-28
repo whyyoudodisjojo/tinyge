@@ -84,7 +84,7 @@ impl<'a> ComputeShader<'a> for BuildTree {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: (2 * self.num_leaves - 1) as u64 * 32,
+                        size: (2 * self.num_leaves - 1) as u64 * 48, // BVHNode is 48 bytes (vec3=16, vec3=16, i32=4, i32=4, i32=4, u32=4)
                         usages: BufferUsages::STORAGE,
                         is_input: false,
                     },

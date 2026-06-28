@@ -3,7 +3,7 @@ use wgpu::{Buffer, Device};
 
 use crate::collisions::algos::lbvh::gpu::phases::{
     build_tree::{BuildTree, BuildTreeArgs, BuildTreeStage},
-    compute_rects::{ComputeRects, ComputeRectsArgs, ComputeRectsStage},
+    compute_rects::{ComputeRects, ComputeRectsArgs},
     mortonize::{Mortonize, MortonizeArgs},
 };
 use crate::collisions::algos::lbvh::gpu::radix_sort::RadixSort;
@@ -13,7 +13,6 @@ pub mod compute_rects;
 pub mod mortonize;
 
 pub struct LBVHBuffers {
-    pub atomic_bounds_buffer: Buffer,
     pub rects_buffer: Buffer,
     pub keys_buffer: Buffer,
     pub global_bounds_buffer: Buffer,
@@ -25,7 +24,6 @@ pub struct LBVHBuffers {
 
 pub struct LBVHBuilder<'a> {
     compute_rects: ComputeShaderWrapper<'a, ComputeRects>,
-    convert_bounds: ComputeShaderWrapper<'a, ComputeRects>,
     mortonize: ComputeShaderWrapper<'a, Mortonize>,
     build_leaves: ComputeShaderWrapper<'a, BuildTree>,
     build_structure: ComputeShaderWrapper<'a, BuildTree>,
@@ -37,18 +35,8 @@ pub struct LBVHBuilder<'a> {
 
 impl<'a> LBVHBuilder<'a> {
     pub fn new(num_models: u32, num_verts: u32, device: &Device) -> Self {
-        let compute_rects = ComputeShaderWrapper::new(
-            ComputeRects::new(num_models, num_verts, ComputeRectsStage::ComputeRects),
-            device,
-        );
-        let convert_bounds = ComputeShaderWrapper::new(
-            ComputeRects::new(
-                num_models,
-                num_verts,
-                ComputeRectsStage::ConvertAtomicBoundsToBounds,
-            ),
-            device,
-        );
+        let compute_rects =
+            ComputeShaderWrapper::new(ComputeRects::new(num_models, num_verts), device);
         let mortonize = ComputeShaderWrapper::new(Mortonize::new(num_models), device);
         let build_leaves = ComputeShaderWrapper::new(
             BuildTree::new(num_models, BuildTreeStage::BuildLeaves),
@@ -66,8 +54,7 @@ impl<'a> LBVHBuilder<'a> {
 
         let compute_rects_buffers =
             Buffers::build(device, &compute_rects.buffer_build_spec.buffer_build_spec);
-        let atomic_bounds_buffer = compute_rects_buffers.resource_buffers[0].buffers[2].clone();
-        let rects_buffer = compute_rects_buffers.resource_buffers[0].buffers[3].clone();
+        let rects_buffer = compute_rects_buffers.resource_buffers[0].buffers[2].clone();
 
         let mortonize_buffers =
             Buffers::build(device, &mortonize.buffer_build_spec.buffer_build_spec);
@@ -83,7 +70,6 @@ impl<'a> LBVHBuilder<'a> {
         let params_buffer = build_tree_buffers.resource_buffers[0].buffers[4].clone();
 
         let buffers = LBVHBuffers {
-            atomic_bounds_buffer,
             rects_buffer,
             keys_buffer,
             global_bounds_buffer,
@@ -95,7 +81,6 @@ impl<'a> LBVHBuilder<'a> {
 
         Self {
             compute_rects,
-            convert_bounds,
             mortonize,
             build_leaves,
             build_structure,
@@ -128,18 +113,6 @@ impl<'a> LBVHBuilder<'a> {
             ComputeRectsArgs {
                 model_verts_buffer: model_verts_buffer.clone(),
                 model_infos_buffer: model_infos_buffer.clone(),
-                output_rect_atomic_buffer: self.buffers.atomic_bounds_buffer.clone(),
-                output_rect_buffer: self.buffers.rects_buffer.clone(),
-            },
-            device,
-            queue,
-        );
-
-        self.convert_bounds.dispatch(
-            ComputeRectsArgs {
-                model_verts_buffer: model_verts_buffer.clone(),
-                model_infos_buffer: model_infos_buffer.clone(),
-                output_rect_atomic_buffer: self.buffers.atomic_bounds_buffer.clone(),
                 output_rect_buffer: self.buffers.rects_buffer.clone(),
             },
             device,

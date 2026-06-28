@@ -16,27 +16,19 @@ pub struct ModelInfo {
 pub struct ComputeRectsArgs {
     pub model_verts_buffer: Buffer,
     pub model_infos_buffer: Buffer,
-    pub output_rect_atomic_buffer: Buffer,
     pub output_rect_buffer: Buffer,
-}
-
-pub enum ComputeRectsStage {
-    ComputeRects,
-    ConvertAtomicBoundsToBounds,
 }
 
 pub struct ComputeRects {
     num_models: u32,
     num_verts: u32,
-    stage: ComputeRectsStage,
 }
 
 impl ComputeRects {
-    pub fn new(num_models: u32, num_verts: u32, stage: ComputeRectsStage) -> Self {
+    pub fn new(num_models: u32, num_verts: u32) -> Self {
         Self {
             num_models,
             num_verts,
-            stage,
         }
     }
 }
@@ -83,19 +75,6 @@ impl<'a> ComputeShader<'a> for ComputeRects {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: (16 * self.num_models) as u64,
-                        usages: BufferUsages::STORAGE,
-                        is_input: false,
-                    },
-                    count: None,
-                },
-                ResourceBinding {
-                    binding: 3,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
                         size: (24 * self.num_models) as u64,
                         usages: BufferUsages::STORAGE,
                         is_input: false,
@@ -107,10 +86,7 @@ impl<'a> ComputeShader<'a> for ComputeRects {
     }
 
     fn entry_point(&self) -> &'static str {
-        match &self.stage {
-            ComputeRectsStage::ComputeRects => "compute_rects",
-            ComputeRectsStage::ConvertAtomicBoundsToBounds => "convert_atomic_bounds_to_bounds",
-        }
+        "compute_rects"
     }
 
     fn load_source_code(&self) -> &'static str {
@@ -126,18 +102,11 @@ impl<'a> ComputeShader<'a> for ComputeRects {
     ) -> Self::Ret {
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
-        // TODO: Take reference
         let buffers = vec![
             ResourceType::Buffer(args.model_verts_buffer.clone()),
             ResourceType::Buffer(args.model_infos_buffer.clone()),
-            ResourceType::Buffer(args.output_rect_atomic_buffer.clone()),
             ResourceType::Buffer(args.output_rect_buffer.clone()),
         ];
-
-        let wg_sz = match self.stage {
-            ComputeRectsStage::ComputeRects => self.num_models,
-            ComputeRectsStage::ConvertAtomicBoundsToBounds => (self.num_models + 63) / 64,
-        };
 
         {
             let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
@@ -150,7 +119,7 @@ impl<'a> ComputeShader<'a> for ComputeRects {
                 &[],
             );
             pass.set_pipeline(&build_data.pipeline);
-            pass.dispatch_workgroups(wg_sz, 1, 1);
+            pass.dispatch_workgroups(self.num_models, 1, 1);
         }
 
         queue.submit(std::iter::once(encoder.finish()));

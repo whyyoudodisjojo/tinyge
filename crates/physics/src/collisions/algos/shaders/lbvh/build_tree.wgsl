@@ -9,12 +9,12 @@ struct Key {
 }
 
 struct BVHNode {
-    min: vec3<f32>,
-    max: vec3<f32>,
+    min: vec4<f32>,
+    max: vec4<f32>,
     parent: i32,
     left_child: i32,
     right_child: i32,
-    node_type: u32, 
+    node_type: u32,
 }
 
 struct Params{
@@ -100,8 +100,8 @@ fn build_leaves(@builtin(global_invocation_id) g_id: vec3<u32>) {
     let orig_idx = keys[gid].idx;
     let leaf_pos = gid; 
 
-    nodes[leaf_pos].min = rects[orig_idx].min;
-    nodes[leaf_pos].max = rects[orig_idx].max;
+    nodes[leaf_pos].min = vec4<f32>(rects[orig_idx].min, 0.0);
+    nodes[leaf_pos].max = vec4<f32>(rects[orig_idx].max, 0.0);
     nodes[leaf_pos].node_type = 0u;
     nodes[leaf_pos].left_child = -1;
     nodes[leaf_pos].right_child = -1;
@@ -157,9 +157,9 @@ fn compute_bounds(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let l = nodes[current].left_child;
         let r = nodes[current].right_child;
         
-        let combined = merge(nodes[l].min, nodes[l].max, nodes[r].min, nodes[r].max);
-        nodes[current].min = combined.min;
-        nodes[current].max = combined.max;
+        let combined = merge(nodes[l].min.xyz, nodes[l].max.xyz, nodes[r].min.xyz, nodes[r].max.xyz);
+        nodes[current].min = vec4<f32>(combined.min, 0.0);
+        nodes[current].max = vec4<f32>(combined.max, 0.0);
 
         current = nodes[current].parent;
     }
