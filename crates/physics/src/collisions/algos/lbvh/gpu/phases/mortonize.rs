@@ -5,27 +5,35 @@ use tinyge_graphics::shaders::{
 };
 use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
-use crate::collisions::algos::lbvh::gpu::radix_sort::{Params, RadixSortPhaseArgs};
+use crate::collisions::algos::RectangleBounds;
 
-pub struct RadixSortCumsumPhase {
-    num_elems: u32,
+pub struct MortonizeArgs {
+    pub rects_buffer: wgpu::Buffer,
+    pub keys_buffer: wgpu::Buffer,
+    pub global_bounds_buffer: wgpu::Buffer,
+    pub num_rects_buffer: wgpu::Buffer,
 }
 
-impl RadixSortCumsumPhase {
-    pub fn new(num_elems: u32) -> Self {
-        Self { num_elems }
+pub struct Mortonize {
+    num_rects: u32,
+}
+
+impl Mortonize {
+    pub fn new(num_rects: u32) -> Self {
+        Self { num_rects }
     }
 }
-impl<'a> ComputeShader<'a> for RadixSortCumsumPhase {
-    type Args = RadixSortPhaseArgs;
+
+impl<'a> ComputeShader<'a> for Mortonize {
+    type Args = MortonizeArgs;
     type Ret = ();
 
     fn entry_point(&self) -> &'static str {
-        "cumsum"
+        "generate_morton_keys"
     }
 
     fn load_source_code(&self) -> &'static str {
-        include_str!("../../../shaders/lbvh/radix_sort.wgsl")
+        include_str!("../../../shaders/lbvh/mortonize.wgsl")
     }
 
     fn resource_buffers_with_bind_group_layouts(
@@ -37,11 +45,11 @@ impl<'a> ComputeShader<'a> for RadixSortCumsumPhase {
                     binding: 0,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: size_of::<Params>() as u64,
-                        usages: BufferUsages::UNIFORM,
+                        size: self.num_rects as u64 * size_of::<RectangleBounds>() as u64,
+                        usages: BufferUsages::STORAGE,
                     },
                     count: None,
                 },
@@ -49,10 +57,10 @@ impl<'a> ComputeShader<'a> for RadixSortCumsumPhase {
                     binding: 1,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_elems as u64 * size_of::<u32>() as u64,
+                        size: self.num_rects as u64 * 8,
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
@@ -61,11 +69,11 @@ impl<'a> ComputeShader<'a> for RadixSortCumsumPhase {
                     binding: 2,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: 16 * 4,
-                        usages: BufferUsages::STORAGE,
+                        size: size_of::<RectangleBounds>() as u64,
+                        usages: BufferUsages::UNIFORM,
                     },
                     count: None,
                 },
@@ -73,23 +81,11 @@ impl<'a> ComputeShader<'a> for RadixSortCumsumPhase {
                     binding: 3,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_elems as u64 * size_of::<u32>() as u64,
-                        usages: BufferUsages::STORAGE,
-                    },
-                    count: None,
-                },
-                ResourceBinding {
-                    binding: 4,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                        size: 16 * 4,
-                        usages: BufferUsages::STORAGE,
+                        size: 4,
+                        usages: BufferUsages::UNIFORM,
                     },
                     count: None,
                 },
@@ -104,14 +100,15 @@ impl<'a> ComputeShader<'a> for RadixSortCumsumPhase {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {
+        let num_wg = ((self.num_rects + 255) / 256).max(1);
+
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
             &[
-                ResourceType::Buffer(args.param_buffer.clone()),
-                ResourceType::Buffer(args.input_arr_buffer.clone()),
-                ResourceType::Buffer(args.count_arr_buffer.clone()),
-                ResourceType::Buffer(args.output_arr_buffer.clone()),
-                ResourceType::Buffer(args.global_offsets_buffer.clone()),
+                ResourceType::Buffer(args.rects_buffer),
+                ResourceType::Buffer(args.keys_buffer),
+                ResourceType::Buffer(args.global_bounds_buffer),
+                ResourceType::Buffer(args.num_rects_buffer),
             ],
             device,
         );
@@ -123,7 +120,7 @@ impl<'a> ComputeShader<'a> for RadixSortCumsumPhase {
 
             pass.set_pipeline(&built_data.pipeline);
             pass.set_bind_group(0, Some(bind_group), &[]);
-            pass.dispatch_workgroups(1, 1, 1);
+            pass.dispatch_workgroups(num_wg, 1, 1);
         }
 
         queue.submit(std::iter::once(encoder.finish()));

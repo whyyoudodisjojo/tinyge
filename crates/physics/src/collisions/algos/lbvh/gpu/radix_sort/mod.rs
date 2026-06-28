@@ -1,13 +1,9 @@
 use tinyge_graphics::shaders::{ComputeShaderWrapper, buffers::Buffers};
 use wgpu::{Buffer, Device};
 
-use crate::collisions::algos::lbvh::gpu::radix_sort::{
-    count::RadixSortCountPhase, cumsum::RadixSortCumsumPhase, rearrange::RadixSortRearrangePhase,
-};
+use crate::collisions::algos::lbvh::gpu::radix_sort::phase::{RadixSortPhase, RadixSortStage};
 
-pub mod count;
-pub mod cumsum;
-pub mod rearrange;
+pub mod phase;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -33,18 +29,27 @@ pub struct RadixSortInternalBuffers {
 }
 
 pub struct RadixSort<'a> {
-    count: ComputeShaderWrapper<'a, RadixSortCountPhase>,
-    cumsum: ComputeShaderWrapper<'a, RadixSortCumsumPhase>,
-    rearrange: ComputeShaderWrapper<'a, RadixSortRearrangePhase>,
+    count: ComputeShaderWrapper<'a, RadixSortPhase>,
+    cumsum: ComputeShaderWrapper<'a, RadixSortPhase>,
+    rearrange: ComputeShaderWrapper<'a, RadixSortPhase>,
     num_elems: u32,
     buffers: RadixSortInternalBuffers,
 }
 
 impl<'a> RadixSort<'a> {
     pub fn new(num_elems: u32, device: &Device) -> Self {
-        let count = ComputeShaderWrapper::new(RadixSortCountPhase::new(num_elems), device);
-        let cumsum = ComputeShaderWrapper::new(RadixSortCumsumPhase::new(num_elems), device);
-        let rearrange = ComputeShaderWrapper::new(RadixSortRearrangePhase::new(num_elems), device);
+        let count = ComputeShaderWrapper::new(
+            RadixSortPhase::new(num_elems, RadixSortStage::Count),
+            device,
+        );
+        let cumsum = ComputeShaderWrapper::new(
+            RadixSortPhase::new(num_elems, RadixSortStage::Cumsum),
+            device,
+        );
+        let rearrange = ComputeShaderWrapper::new(
+            RadixSortPhase::new(num_elems, RadixSortStage::Rearrange),
+            device,
+        );
 
         let buffers = Buffers::build(device, &count.buffer_build_spec.buffer_build_spec);
 

@@ -5,27 +5,45 @@ use tinyge_graphics::shaders::{
 };
 use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
-use crate::collisions::algos::lbvh::gpu::radix_sort::{Params, RadixSortPhaseArgs};
-
-pub struct RadixSortRearrangePhase {
-    num_elems: u32,
+pub struct BuildTreeArgs {
+    pub keys_buffer: wgpu::Buffer,
+    pub rects_buffer: wgpu::Buffer,
+    pub nodes_buffer: wgpu::Buffer,
+    pub counts_buffer: wgpu::Buffer,
+    pub params_buffer: wgpu::Buffer,
 }
 
-impl RadixSortRearrangePhase {
-    pub fn new(num_elems: u32) -> Self {
-        Self { num_elems }
+pub enum BuildTreeStage {
+    BuildLeaves,
+    BuildStructure,
+    ComputeBounds,
+}
+
+pub struct BuildTree {
+    num_leaves: u32,
+    stage: BuildTreeStage,
+}
+
+impl BuildTree {
+    pub fn new(num_leaves: u32, stage: BuildTreeStage) -> Self {
+        Self { num_leaves, stage }
     }
 }
-impl<'a> ComputeShader<'a> for RadixSortRearrangePhase {
-    type Args = RadixSortPhaseArgs;
+
+impl<'a> ComputeShader<'a> for BuildTree {
+    type Args = BuildTreeArgs;
     type Ret = ();
 
     fn entry_point(&self) -> &'static str {
-        "rearrange"
+        match &self.stage {
+            BuildTreeStage::BuildLeaves => "build_leaves",
+            BuildTreeStage::BuildStructure => "build_structure",
+            BuildTreeStage::ComputeBounds => "compute_bounds",
+        }
     }
 
     fn load_source_code(&self) -> &'static str {
-        include_str!("../../../shaders/lbvh/radix_sort.wgsl")
+        include_str!("../../../shaders/lbvh/build_tree.wgsl")
     }
 
     fn resource_buffers_with_bind_group_layouts(
@@ -37,11 +55,11 @@ impl<'a> ComputeShader<'a> for RadixSortRearrangePhase {
                     binding: 0,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: size_of::<Params>() as u64,
-                        usages: BufferUsages::UNIFORM,
+                        size: self.num_leaves as u64 * 8,
+                        usages: BufferUsages::STORAGE,
                     },
                     count: None,
                 },
@@ -52,7 +70,7 @@ impl<'a> ComputeShader<'a> for RadixSortRearrangePhase {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_elems as u64 * size_of::<u32>() as u64,
+                        size: self.num_leaves as u64 * 24,
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
@@ -64,7 +82,7 @@ impl<'a> ComputeShader<'a> for RadixSortRearrangePhase {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: 16 * 4,
+                        size: (2 * self.num_leaves - 1) as u64 * 32,
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
@@ -76,7 +94,7 @@ impl<'a> ComputeShader<'a> for RadixSortRearrangePhase {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_elems as u64 * size_of::<u32>() as u64,
+                        size: (self.num_leaves - 1) as u64 * 4,
                         usages: BufferUsages::STORAGE,
                     },
                     count: None,
@@ -85,11 +103,11 @@ impl<'a> ComputeShader<'a> for RadixSortRearrangePhase {
                     binding: 4,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: 16 * 4,
-                        usages: BufferUsages::STORAGE,
+                        size: 4,
+                        usages: BufferUsages::UNIFORM,
                     },
                     count: None,
                 },
@@ -104,16 +122,20 @@ impl<'a> ComputeShader<'a> for RadixSortRearrangePhase {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {
-        let num_wg = ((self.num_elems + 255) / 256).max(1);
+        let num_wg = match &self.stage {
+            BuildTreeStage::BuildLeaves => ((self.num_leaves + 255) / 256).max(1),
+            BuildTreeStage::BuildStructure => ((self.num_leaves - 1 + 255) / 256).max(1),
+            BuildTreeStage::ComputeBounds => ((self.num_leaves + 255) / 256).max(1),
+        };
 
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
             &[
-                ResourceType::Buffer(args.param_buffer),
-                ResourceType::Buffer(args.input_arr_buffer),
-                ResourceType::Buffer(args.count_arr_buffer),
-                ResourceType::Buffer(args.output_arr_buffer),
-                ResourceType::Buffer(args.global_offsets_buffer),
+                ResourceType::Buffer(args.keys_buffer),
+                ResourceType::Buffer(args.rects_buffer),
+                ResourceType::Buffer(args.nodes_buffer),
+                ResourceType::Buffer(args.counts_buffer),
+                ResourceType::Buffer(args.params_buffer),
             ],
             device,
         );

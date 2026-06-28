@@ -21,7 +21,6 @@ struct ModelInfo {
 @group(0) @binding(1) var<storage, read> model_infos: array<ModelInfo>;
 @group(0) @binding(2) var<storage, read_write> output_rect_atomic: array<AtomicRectangleBounds>;
 @group(0) @binding(3) var<storage, read_write> output_rect: array<RectangleBounds>;
-@group(0) @binding(4) var<uniform> num_models: u32; 
 
 const INF = 3.402823466e+38f;
 
@@ -87,7 +86,7 @@ fn compute_rects(
 @compute @workgroup_size(64)
 fn convert_atomic_bounds_to_bounds(@builtin(global_invocation_id) g_id: vec3<u32>) {
     let model_idx = g_id.x;
-    if (model_idx >= num_models) { return; }
+    if (model_idx >= arrayLength(&model_infos)) { return; }
 
     let min_x = atomicLoad(&output_rect_atomic[model_idx].min_x);
     let min_y = atomicLoad(&output_rect_atomic[model_idx].min_y);

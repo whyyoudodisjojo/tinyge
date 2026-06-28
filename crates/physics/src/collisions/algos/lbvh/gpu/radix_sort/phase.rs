@@ -7,22 +7,33 @@ use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncode
 
 use crate::collisions::algos::lbvh::gpu::radix_sort::{Params, RadixSortPhaseArgs};
 
-pub struct RadixSortCountPhase {
-    num_elems: u32,
+pub enum RadixSortStage {
+    Count,
+    Cumsum,
+    Rearrange,
 }
 
-impl RadixSortCountPhase {
-    pub fn new(num_elems: u32) -> Self {
-        Self { num_elems }
+pub struct RadixSortPhase {
+    num_elems: u32,
+    stage: RadixSortStage,
+}
+
+impl RadixSortPhase {
+    pub fn new(num_elems: u32, stage: RadixSortStage) -> Self {
+        Self { num_elems, stage }
     }
 }
 
-impl<'a> ComputeShader<'a> for RadixSortCountPhase {
+impl<'a> ComputeShader<'a> for RadixSortPhase {
     type Args = RadixSortPhaseArgs;
     type Ret = ();
 
     fn entry_point(&self) -> &'static str {
-        "count"
+        match &self.stage {
+            RadixSortStage::Count => "count",
+            RadixSortStage::Cumsum => "cumsum",
+            RadixSortStage::Rearrange => "rearrange",
+        }
     }
 
     fn load_source_code(&self) -> &'static str {
@@ -105,7 +116,12 @@ impl<'a> ComputeShader<'a> for RadixSortCountPhase {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {
-        let num_wg = ((self.num_elems + 255) / 256).max(1);
+        let num_wg = match &self.stage {
+            RadixSortStage::Count | RadixSortStage::Rearrange => {
+                ((self.num_elems + 255) / 256).max(1)
+            }
+            RadixSortStage::Cumsum => 1,
+        };
 
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
