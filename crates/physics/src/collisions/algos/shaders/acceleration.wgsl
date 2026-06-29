@@ -16,18 +16,10 @@ struct GpuRay {
 };
 
 @group(0) @binding(0) var tlas: acceleration_structure;
-
-@group(0) @binding(1)
-var<storage, read> rays: array<GpuRay>;
-
-@group(0) @binding(2)
-var<storage, read_write> candidates: array<RawCandidate>;
-
-@group(0) @binding(3)
-var<storage, read_write> counter: atomic<u32>;
-
+@group(0) @binding(1) var<storage, read> rays: array<GpuRay>;
+@group(0) @binding(2) var<storage, read_write> candidates: array<RawCandidate>;
+@group(0) @binding(3) var<storage, read_write> counter: atomic<u32>;
 @group(0) @binding(4) var<uniform> num_rays: u32;
-
 @group(0) @binding(5) var<uniform> max_candidates: u32;
 
 @compute @workgroup_size(256)
