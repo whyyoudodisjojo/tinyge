@@ -5,8 +5,8 @@ use std::{
 
 use tinyge_graphics::{
     renderer::strategies::{
-        RenderAble,
         single::{SinglePass, StateRenderSinglePass},
+        RenderAble,
     },
     shaders::buffers::{Buffers, ResourceType},
     state::{StateRender, StateUpdates},
@@ -15,9 +15,9 @@ use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPa
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    ShaderId,
     logic::UpdateEvents,
     shader::pentagon::{INDICES, VERTICES},
+    ShaderId,
 };
 
 pub struct State {
@@ -61,7 +61,7 @@ impl StateUpdates for State {
             .as_ref()
             .unwrap()
             .buffer_build_spec;
-        let new_buffer = Buffers::build(device, spec);
+        let new_buffer = Buffers::build(device, spec, false);
         queue.write_buffer(
             &new_buffer.vertex_buffers[0],
             0,
@@ -73,7 +73,7 @@ impl StateUpdates for State {
             bytemuck::cast_slice(INDICES),
         );
         queue.write_buffer(
-            &new_buffer.resource_buffers[0].buffers[0],
+            new_buffer.resource_buffers[0].buffers[0].as_ref().unwrap(),
             0,
             bytemuck::cast_slice(&[SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -93,7 +93,7 @@ impl StateUpdates for State {
                         .unwrap()
                         .as_secs_f32();
                     q.write_buffer(
-                        &b.resource_buffers[0].buffers[0],
+                        b.resource_buffers[0].buffers[0].as_ref().unwrap(),
                         0,
                         bytemuck::cast_slice(&[time_val]),
                     )
@@ -163,7 +163,7 @@ impl RenderAble<ShaderId> for State {
         let resources: Vec<ResourceType> = buffers.resource_buffers[0]
             .buffers
             .iter()
-            .map(|b| ResourceType::Buffer(b.clone()))
+            .filter_map(|b| b.as_ref().map(|buf| ResourceType::Buffer(buf.clone())))
             .collect();
 
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);

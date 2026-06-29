@@ -6,8 +6,8 @@ use std::{
 use image::DynamicImage;
 use tinyge_graphics::{
     renderer::strategies::{
-        RenderAble,
         single::{SinglePass, StateRenderSinglePass},
+        RenderAble,
     },
     shaders::buffers::{Buffers, ResourceType},
     state::{StateRender, StateUpdates},
@@ -15,7 +15,7 @@ use tinyge_graphics::{
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
 use winit::dpi::PhysicalSize;
 
-use crate::{ShaderId, logic::UpdateEvents, shader::SpriteData};
+use crate::{logic::UpdateEvents, shader::SpriteData, ShaderId};
 
 pub struct State {
     pub buffers: Option<Buffers>,
@@ -65,7 +65,7 @@ impl StateUpdates for State {
             .as_ref()
             .unwrap()
             .buffer_build_spec;
-        let new_buffer = Buffers::build(device, spec);
+        let new_buffer = Buffers::build(device, spec, false);
 
         if let Some(resource_group) = new_buffer.resource_buffers.get(1) {
             if let Some(texture) = resource_group.textures.first() {
@@ -79,14 +79,14 @@ impl StateUpdates for State {
             .as_secs_f32();
 
         queue.write_buffer(
-            &new_buffer.resource_buffers[0].buffers[0],
+            new_buffer.resource_buffers[0].buffers[0].as_ref().unwrap(),
             0,
             bytemuck::cast_slice(&[time_val]),
         );
 
         if !self.sprites.is_empty() {
             queue.write_buffer(
-                &new_buffer.resource_buffers[0].buffers[1],
+                new_buffer.resource_buffers[0].buffers[1].as_ref().unwrap(),
                 0,
                 bytemuck::cast_slice(&self.sprites),
             );
@@ -105,7 +105,7 @@ impl StateUpdates for State {
                         .unwrap()
                         .as_secs_f32();
                     q.write_buffer(
-                        &b.resource_buffers[0].buffers[0],
+                        b.resource_buffers[0].buffers[0].as_ref().unwrap(),
                         0,
                         bytemuck::cast_slice(&[time_val]),
                     );
@@ -116,7 +116,7 @@ impl StateUpdates for State {
                 self.buffers.as_ref().zip(queue).map(|(b, q)| {
                     if !self.sprites.is_empty() {
                         q.write_buffer(
-                            &b.resource_buffers[0].buffers[1],
+                            b.resource_buffers[0].buffers[1].as_ref().unwrap(),
                             0,
                             bytemuck::cast_slice(&self.sprites),
                         )
@@ -180,7 +180,7 @@ impl RenderAble<ShaderId> for State {
         let resources0: Vec<ResourceType> = buffers.resource_buffers[0]
             .buffers
             .iter()
-            .map(|b| ResourceType::Buffer(b.clone()))
+            .filter_map(|b| b.as_ref().map(|buf| ResourceType::Buffer(buf.clone())))
             .collect();
         let bind_group0 = built_data.bind_groups[0].get_or_create_bind_group(&resources0, device);
         render_pass.set_bind_group(0, bind_group0, &[]);
