@@ -3,6 +3,7 @@ use std::ops::Add;
 use bytemuck::{Pod, Zeroable};
 use glam::{Vec3A, Vec4};
 
+pub mod gpu_accelerated;
 pub mod lbvh;
 pub mod sah;
 pub mod traversal;

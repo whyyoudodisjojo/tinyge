@@ -5,8 +5,9 @@ use std::{
 
 use lru::LruCache;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
-    BufferDescriptor, BufferUsages, CommandEncoder, Device, Sampler, wgt::TextureViewDescriptor,
+    wgt::TextureViewDescriptor, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    BindingResource, Blas, Buffer, BufferDescriptor, BufferUsages, CommandEncoder, Device, Sampler,
+    Tlas,
 };
 
 use crate::shaders::{
@@ -19,6 +20,13 @@ pub struct ResourceGroup {
     pub buffers: Vec<Option<Buffer>>,
     pub textures: Vec<ResourceTexture>,
     pub samplers: Vec<Sampler>,
+    pub acceleration_structures: Vec<AccelerationStructures>,
+}
+
+#[derive(Clone)]
+pub struct AccelerationStructures {
+    pub blas: Blas,
+    pub tlas: Tlas,
 }
 
 pub struct DynamicBindGroup {
@@ -77,6 +85,7 @@ impl DynamicBindGroup {
                             ResourceType::Buffer(b) => b.as_entire_binding(),
                             ResourceType::Sampler(s) => BindingResource::Sampler(s),
                             ResourceType::Texture(t) => BindingResource::TextureView(&t.view),
+                            ResourceType::AccelerationStructure(t) => t.as_binding(),
                         },
                     })
                     .collect::<Vec<_>>(),
@@ -119,6 +128,7 @@ pub enum ResourceType {
     Buffer(Buffer),
     Sampler(Sampler),
     Texture(ResourceTexture),
+    AccelerationStructure(Tlas),
 }
 
 impl Buffers {
@@ -189,6 +199,7 @@ impl Buffers {
                 let mut buffers: Vec<Option<Buffer>> = vec![None; b.layout_entries.len()];
                 let mut textures: Vec<ResourceTexture> = Vec::new();
                 let mut samplers: Vec<Sampler> = Vec::new();
+                let mut acceleration_structures = vec![];
 
                 for (binding_idx, layout_entry) in b.layout_entries.iter().enumerate() {
                     let _binding = binding_idx as u32;
@@ -231,8 +242,16 @@ impl Buffers {
                         ResourceBindingType::StorageTexture { .. } => {
                             todo!("StorageTexture not yet implemented in build")
                         }
-                        ResourceBindingType::AccelerationStructure { .. } => {
-                            todo!("AccelerationStructure not yet implemented in build")
+                        ResourceBindingType::AccelerationStructure {
+                            tlas_desc,
+                            blas_desc,
+                            blas_geo_sz_desc,
+                            ..
+                        } => {
+                            let tlas = device.create_tlas(tlas_desc);
+                            let blas = device.create_blas(blas_desc, blas_geo_sz_desc.clone());
+
+                            acceleration_structures.push(AccelerationStructures { blas, tlas });
                         }
                         ResourceBindingType::ExternalTexture => {
                             todo!("ExternalTexture not yet implemented in build")
@@ -244,6 +263,7 @@ impl Buffers {
                     buffers,
                     textures,
                     samplers,
+                    acceleration_structures,
                 }
             })
             .collect();

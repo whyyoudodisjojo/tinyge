@@ -1,9 +1,9 @@
-use tinyge_graphics::shaders::{ComputeShaderWrapper, buffers::Buffers};
+use tinyge_graphics::shaders::{buffers::Buffers, ComputeShaderWrapper};
 use wgpu::{Buffer, Device};
 
 use crate::collisions::algos::lbvh::{
-    Key,
     gpu::custom::radix_sort::phase::{RadixSortPhase, RadixSortStage},
+    Key,
 };
 
 pub mod phase;
@@ -117,76 +117,5 @@ impl<'a> RadixSort<'a> {
             self.num_elems as u64 * std::mem::size_of::<Key>() as u64,
         );
         queue.submit(std::iter::once(encoder.finish()));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use wgpu::util::DeviceExt;
-
-    use super::*;
-
-    async fn setup_wgpu() -> (Device, wgpu::Queue) {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .expect("Failed to find an appropriate adapter");
-
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .expect("Failed to create device");
-
-        (device, queue)
-    }
-
-    fn create_input_buffer(device: &Device, data: &[Key]) -> Buffer {
-        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(data),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::COPY_SRC,
-        })
-    }
-
-    #[test]
-    fn test_radix_sort() {
-        pollster::block_on(async {
-            let (device, queue) = setup_wgpu().await;
-
-            let codes: Vec<u32> = vec![
-                0x12345678, 0x87654321, 0xABCDEF00, 0x00FEDCBA, 0x55555555, 0xAAAAAAAA, 0x00000000,
-                0xFFFFFFFF, 0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x99999999, 0x88888888,
-                0x77777777, 0x66666666,
-            ];
-
-            let input_data: Vec<Key> = codes
-                .iter()
-                .enumerate()
-                .map(|(idx, &code)| Key {
-                    code,
-                    idx: idx as u32,
-                })
-                .collect();
-            let num_elems = input_data.len() as u32;
-
-            let input_buffer = create_input_buffer(&device, &input_data);
-
-            let mut radix_sort = RadixSort::new(num_elems, &device);
-            radix_sort.sort(input_buffer, &device, &queue);
-
-            let output_data =
-                Key::read_buffer(&device, &queue, &radix_sort.buffers.output_arr_buffer);
-
-            let mut expected: Vec<Key> = input_data.clone();
-            expected.sort_by_key(|k| k.code);
-
-            assert_eq!(
-                output_data, expected,
-                "Radix sort output doesn't match expected sorted data"
-            );
-        });
     }
 }

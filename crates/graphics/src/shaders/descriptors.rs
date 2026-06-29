@@ -1,10 +1,11 @@
 use std::num::{NonZero, NonZeroU32};
 
 use wgpu::{
-    BindGroupLayoutEntry, BindingType, BlendState, BufferBindingType, BufferSize, BufferUsages,
-    ColorWrites, DepthStencilState, MultisampleState, PipelineCompilationOptions, PrimitiveState,
-    SamplerBindingType, SamplerDescriptor, ShaderStages, StorageTextureAccess, TextureDescriptor,
-    TextureFormat, TextureSampleType, TextureViewDimension, VertexBufferLayout,
+    BindGroupLayoutEntry, BindingType, BlasGeometrySizeDescriptors, BlendState, BufferBindingType,
+    BufferSize, BufferUsages, ColorWrites, DepthStencilState, Label, MultisampleState,
+    PipelineCompilationOptions, PrimitiveState, SamplerBindingType, SamplerDescriptor,
+    ShaderStages, StorageTextureAccess, TextureDescriptor, TextureFormat, TextureSampleType,
+    TextureViewDimension, VertexBufferLayout,
 };
 
 pub struct ShaderPipelineDescriptor<'a> {
@@ -84,6 +85,9 @@ pub enum ResourceBindingType<'a> {
         view_dimension: TextureViewDimension,
     },
     AccelerationStructure {
+        tlas_desc: wgpu::wgt::CreateTlasDescriptor<Label<'a>>,
+        blas_desc: wgpu::wgt::CreateBlasDescriptor<Label<'a>>,
+        blas_geo_sz_desc: BlasGeometrySizeDescriptors,
         vertex_return: bool,
     },
     ExternalTexture,
@@ -92,7 +96,7 @@ pub enum ResourceBindingType<'a> {
 impl<'a> From<&ResourceBindingType<'a>> for BindingType {
     fn from(value: &ResourceBindingType) -> Self {
         match value {
-            ResourceBindingType::AccelerationStructure { vertex_return } => {
+            ResourceBindingType::AccelerationStructure { vertex_return, .. } => {
                 BindingType::AccelerationStructure {
                     vertex_return: *vertex_return,
                 }
