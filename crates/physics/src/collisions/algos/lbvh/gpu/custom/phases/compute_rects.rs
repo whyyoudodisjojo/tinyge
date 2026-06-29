@@ -90,7 +90,7 @@ impl<'a> ComputeShader<'a> for ComputeRects {
     }
 
     fn load_source_code(&self) -> &'static str {
-        include_str!("../../../shaders/lbvh/compute_rects.wgsl")
+        include_str!("../../../../shaders/lbvh/compute_rects.wgsl")
     }
 
     fn dispatch(

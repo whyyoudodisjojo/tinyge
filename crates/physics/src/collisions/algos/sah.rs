@@ -1,6 +1,6 @@
 use glam::Vec3A;
 
-use crate::collisions::algos::{BVHNode, BVHTree, CollisionAlgorithm, RectangleBounds};
+use crate::collisions::algos::{BVHNode, BVHTree, CpuCollisionAlgorithm, RectangleBounds};
 
 #[derive(Clone, Copy)]
 pub struct Bin {
@@ -200,15 +200,20 @@ impl SAH {
     }
 }
 
-impl CollisionAlgorithm for SAH {
-    fn build(&mut self, rects: &[RectangleBounds]) -> BVHTree {
-        if rects.is_empty() {
+impl CpuCollisionAlgorithm for SAH {
+    fn build(&mut self, vertices: Vec<Vec<Vec3A>>) -> BVHTree {
+        if vertices.is_empty() {
             return BVHTree::default();
         }
 
+        let rects: Vec<RectangleBounds> = vertices
+            .iter()
+            .map(|prim_verts| RectangleBounds::from(prim_verts.as_slice()))
+            .collect();
+
         let mut prim_indices: Vec<usize> = (0..rects.len()).collect();
         let mut nodes = Vec::with_capacity(rects.len() * 2);
-        let root_idx = self.build_tree(&mut prim_indices, rects, &mut nodes);
+        let root_idx = self.build_tree(&mut prim_indices, &rects, &mut nodes);
 
         BVHTree {
             tree: nodes,

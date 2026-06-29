@@ -1,9 +1,12 @@
+use glam::Vec3A;
 use rayon::{
     iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
     slice::ParallelSliceMut,
 };
 
-use crate::collisions::algos::{BVHNode, BVHTree, CollisionAlgorithm, RectangleBounds, lbvh::Key};
+use crate::collisions::algos::{
+    BVHNode, BVHTree, CpuCollisionAlgorithm, RectangleBounds, lbvh::Key,
+};
 
 #[derive(Default)]
 pub struct LinearBVH;
@@ -86,11 +89,16 @@ impl LinearBVH {
     }
 }
 
-impl CollisionAlgorithm for LinearBVH {
-    fn build(&mut self, rects: &[RectangleBounds]) -> BVHTree {
-        if rects.is_empty() {
+impl CpuCollisionAlgorithm for LinearBVH {
+    fn build(&mut self, vertices: Vec<Vec<Vec3A>>) -> BVHTree {
+        if vertices.is_empty() {
             return BVHTree::default();
         }
+
+        let rects: Vec<RectangleBounds> = vertices
+            .iter()
+            .map(|prim_verts| RectangleBounds::from(prim_verts.as_slice()))
+            .collect();
 
         let global_bounds = rects
             .par_iter()
@@ -104,7 +112,7 @@ impl CollisionAlgorithm for LinearBVH {
         keys.par_sort_unstable_by_key(|k| k.code);
 
         let mut nodes = Vec::with_capacity(rects.len() * 2);
-        let root_idx = Self::build_tree(&keys, rects, &mut nodes);
+        let root_idx = Self::build_tree(&keys, &rects, &mut nodes);
         BVHTree {
             tree: nodes,
             root_idx,

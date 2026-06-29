@@ -1,6 +1,7 @@
 use std::ops::Add;
 
-use glam::Vec3A;
+use bytemuck::{Pod, Zeroable};
+use glam::{Vec3A, Vec4};
 
 pub mod lbvh;
 pub mod sah;
@@ -28,12 +29,87 @@ impl RectangleBounds {
     };
 }
 
+impl From<&[Vec3A]> for RectangleBounds {
+    fn from(vertices: &[Vec3A]) -> RectangleBounds {
+        vertices
+            .iter()
+            .fold(RectangleBounds::MAX, |bounds, &v| RectangleBounds {
+                min: bounds.min.min(v),
+                max: bounds.max.max(v),
+            })
+    }
+}
+
 impl Add for RectangleBounds {
     type Output = RectangleBounds;
     fn add(self, rhs: RectangleBounds) -> Self::Output {
         RectangleBounds {
             min: self.min.min(rhs.min),
             max: self.max.max(rhs.max),
+        }
+    }
+}
+#[repr(C)]
+#[derive(Pod, Zeroable, Clone, Copy, Debug)]
+pub struct FlattenedBVHNode {
+    pub min: Vec4,
+    pub max: Vec4,
+    pub parent: i32,
+    pub left_child: i32,
+    pub right_child: i32,
+    pub node_type: u32,
+}
+
+impl FlattenedBVHNode {
+    pub const fn size_in_bytes() -> usize {
+        48
+    }
+
+    pub fn read_buffer(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        buffer: &wgpu::Buffer,
+    ) -> Vec<FlattenedBVHNode> {
+        use std::sync::mpsc;
+        use wgpu::{BufferDescriptor, BufferUsages, MapMode};
+
+        let size = buffer.size();
+
+        let staging_buffer = device.create_buffer(&BufferDescriptor {
+            label: None,
+            size,
+            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Read FlattenedBVHNodes"),
+        });
+        encoder.copy_buffer_to_buffer(buffer, 0, &staging_buffer, 0, size);
+        queue.submit(std::iter::once(encoder.finish()));
+
+        let buffer_slice = staging_buffer.slice(..);
+        let (tx, rx) = mpsc::channel();
+
+        buffer_slice.map_async(MapMode::Read, move |result| {
+            tx.send(result).unwrap();
+        });
+
+        device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .unwrap();
+
+        if let Ok(Ok(())) = rx.recv() {
+            let data = buffer_slice.get_mapped_range();
+            let result: Vec<FlattenedBVHNode> = bytemuck::cast_slice(&data).to_vec();
+            drop(data);
+            staging_buffer.unmap();
+            result
+        } else {
+            panic!("Failed to read FlattenedBVHNodes back from buffer!");
         }
     }
 }
@@ -173,6 +249,16 @@ impl BVHTree {
     }
 }
 
-pub trait CollisionAlgorithm {
-    fn build(&mut self, rects: &[RectangleBounds]) -> BVHTree;
+pub trait CpuCollisionAlgorithm {
+    fn build(&mut self, vertices: Vec<Vec<Vec3A>>) -> BVHTree;
+}
+
+pub trait GpuCollisionAlgorithm {
+    fn build(
+        &mut self,
+        model_verts_buffer: wgpu::Buffer,
+        model_infos_buffer: wgpu::Buffer,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> wgpu::Buffer;
 }

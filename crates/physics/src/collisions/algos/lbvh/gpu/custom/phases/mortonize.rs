@@ -5,42 +5,35 @@ use tinyge_graphics::shaders::{
 };
 use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
-use crate::collisions::algos::lbvh::{
-    Key,
-    gpu::radix_sort::{Params, RadixSortPhaseArgs},
-};
+use crate::collisions::algos::RectangleBounds;
 
-pub enum RadixSortStage {
-    Count,
-    Cumsum,
-    Rearrange,
+pub struct MortonizeArgs {
+    pub rects_buffer: wgpu::Buffer,
+    pub keys_buffer: wgpu::Buffer,
+    pub global_bounds_buffer: wgpu::Buffer,
+    pub num_rects_buffer: wgpu::Buffer,
 }
 
-pub struct RadixSortPhase {
-    num_elems: u32,
-    stage: RadixSortStage,
+pub struct Mortonize {
+    num_rects: u32,
 }
 
-impl RadixSortPhase {
-    pub fn new(num_elems: u32, stage: RadixSortStage) -> Self {
-        Self { num_elems, stage }
+impl Mortonize {
+    pub fn new(num_rects: u32) -> Self {
+        Self { num_rects }
     }
 }
 
-impl<'a> ComputeShader<'a> for RadixSortPhase {
-    type Args = RadixSortPhaseArgs;
+impl<'a> ComputeShader<'a> for Mortonize {
+    type Args = MortonizeArgs;
     type Ret = ();
 
     fn entry_point(&self) -> &'static str {
-        match &self.stage {
-            RadixSortStage::Count => "count",
-            RadixSortStage::Cumsum => "cumsum",
-            RadixSortStage::Rearrange => "rearrange",
-        }
+        "generate_morton_keys"
     }
 
     fn load_source_code(&self) -> &'static str {
-        include_str!("../../../shaders/lbvh/radix_sort.wgsl")
+        include_str!("../../../../shaders/lbvh/mortonize.wgsl")
     }
 
     fn resource_buffers_with_bind_group_layouts(
@@ -52,11 +45,11 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                     binding: 0,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: size_of::<Params>() as u64,
-                        usages: BufferUsages::UNIFORM,
+                        size: self.num_rects as u64 * size_of::<RectangleBounds>() as u64,
+                        usages: BufferUsages::STORAGE,
                         is_input: false,
                     },
                     count: None,
@@ -65,12 +58,12 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                     binding: 1,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_elems as u64 * size_of::<Key>() as u64,
+                        size: self.num_rects as u64 * 8,
                         usages: BufferUsages::STORAGE,
-                        is_input: true,
+                        is_input: false,
                     },
                     count: None,
                 },
@@ -78,11 +71,11 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                     binding: 2,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: 16 * 4,
-                        usages: BufferUsages::STORAGE,
+                        size: size_of::<RectangleBounds>() as u64,
+                        usages: BufferUsages::UNIFORM,
                         is_input: false,
                     },
                     count: None,
@@ -91,24 +84,11 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                     binding: 3,
                     visibility: ShaderStages::COMPUTE,
                     ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_elems as u64 * size_of::<Key>() as u64,
-                        usages: BufferUsages::STORAGE,
-                        is_input: false,
-                    },
-                    count: None,
-                },
-                ResourceBinding {
-                    binding: 4,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                        size: 16 * 4,
-                        usages: BufferUsages::STORAGE,
+                        size: 4,
+                        usages: BufferUsages::UNIFORM,
                         is_input: false,
                     },
                     count: None,
@@ -124,21 +104,15 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {
-        let num_wg = match &self.stage {
-            RadixSortStage::Count | RadixSortStage::Rearrange => {
-                ((self.num_elems + 255) / 256).max(1)
-            }
-            RadixSortStage::Cumsum => 1,
-        };
+        let num_wg = ((self.num_rects + 255) / 256).max(1);
 
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
             &[
-                ResourceType::Buffer(args.param_buffer),
-                ResourceType::Buffer(args.input_arr_buffer),
-                ResourceType::Buffer(args.count_arr_buffer),
-                ResourceType::Buffer(args.output_arr_buffer),
-                ResourceType::Buffer(args.global_offsets_buffer),
+                ResourceType::Buffer(args.rects_buffer),
+                ResourceType::Buffer(args.keys_buffer),
+                ResourceType::Buffer(args.global_bounds_buffer),
+                ResourceType::Buffer(args.num_rects_buffer),
             ],
             device,
         );
