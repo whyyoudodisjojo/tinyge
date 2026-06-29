@@ -5,8 +5,8 @@ use std::{
 
 use tinyge_graphics::{
     renderer::strategies::{
-        single::{SinglePass, StateRenderSinglePass},
         RenderAble,
+        single::{SinglePass, StateRenderSinglePass},
     },
     shaders::buffers::{Buffers, ResourceType},
     state::{StateRender, StateUpdates},
@@ -15,9 +15,9 @@ use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPa
 use winit::dpi::PhysicalSize;
 
 use crate::{
+    ShaderId,
     logic::UpdateEvents,
     shader::pentagon::{INDICES, VERTICES},
-    ShaderId,
 };
 
 pub struct State {

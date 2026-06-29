@@ -6,8 +6,8 @@ use std::{
 use image::DynamicImage;
 use tinyge_graphics::{
     renderer::strategies::{
-        single::{SinglePass, StateRenderSinglePass},
         RenderAble,
+        single::{SinglePass, StateRenderSinglePass},
     },
     shaders::buffers::{Buffers, ResourceType},
     state::{StateRender, StateUpdates},
@@ -15,7 +15,7 @@ use tinyge_graphics::{
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
 use winit::dpi::PhysicalSize;
 
-use crate::{logic::UpdateEvents, shader::SpriteData, ShaderId};
+use crate::{ShaderId, logic::UpdateEvents, shader::SpriteData};
 
 pub struct State {
     pub buffers: Option<Buffers>,
