@@ -8,7 +8,12 @@ struct ModelInfo {
     stride: u32,
 }
 
-@group(0) @binding(0) var<storage, read> model_verts: array<vec3<f32>>;
+struct Vertex {
+    pos: vec3<f32>,
+    _pad: f32,
+}
+
+@group(0) @binding(0) var<storage, read> model_verts: array<Vertex>;
 @group(0) @binding(1) var<storage, read> model_infos: array<ModelInfo>;
 @group(0) @binding(2) var<storage, read_write> output_rect: array<RectangleBounds>;
 
@@ -34,7 +39,7 @@ fn compute_rects(
 
     var i = lid;
     while (i < model_vertex_count) {
-        let vert = model_verts[model_offset + i];
+        let vert = model_verts[model_offset + i].pos;
         local_min = min(local_min, vert);
         local_max = max(local_max, vert);
         i += 256u;

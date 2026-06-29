@@ -54,13 +54,13 @@ impl<'a> RadixSort<'a> {
             device,
         );
 
-        let buffers = Buffers::build(device, &count.buffer_build_spec.buffer_build_spec);
+        let buffers = Buffers::build(device, &count.buffer_build_spec.buffer_build_spec, false);
 
         let buffers = RadixSortInternalBuffers {
-            param_buffer: buffers.resource_buffers[0].buffers[0].clone(),
-            count_arr_buffer: buffers.resource_buffers[0].buffers[1].clone(),
-            output_arr_buffer: buffers.resource_buffers[0].buffers[2].clone(),
-            global_offsets_buffer: buffers.resource_buffers[0].buffers[3].clone(),
+            param_buffer: buffers.resource_buffers[0].buffers[0].clone().unwrap(),
+            count_arr_buffer: buffers.resource_buffers[0].buffers[2].clone().unwrap(),
+            output_arr_buffer: buffers.resource_buffers[0].buffers[3].clone().unwrap(),
+            global_offsets_buffer: buffers.resource_buffers[0].buffers[4].clone().unwrap(),
         };
 
         Self {

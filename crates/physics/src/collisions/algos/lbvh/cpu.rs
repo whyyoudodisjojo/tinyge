@@ -5,7 +5,7 @@ use rayon::{
 };
 
 use crate::collisions::algos::{
-    BVHNode, BVHTree, CpuCollisionAlgorithm, RectangleBounds, lbvh::Key,
+    BVHNode, BVHTree, CpuCollisionAlgorithm, CpuStorage, RectangleBounds, lbvh::Key,
 };
 
 #[derive(Default)]
@@ -90,7 +90,7 @@ impl LinearBVH {
 }
 
 impl CpuCollisionAlgorithm for LinearBVH {
-    fn build(&mut self, vertices: Vec<Vec<Vec3A>>) -> BVHTree {
+    fn build(&mut self, vertices: Vec<Vec<Vec3A>>) -> BVHTree<CpuStorage> {
         if vertices.is_empty() {
             return BVHTree::default();
         }
@@ -114,8 +114,10 @@ impl CpuCollisionAlgorithm for LinearBVH {
         let mut nodes = Vec::with_capacity(rects.len() * 2);
         let root_idx = Self::build_tree(&keys, &rects, &mut nodes);
         BVHTree {
-            tree: nodes,
-            root_idx,
+            storage: CpuStorage {
+                tree: nodes,
+                root_idx,
+            },
         }
     }
 }

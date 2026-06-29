@@ -5,6 +5,26 @@ use glam::{Vec3A, Vec4};
 
 pub mod lbvh;
 pub mod sah;
+pub mod traversal;
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuRay {
+    pub origin: [f32; 3],
+    pub _pad1: f32,
+    pub dir: [f32; 3],
+    pub _pad2: f32,
+    pub inv_dir: [f32; 3],
+    pub _pad3: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct RayResult {
+    pub hit_node_idx: i32,
+    pub t_near: f32,
+    pub _pad: [f32; 2],
+}
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct RectangleBounds {
@@ -49,6 +69,7 @@ impl Add for RectangleBounds {
         }
     }
 }
+
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy, Debug)]
 pub struct FlattenedBVHNode {
@@ -184,73 +205,45 @@ impl Ray {
     }
 }
 
-#[derive(Default)]
-pub struct BVHTree {
-    pub tree: Vec<BVHNode>,
-    pub root_idx: usize,
-}
 pub enum TraversalFlow {
     Continue,
     ContinueWithNewMax(f32),
     Break,
 }
 
-impl BVHTree {
-    pub fn traverse_ray_cpu<F>(&self, ray: &Ray, mut callback: F)
-    where
-        F: FnMut(usize, f32, f32) -> TraversalFlow,
-    {
-        if self.tree.is_empty() {
-            return;
-        }
-
-        let mut stack = vec![self.root_idx];
-        let mut t_max = f32::INFINITY;
-
-        while let Some(current_idx) = stack.pop() {
-            let node = &self.tree[current_idx];
-            let Some(t_near) = ray.intersects_rect(node.rect(), t_max) else {
-                continue;
-            };
-
-            match node {
-                BVHNode::Leaf { idx, .. } => match callback(*idx, t_near, t_max) {
-                    TraversalFlow::Break => return,
-                    TraversalFlow::ContinueWithNewMax(new_max) => t_max = new_max,
-                    TraversalFlow::Continue => {}
-                },
-                BVHNode::Internal {
-                    left_child,
-                    right_child,
-                    ..
-                } => {
-                    let left_node = &self.tree[*left_child];
-                    let right_node = &self.tree[*right_child];
-                    let t_left = ray.intersects_rect(left_node.rect(), t_max);
-                    let t_right = ray.intersects_rect(right_node.rect(), t_max);
-
-                    match (t_left, t_right) {
-                        (Some(tl), Some(tr)) => {
-                            if tl < tr {
-                                stack.push(*right_child);
-                                stack.push(*left_child);
-                            } else {
-                                stack.push(*left_child);
-                                stack.push(*right_child);
-                            }
-                        }
-                        (Some(_), None) => stack.push(*left_child),
-                        (None, Some(_)) => stack.push(*right_child),
-                        (None, None) => {}
-                    }
-                }
-            }
-        }
-    }
+#[derive(Default)]
+pub struct CpuStorage {
+    pub tree: Vec<BVHNode>,
+    pub root_idx: usize,
 }
 
+pub struct GpuStorage {
+    pub nodes_buffer: wgpu::Buffer,
+    pub root_idx: usize,
+    pub num_nodes: usize,
+}
+
+#[derive(Default)]
+pub struct BVHTree<S = CpuStorage> {
+    pub storage: S,
+}
+
+pub trait CpuBVHTraversal {
+    fn traverse_ray<F>(&self, ray: &Ray, callback: F)
+    where
+        F: FnMut(usize, f32, f32) -> TraversalFlow;
+}
+pub trait GpuBVHTraversal {
+    fn traverse_gpu(
+        &self,
+        rays_buffer: &wgpu::Buffer,
+        num_rays: u32,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> wgpu::Buffer;
+}
 pub trait CpuCollisionAlgorithm {
-    fn build(&mut self, vertices: Vec<Vec<Vec3A>>) -> BVHTree;
+    fn build(&mut self, vertices: Vec<Vec<Vec3A>>) -> BVHTree<CpuStorage>;
 }
 
 pub trait GpuCollisionAlgorithm {
@@ -260,5 +253,5 @@ pub trait GpuCollisionAlgorithm {
         model_infos_buffer: wgpu::Buffer,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> wgpu::Buffer;
+    ) -> BVHTree<GpuStorage>;
 }

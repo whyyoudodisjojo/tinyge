@@ -5,8 +5,6 @@ use tinyge_graphics::shaders::{
 };
 use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
-use crate::collisions::algos::RectangleBounds;
-
 pub struct MortonizeArgs {
     pub rects_buffer: wgpu::Buffer,
     pub keys_buffer: wgpu::Buffer,
@@ -48,9 +46,9 @@ impl<'a> ComputeShader<'a> for Mortonize {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: self.num_rects as u64 * size_of::<RectangleBounds>() as u64,
+                        size: self.num_rects as u64 * 32,
                         usages: BufferUsages::STORAGE,
-                        is_input: false,
+                        is_input: true,
                     },
                     count: None,
                 },
@@ -74,7 +72,7 @@ impl<'a> ComputeShader<'a> for Mortonize {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: size_of::<RectangleBounds>() as u64,
+                        size: 32,
                         usages: BufferUsages::UNIFORM,
                         is_input: false,
                     },

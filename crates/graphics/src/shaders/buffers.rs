@@ -16,7 +16,7 @@ use crate::shaders::{
 
 #[derive(Clone)]
 pub struct ResourceGroup {
-    pub buffers: Vec<Buffer>,
+    pub buffers: Vec<Option<Buffer>>,
     pub textures: Vec<ResourceTexture>,
     pub samplers: Vec<Sampler>,
 }
@@ -100,7 +100,6 @@ pub struct BufferBuildSpec<'a> {
 pub struct ResourceGroupBuildSpec<'a> {
     pub layout_entries: Vec<ResourceBinding<'a>>,
     pub layout: BindGroupLayout,
-    pub build_input_only: bool,
 }
 
 #[derive(Clone)]
@@ -149,13 +148,17 @@ impl Buffers {
                 o.buffers
                     .iter()
                     .zip(n.buffers.iter())
-                    .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder))
+                    .for_each(|(o_buf, n_buf)| {
+                        if let (Some(o), Some(n)) = (o_buf, n_buf) {
+                            Self::copy_via_encoder(o, n, &mut encoder)
+                        }
+                    })
             });
 
         queue.submit(std::iter::once(encoder.finish()));
     }
 
-    pub fn build(device: &wgpu::Device, spec: &BufferBuildSpec) -> Self {
+    pub fn build(device: &wgpu::Device, spec: &BufferBuildSpec, build_input_only: bool) -> Self {
         let vertex_buffers = spec
             .vertex_buffer_szs
             .iter()
@@ -183,21 +186,21 @@ impl Buffers {
             .resource_buffer
             .iter()
             .map(|b| {
-                let mut entries: Vec<ResourceEntry> = Vec::new();
+                let mut buffers: Vec<Option<Buffer>> = vec![None; b.layout_entries.len()];
+                let mut textures: Vec<ResourceTexture> = Vec::new();
+                let mut samplers: Vec<Sampler> = Vec::new();
 
                 for (binding_idx, layout_entry) in b.layout_entries.iter().enumerate() {
-                    let binding = binding_idx as u32;
+                    let _binding = binding_idx as u32;
 
-                    let resource = match &layout_entry.ty {
+                    match &layout_entry.ty {
                         ResourceBindingType::Buffer {
                             size,
                             usages,
                             is_input,
                             ..
                         } => {
-                            // Skip if build mode doesn't match buffer type
-                            if b.build_input_only && !*is_input || !b.build_input_only && *is_input
-                            {
+                            if build_input_only && !*is_input || !build_input_only && *is_input {
                                 continue;
                             }
                             let buffer = device.create_buffer(&BufferDescriptor {
@@ -206,24 +209,24 @@ impl Buffers {
                                 size: align_to_4_bytes(*size),
                                 mapped_at_creation: false,
                             });
-                            ResourceType::Buffer(buffer)
+                            buffers[binding_idx] = Some(buffer);
                         }
                         ResourceBindingType::Texture {
                             texture_descriptor, ..
                         } => {
                             let texture = device.create_texture(texture_descriptor);
                             let view = texture.create_view(&TextureViewDescriptor::default());
-                            ResourceType::Texture(ResourceTexture {
+                            textures.push(ResourceTexture {
                                 texture,
                                 view,
                                 sz: texture_descriptor.size,
-                            })
+                            });
                         }
                         ResourceBindingType::Sampler {
                             sampler_descriptor, ..
                         } => {
                             let sampler = device.create_sampler(sampler_descriptor);
-                            ResourceType::Sampler(sampler)
+                            samplers.push(sampler);
                         }
                         ResourceBindingType::StorageTexture { .. } => {
                             todo!("StorageTexture not yet implemented in build")
@@ -235,42 +238,6 @@ impl Buffers {
                             todo!("ExternalTexture not yet implemented in build")
                         }
                     };
-
-                    entries.push(ResourceEntry { binding, resource });
-                }
-
-                let mut buffers: Vec<Buffer> = Vec::with_capacity(entries.len());
-                let mut textures: Vec<ResourceTexture> = Vec::new();
-                let mut samplers: Vec<Sampler> = Vec::new();
-
-                let mut bind_group_entries: Vec<ResourceType> = Vec::with_capacity(entries.len());
-                let mut wgpu_entries: Vec<BindGroupEntry> = Vec::with_capacity(entries.len());
-
-                for entry in &entries {
-                    bind_group_entries.push(entry.resource.clone());
-                    match &entry.resource {
-                        ResourceType::Buffer(buffer) => {
-                            buffers.push(buffer.clone());
-                            wgpu_entries.push(BindGroupEntry {
-                                binding: entry.binding,
-                                resource: buffer.as_entire_binding(),
-                            });
-                        }
-                        ResourceType::Texture(texture) => {
-                            textures.push(texture.clone());
-                            wgpu_entries.push(BindGroupEntry {
-                                binding: entry.binding,
-                                resource: BindingResource::TextureView(&texture.view),
-                            });
-                        }
-                        ResourceType::Sampler(sampler) => {
-                            samplers.push(sampler.clone());
-                            wgpu_entries.push(BindGroupEntry {
-                                binding: entry.binding,
-                                resource: BindingResource::Sampler(sampler),
-                            });
-                        }
-                    }
                 }
 
                 ResourceGroup {

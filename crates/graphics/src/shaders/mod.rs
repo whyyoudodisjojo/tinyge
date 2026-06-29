@@ -121,7 +121,6 @@ pub trait Shader<'a> {
                 .map(|(d, l)| ResourceGroupBuildSpec {
                     layout: l,
                     layout_entries: d.entries,
-                    build_input_only: false,
                 })
                 .collect(),
         };
@@ -286,7 +285,6 @@ pub trait ComputeShader<'a> {
                 .map(|(d, l)| ResourceGroupBuildSpec {
                     layout: l,
                     layout_entries: d.entries,
-                    build_input_only: false,
                 })
                 .collect(),
         };
