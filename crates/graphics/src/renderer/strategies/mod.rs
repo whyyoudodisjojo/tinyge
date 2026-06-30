@@ -35,5 +35,6 @@ pub trait RenderAble<K> {
         shaders: &mut HashMap<K, ShaderWrapper<Arc<dyn Shader<'a>>>>,
         view: &TextureView,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
     );
 }

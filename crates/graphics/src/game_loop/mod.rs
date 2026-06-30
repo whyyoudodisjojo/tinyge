@@ -3,8 +3,8 @@ pub mod events;
 use std::{
     hash::Hash,
     sync::{
-        Arc,
         mpsc::{self, Receiver, Sender},
+        Arc,
     },
 };
 
@@ -13,8 +13,8 @@ use winit::{application::ApplicationHandler, event::WindowEvent, window::Window}
 use crate::{
     game_loop::events::{BaseEvent, EventsExecutor, RenderEventHandle, UpdateEventOrTimedEvent},
     renderer::{
+        strategies::{single::StateRenderSinglePass, RenderDispatcher, RenderPath},
         Renderer,
-        strategies::{RenderDispatcher, RenderPath, single::StateRenderSinglePass},
     },
     state::StateUpdates,
 };

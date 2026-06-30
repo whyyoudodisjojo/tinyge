@@ -1,5 +1,5 @@
 use tinyge_graphics::shaders::{
-    buffers::{Buffers, ResourceType},
+    buffers::ResourceType,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
 use wgpu::{BufferUsages, ShaderStages};
@@ -27,11 +27,15 @@ impl AccelerationShader {
 pub struct AccelerationArgs {
     pub tlas: wgpu::Tlas,
     pub rays_buffer: wgpu::Buffer,
+    pub candidates_buffer: wgpu::Buffer,
+    pub counter_buffer: wgpu::Buffer,
+    pub num_rays_buffer: wgpu::Buffer,
+    pub max_candidates_buffer: wgpu::Buffer,
 }
 
 impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
     type Args = AccelerationArgs;
-    type Ret = (wgpu::Buffer, wgpu::Buffer);
+    type Ret = ();
 
     fn resource_buffers_with_bind_group_layouts(
         &self,
@@ -152,29 +156,14 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
     ) -> Self::Ret {
         use wgpu::ComputePassDescriptor;
 
-        let buffers = Buffers::build(device, &build_data.buffer_build_spec, false);
-
-        let candidates_buffer = buffers.resource_buffers[0].buffers[2].clone().unwrap();
-        let counter_buffer = buffers.resource_buffers[0].buffers[3].clone().unwrap();
-        let num_rays_buffer = buffers.resource_buffers[0].buffers[4].clone().unwrap();
-        let max_candidates_buffer = buffers.resource_buffers[0].buffers[5].clone().unwrap();
-
-        queue.write_buffer(&num_rays_buffer, 0, bytemuck::bytes_of(&self.num_rays));
-        queue.write_buffer(
-            &max_candidates_buffer,
-            0,
-            bytemuck::bytes_of(&self.max_candidates),
-        );
-        queue.write_buffer(&counter_buffer, 0, bytemuck::bytes_of(&0u32));
-
         let bind_group_resources = vec![
             ResourceType::AccelerationStructure(args.tlas),
             ResourceType::Buffer(args.rays_buffer),
-            ResourceType::Buffer(candidates_buffer.clone()),
-            ResourceType::Buffer(counter_buffer.clone()),
-            ResourceType::Buffer(num_rays_buffer),
-            ResourceType::Buffer(max_candidates_buffer),
-            ];
+            ResourceType::Buffer(args.candidates_buffer),
+            ResourceType::Buffer(args.counter_buffer),
+            ResourceType::Buffer(args.num_rays_buffer),
+            ResourceType::Buffer(args.max_candidates_buffer),
+        ];
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: None,
@@ -195,14 +184,15 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
         }
 
         queue.submit(std::iter::once(encoder.finish()));
-
-        (candidates_buffer, counter_buffer)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use tinyge_graphics::shaders::ComputeShaderWrapper;
+    use tinyge_graphics::shaders::{
+        buffers::Buffers,
+        ComputeShaderWrapper,
+    };
     use wgpu::util::DeviceExt;
 
     use super::*;
@@ -383,8 +373,37 @@ mod tests {
             encoder.build_acceleration_structures(&[blas_entry], std::iter::once(&tlas));
             queue.submit(std::iter::once(encoder.finish()));
 
-            let (candidates_buffer, counter_buffer) = shader.dispatch(
-                AccelerationArgs { tlas, rays_buffer },
+            let internal_bufs = Buffers::build(
+                &device,
+                &shader.buffer_build_spec.buffer_build_spec,
+                false,
+            );
+            let candidates_buffer = internal_bufs.resource_buffers[0].buffers[2]
+                .clone()
+                .unwrap();
+            let counter_buffer = internal_bufs.resource_buffers[0].buffers[3]
+                .clone()
+                .unwrap();
+            let num_rays_buffer = internal_bufs.resource_buffers[0].buffers[4]
+                .clone()
+                .unwrap();
+            let max_candidates_buffer = internal_bufs.resource_buffers[0].buffers[5]
+                .clone()
+                .unwrap();
+
+            queue.write_buffer(&num_rays_buffer, 0, bytemuck::bytes_of(&num_rays));
+            queue.write_buffer(&max_candidates_buffer, 0, bytemuck::bytes_of(&max_candidates));
+            queue.write_buffer(&counter_buffer, 0, bytemuck::bytes_of(&0u32));
+
+            shader.dispatch(
+                AccelerationArgs {
+                    tlas,
+                    rays_buffer,
+                    candidates_buffer: candidates_buffer.clone(),
+                    counter_buffer: counter_buffer.clone(),
+                    num_rays_buffer,
+                    max_candidates_buffer,
+                },
                 &device,
                 &queue,
             );

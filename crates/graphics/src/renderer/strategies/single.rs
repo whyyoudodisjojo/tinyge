@@ -4,8 +4,8 @@ use wgpu::{CommandEncoderDescriptor, CurrentSurfaceTexture};
 
 use crate::{
     renderer::{
-        Renderer,
         strategies::{RenderAble, RenderDispatcher, RenderPath},
+        Renderer,
     },
     state::{StateRender, StateUpdates},
 };
@@ -61,6 +61,7 @@ where
             &mut self.shader_manager.shaders,
             &view,
             &ctx.device,
+            &ctx.queue,
         );
 
         ctx.queue.submit(std::iter::once(encoder.finish()));
