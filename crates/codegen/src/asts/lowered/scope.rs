@@ -1,16 +1,16 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::asts::comptime::ScopePtr;
+use crate::asts::lowered::ScopePtr;
 
-use super::{BindedBuffer, ComptimeAST, EntrypointGlobals, ShaderIR};
+use super::{BindedBuffer, EntrypointGlobals, LoweredAST, ShaderIR};
 
 #[derive(Clone)]
 pub struct LocalVariables {
-    pub ast: ComptimeAST,
+    pub ast: LoweredAST,
 }
 
 pub struct Scope<'a> {
-    pub ast: Option<ComptimeAST>,
+    pub ast: Option<LoweredAST>,
     pub binded: &'a [BindedBuffer],
     pub entrypoint_globals: &'a [EntrypointGlobals],
 
@@ -44,7 +44,7 @@ impl<'a> Scope<'a> {
 
     pub fn cond(
         &mut self,
-        cond: ComptimeAST,
+        cond: LoweredAST,
         then: impl FnOnce(&mut Self),
         el: Option<impl FnOnce(&mut Self)>,
     ) -> ScopePtr {
@@ -52,7 +52,7 @@ impl<'a> Scope<'a> {
         let mut new_scope = new_scope.borrow_mut();
         let new_scope_ptr = ScopePtr(self.child_scopes.len() - 1);
         then(&mut new_scope);
-        let ast = ComptimeAST::Conditional {
+        let ast = LoweredAST::Conditional {
             cond: Box::new(cond),
             true_block: new_scope_ptr.clone(),
             else_block: el.map(|e| {
@@ -65,12 +65,12 @@ impl<'a> Scope<'a> {
         new_scope_ptr
     }
 
-    pub fn while_loop(&mut self, cond: ComptimeAST, body: impl FnOnce(&mut Self)) -> ScopePtr {
+    pub fn while_loop(&mut self, cond: LoweredAST, body: impl FnOnce(&mut Self)) -> ScopePtr {
         let new_scope = self.new_scope();
         let mut new_scope = new_scope.borrow_mut();
         let new_scope_ptr = ScopePtr(self.child_scopes.len() - 1);
         body(&mut new_scope);
-        let ast = ComptimeAST::WhileLoop {
+        let ast = LoweredAST::WhileLoop {
             cond: Box::new(cond),
             body: new_scope_ptr.clone(),
         };
@@ -81,16 +81,16 @@ impl<'a> Scope<'a> {
 
     pub fn for_loop(
         &mut self,
-        init: Option<ComptimeAST>,
-        halt_cond: Option<ComptimeAST>,
-        increment: Option<ComptimeAST>,
+        init: Option<LoweredAST>,
+        halt_cond: Option<LoweredAST>,
+        increment: Option<LoweredAST>,
         body: impl FnOnce(&mut Self),
     ) -> ScopePtr {
         let new_scope = self.new_scope();
         let mut new_scope = new_scope.borrow_mut();
         let new_scope_ptr = ScopePtr(self.child_scopes.len() - 1);
         body(&mut new_scope);
-        let ast = ComptimeAST::ForLoop {
+        let ast = LoweredAST::ForLoop {
             init: init.map(|i| Box::new(i)),
             halt_cond: halt_cond.map(|h| Box::new(h)),
             increment: increment.map(|increment| Box::new(increment)),

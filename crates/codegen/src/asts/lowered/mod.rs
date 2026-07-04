@@ -96,7 +96,7 @@ pub enum VarRefType {
 pub struct ScopePtr(pub usize);
 
 #[derive(Clone)]
-pub enum ComptimeAST {
+pub enum LoweredAST {
     Store {
         var: VarRefType,
         val: Box<Self>,

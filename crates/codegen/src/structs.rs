@@ -9,13 +9,13 @@ macro_rules! shader_struct {
         $(#[$meta])*
         $vis struct $id;
 
-        impl From<$id> for $crate::asts::comptime::Struct{
+        impl From<$id> for $crate::asts::lowered::Struct{
             fn from(_item: $id) -> Self {
                 let mut fields = std::collections::HashMap::new();
                 $(
                     fields.insert(stringify!($field_name).to_string(), $field_type);
                 )*
-                $crate::asts::comptime::Struct{inner: fields, ident: stringify!($id).to_string()}
+                $crate::asts::lowered::Struct{inner: fields, ident: stringify!($id).to_string()}
             }
         }
 
@@ -25,7 +25,7 @@ macro_rules! shader_struct {
 #[cfg(test)]
 mod test {
     use crate::{
-        asts::comptime::Struct,
+        asts::lowered::Struct,
         dt::{BasicTy, BasicTyOrStructRef, DType, MaybeAtomic, VecTy},
     };
     shader_struct! {

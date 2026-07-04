@@ -1,4 +1,4 @@
-use crate::asts::comptime::Struct;
+use crate::asts::lowered::Struct;
 
 #[derive(Clone, Debug)]
 pub enum BasicTy {

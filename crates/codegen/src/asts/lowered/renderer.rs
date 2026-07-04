@@ -1,10 +1,10 @@
 use wgpu::BufferBindingType;
 
 use crate::{
-    asts::comptime::{
-        BinOp,
-        ComptimeAST::{self},
-        EntrypointData, ShaderIR, Struct, UnaryOp, VarRefType,
+    asts::lowered::{
+        BinOp, EntrypointData,
+        LoweredAST::{self},
+        ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
     },
     dt::{BasicTy, BasicTyOrStructRef, BasicTyOrStructRefOrStructDef, DType, MaybeAtomic, VecTy},
@@ -172,9 +172,9 @@ impl<'a> WgslRenderer<'a> {
             .join("\n\n")
     }
 
-    pub fn render_ast(&self, curr_scope: &Scope, ast: &ComptimeAST) -> String {
+    pub fn render_ast(&self, curr_scope: &Scope, ast: &LoweredAST) -> String {
         match ast {
-            ComptimeAST::BinaryOp { lhs, rhs, op } => {
+            LoweredAST::BinaryOp { lhs, rhs, op } => {
                 // TODO: Infer atomics and add atomicops fn call
                 let sign = match op {
                     BinOp::Add => "+",
@@ -196,8 +196,8 @@ impl<'a> WgslRenderer<'a> {
                     self.render_ast(curr_scope, rhs)
                 )
             }
-            ComptimeAST::Break => "break;".to_string(),
-            ComptimeAST::Conditional {
+            LoweredAST::Break => "break;".to_string(),
+            LoweredAST::Conditional {
                 cond,
                 true_block,
                 else_block,
@@ -221,8 +221,8 @@ impl<'a> WgslRenderer<'a> {
                     else_block_str
                 )
             }
-            ComptimeAST::Continue => "continue;".to_string(),
-            ComptimeAST::Load(r) => {
+            LoweredAST::Continue => "continue;".to_string(),
+            LoweredAST::Load(r) => {
                 // TODO: infer atomics and use atomicload
                 let (ident, index_str) = match r {
                     VarRefType::EntryPointGlobal(b) => (
@@ -253,7 +253,7 @@ impl<'a> WgslRenderer<'a> {
 
                 format!("{ident}{index_str}")
             }
-            ComptimeAST::ForLoop {
+            LoweredAST::ForLoop {
                 init,
                 halt_cond,
                 increment,
@@ -272,14 +272,14 @@ impl<'a> WgslRenderer<'a> {
 
                 format!("for({cond_block}){{{body_str}}}")
             }
-            ComptimeAST::WhileLoop { cond, body } => {
+            LoweredAST::WhileLoop { cond, body } => {
                 let cond_str = self.render_ast(curr_scope, cond);
                 let body_str = self.render_scope(&curr_scope.child_scopes[body.0].borrow());
 
                 format!("for({cond_str}){{{body_str}}}")
             }
-            ComptimeAST::Return => "return;".to_string(),
-            ComptimeAST::UnaryOp { operand, op } => {
+            LoweredAST::Return => "return;".to_string(),
+            LoweredAST::UnaryOp { operand, op } => {
                 // TODO: Infer atomics and inject atomicops fn calls
                 let op_str = match op {
                     UnaryOp::BitwiseNot => "!",
@@ -289,7 +289,7 @@ impl<'a> WgslRenderer<'a> {
 
                 format!("{}{}", op_str, self.render_ast(curr_scope, operand))
             }
-            ComptimeAST::Store { var, val } => {
+            LoweredAST::Store { var, val } => {
                 // TODO: Infer atomics and inject atomicstore
                 let (ident, index_str) = match var {
                     VarRefType::EntryPointGlobal(b) => (
@@ -320,7 +320,7 @@ impl<'a> WgslRenderer<'a> {
 
                 format!("{ident}{index_str} = {};", self.render_ast(curr_scope, val))
             }
-            ComptimeAST::Const { dt, data } => {
+            LoweredAST::Const { dt, data } => {
                 let (s, _) = match dt {
                     DType::MaybeAtomic(m_a) => self.render_maybe_atomic_const(m_a, data, 0),
                     DType::Vector(v) => self.render_vec_const(v, data, 0),

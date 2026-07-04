@@ -1,11 +1,11 @@
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Shl, Shr, Sub};
 
-use crate::asts::comptime::ComptimeAST;
+use crate::asts::lowered::LoweredAST;
 
 use super::BinOp;
 
-impl Add for ComptimeAST {
-    type Output = ComptimeAST;
+impl Add for LoweredAST {
+    type Output = LoweredAST;
     fn add(self, rhs: Self) -> Self::Output {
         Self::BinaryOp {
             lhs: Box::new(self),
@@ -15,8 +15,8 @@ impl Add for ComptimeAST {
     }
 }
 
-impl Sub for ComptimeAST {
-    type Output = ComptimeAST;
+impl Sub for LoweredAST {
+    type Output = LoweredAST;
     fn sub(self, rhs: Self) -> Self::Output {
         Self::BinaryOp {
             lhs: Box::new(self),
@@ -26,8 +26,8 @@ impl Sub for ComptimeAST {
     }
 }
 
-impl Mul for ComptimeAST {
-    type Output = ComptimeAST;
+impl Mul for LoweredAST {
+    type Output = LoweredAST;
     fn mul(self, rhs: Self) -> Self::Output {
         Self::BinaryOp {
             lhs: Box::new(self),
@@ -37,8 +37,8 @@ impl Mul for ComptimeAST {
     }
 }
 
-impl Div for ComptimeAST {
-    type Output = ComptimeAST;
+impl Div for LoweredAST {
+    type Output = LoweredAST;
     fn div(self, rhs: Self) -> Self::Output {
         Self::BinaryOp {
             lhs: Box::new(self),
@@ -48,8 +48,8 @@ impl Div for ComptimeAST {
     }
 }
 
-impl Shr for ComptimeAST {
-    type Output = ComptimeAST;
+impl Shr for LoweredAST {
+    type Output = LoweredAST;
     fn shr(self, rhs: Self) -> Self::Output {
         Self::BinaryOp {
             lhs: Box::new(self),
@@ -59,8 +59,8 @@ impl Shr for ComptimeAST {
     }
 }
 
-impl Shl for ComptimeAST {
-    type Output = ComptimeAST;
+impl Shl for LoweredAST {
+    type Output = LoweredAST;
     fn shl(self, rhs: Self) -> Self::Output {
         Self::BinaryOp {
             lhs: Box::new(self),
@@ -70,8 +70,8 @@ impl Shl for ComptimeAST {
     }
 }
 
-impl BitAnd for ComptimeAST {
-    type Output = ComptimeAST;
+impl BitAnd for LoweredAST {
+    type Output = LoweredAST;
     fn bitand(self, rhs: Self) -> Self::Output {
         Self::BinaryOp {
             lhs: Box::new(self),
@@ -81,8 +81,8 @@ impl BitAnd for ComptimeAST {
     }
 }
 
-impl BitOr for ComptimeAST {
-    type Output = ComptimeAST;
+impl BitOr for LoweredAST {
+    type Output = LoweredAST;
     fn bitor(self, rhs: Self) -> Self::Output {
         let neg_lhs = Self::UnaryOp {
             operand: Box::new(self),
@@ -101,8 +101,8 @@ impl BitOr for ComptimeAST {
     }
 }
 
-impl BitXor for ComptimeAST {
-    type Output = ComptimeAST;
+impl BitXor for LoweredAST {
+    type Output = LoweredAST;
     fn bitxor(self, rhs: Self) -> Self::Output {
         let neg_lhs = Self::UnaryOp {
             operand: Box::new(self.clone()),
