@@ -18,8 +18,9 @@ pub struct BindedBuffer {
 
 pub struct Functions<'a> {
     pub args: HashMap<String, DType<BasicTyOrStructRef>>,
-    pub ret: BasicTyOrStructRef,
+    pub ret: Option<BasicTyOrStructRef>,
     pub ident: String,
+    pub entrypoint_ty: Option<EntrypointData>,
     pub body: Scope<'a>,
 }
 
@@ -40,10 +41,7 @@ impl Display for EntrypointGlobals {
 }
 
 pub enum EntrypointData {
-    Compute {
-        function_idx: usize,
-        workgroup_sz: usize,
-    },
+    Compute { workgroup_sz: usize },
     Shader, // TODO
 }
 
@@ -58,7 +56,6 @@ pub struct ShaderIR<'a> {
     pub binded: Vec<BindedBuffer>,
     pub entrypoint_globals: Vec<EntrypointGlobals>,
     pub functions: Vec<Functions<'a>>,
-    pub entrypoint_ids: Vec<EntrypointData>,
 }
 
 #[derive(Clone)]

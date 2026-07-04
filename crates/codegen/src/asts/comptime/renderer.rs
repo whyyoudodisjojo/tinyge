@@ -4,11 +4,16 @@ use crate::{
     asts::comptime::{
         BinOp,
         ComptimeAST::{self},
-        ShaderIR, Struct, UnaryOp, VarRefType,
+        EntrypointData, ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
     },
     dt::{BasicTy, BasicTyOrStructRef, BasicTyOrStructRefOrStructDef, DType, MaybeAtomic, VecTy},
 };
+
+pub trait Render {
+    type Args;
+    fn render(&self, args: Self::Args) -> String;
+}
 
 pub struct WgslRenderer<'a> {
     ir: &'a ShaderIR<'a>,
@@ -139,7 +144,29 @@ impl<'a> WgslRenderer<'a> {
                     .map(|(n, d)| format!("{}:{}", n, self.render_dtype_with_struct_ref(d)))
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("fn {}({})", f.ident, args_str,)
+
+                let body_str = self.render_scope(&f.body);
+                let ret_str = f
+                    .ret
+                    .as_ref()
+                    .map(|r| format!("->{}", self.render_basic_ty_or_struct_ref(r)))
+                    .unwrap_or_default();
+
+                let entrypoint_headers_str = f
+                    .entrypoint_ty
+                    .as_ref()
+                    .map(|e| match e {
+                        EntrypointData::Compute { workgroup_sz } => {
+                            format!("@compute @workgroup_size{workgroup_sz}")
+                        }
+                        EntrypointData::Shader => todo!(), // Shader requires proper builtin mangement
+                    })
+                    .unwrap_or_default();
+
+                format!(
+                    "{}fn {}({}){}{{{}}}",
+                    entrypoint_headers_str, f.ident, args_str, ret_str, body_str
+                )
             })
             .collect::<Vec<_>>()
             .join("\n\n")
@@ -415,18 +442,22 @@ impl<'a> WgslRenderer<'a> {
                     panic!("Cannot use struct type as vector element")
                 }
             },
-            MaybeAtomic::Atomic(_) => todo!("cannot have atomic constants, without atomicstore and all"),
+            MaybeAtomic::Atomic(_) => {
+                todo!("cannot have atomic constants, without atomicstore and all")
+            }
         }
     }
 
     pub fn render_scope(&self, scope: &Scope) -> String {
-        todo!()
+        self.render_ast(scope, scope.ast.as_ref().unwrap())
     }
 
     pub fn translate(&self) -> String {
         let structs_str = self.render_structs();
         let bindings_str = self.render_binded_buffers();
 
-        todo!()
+        let funcs_str = self.render_funcs();
+
+        [structs_str, bindings_str, funcs_str].join("\n\n\n\n")
     }
 }
