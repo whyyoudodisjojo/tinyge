@@ -13,7 +13,13 @@ pub struct AccelerationShader {
 }
 
 impl AccelerationShader {
-    pub fn new(num_rays: u32, max_candidates: u32, max_instances: u32, blas_vertex_count: u32, gpu_ray_size: u64) -> Self {
+    pub fn new(
+        num_rays: u32,
+        max_candidates: u32,
+        max_instances: u32,
+        blas_vertex_count: u32,
+        gpu_ray_size: u64,
+    ) -> Self {
         Self {
             num_rays,
             max_candidates,
@@ -165,9 +171,8 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
             ResourceType::Buffer(args.max_candidates_buffer),
         ];
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: None,
-        });
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
                 label: None,
@@ -175,8 +180,7 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
             });
             pass.set_bind_group(
                 0,
-                build_data.bind_groups[0]
-                    .get_or_create_bind_group(&bind_group_resources, device),
+                build_data.bind_groups[0].get_or_create_bind_group(&bind_group_resources, device),
                 &[],
             );
             pass.set_pipeline(&build_data.pipeline);
@@ -189,10 +193,7 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
 
 #[cfg(test)]
 mod tests {
-    use tinyge_graphics::shaders::{
-        buffers::Buffers,
-        ComputeShaderWrapper,
-    };
+    use tinyge_graphics::shaders::{ComputeShaderWrapper, buffers::Buffers};
     use wgpu::util::DeviceExt;
 
     use super::*;
@@ -291,11 +292,8 @@ mod tests {
                 &device,
             );
 
-            let input_buffers = Buffers::build(
-                &device,
-                &shader.buffer_build_spec.buffer_build_spec,
-                true,
-            );
+            let input_buffers =
+                Buffers::build(&device, &shader.buffer_build_spec.buffer_build_spec, true);
 
             let rays_buffer = input_buffers.resource_buffers[0].buffers[1]
                 .clone()
@@ -325,15 +323,14 @@ mod tests {
             ];
             queue.write_buffer(&rays_buffer, 0, bytemuck::cast_slice(&rays));
 
-            let tri_verts: Vec<[f32; 3]> = vec![
-                [-1.0, -1.0, 0.0],
-                [1.0, -1.0, 0.0],
-                [0.0, 1.0, 0.0],
-            ];
+            let tri_verts: Vec<[f32; 3]> =
+                vec![[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0]];
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&tri_verts),
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::BLAS_INPUT,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::BLAS_INPUT,
             });
 
             let mut encoder =
@@ -373,11 +370,8 @@ mod tests {
             encoder.build_acceleration_structures(&[blas_entry], std::iter::once(&tlas));
             queue.submit(std::iter::once(encoder.finish()));
 
-            let internal_bufs = Buffers::build(
-                &device,
-                &shader.buffer_build_spec.buffer_build_spec,
-                false,
-            );
+            let internal_bufs =
+                Buffers::build(&device, &shader.buffer_build_spec.buffer_build_spec, false);
             let candidates_buffer = internal_bufs.resource_buffers[0].buffers[2]
                 .clone()
                 .unwrap();
@@ -392,7 +386,11 @@ mod tests {
                 .unwrap();
 
             queue.write_buffer(&num_rays_buffer, 0, bytemuck::bytes_of(&num_rays));
-            queue.write_buffer(&max_candidates_buffer, 0, bytemuck::bytes_of(&max_candidates));
+            queue.write_buffer(
+                &max_candidates_buffer,
+                0,
+                bytemuck::bytes_of(&max_candidates),
+            );
             queue.write_buffer(&counter_buffer, 0, bytemuck::bytes_of(&0u32));
 
             shader.dispatch(
@@ -426,7 +424,11 @@ mod tests {
             );
             assert_eq!(hit.ray_idx, 0, "Ray 0 should be the hit");
             assert_eq!(hit.instance_index, 0, "Instance index should be 0");
-            assert!(hit.t > 0.9 && hit.t < 1.1, "t should be ~1.0, got {}", hit.t);
+            assert!(
+                hit.t > 0.9 && hit.t < 1.1,
+                "t should be ~1.0, got {}",
+                hit.t
+            );
         });
     }
 }

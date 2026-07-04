@@ -4,8 +4,8 @@ use wgpu::{CommandEncoderDescriptor, CurrentSurfaceTexture};
 
 use crate::{
     renderer::{
-        strategies::{RenderAble, RenderDispatcher, RenderPath},
         Renderer,
+        strategies::{RenderAble, RenderDispatcher, RenderPath},
     },
     state::{StateRender, StateUpdates},
 };

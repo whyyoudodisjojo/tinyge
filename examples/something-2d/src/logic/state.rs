@@ -149,7 +149,7 @@ impl RenderAble<ShaderId> for State {
         >,
         view: &wgpu::TextureView,
         device: &wgpu::Device,
-        _queue: &Queue
+        _queue: &Queue,
     ) {
         let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: None,

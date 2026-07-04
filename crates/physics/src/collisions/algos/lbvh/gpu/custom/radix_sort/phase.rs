@@ -1,13 +1,13 @@
 use tinyge_graphics::shaders::{
+    ComputeShader, ComputeShaderBuiltData,
     buffers::ResourceType,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
-    ComputeShader, ComputeShaderBuiltData,
 };
-use wgpu::{wgt::CommandEncoderDescriptor, BufferUsages, ComputePassDescriptor, ShaderStages};
+use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
 use crate::collisions::algos::lbvh::{
-    gpu::custom::radix_sort::{Params, RadixSortPhaseArgs},
     Key,
+    gpu::custom::radix_sort::{Params, RadixSortPhaseArgs},
 };
 
 pub enum RadixSortStage {

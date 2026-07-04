@@ -1,7 +1,7 @@
 use std::{
     sync::{
-        mpsc::{SendError, Sender},
         Weak,
+        mpsc::{SendError, Sender},
     },
     thread::sleep,
     time::Duration,

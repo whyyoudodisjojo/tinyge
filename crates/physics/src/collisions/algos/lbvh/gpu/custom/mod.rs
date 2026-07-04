@@ -207,5 +207,3 @@ impl<'a> GpuCollisionAlgorithm for LBVHBuilder<'a> {
         }
     }
 }
-
-

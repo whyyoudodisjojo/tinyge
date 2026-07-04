@@ -1,9 +1,9 @@
-use tinyge_graphics::shaders::{buffers::Buffers, ComputeShaderWrapper};
+use tinyge_graphics::shaders::{ComputeShaderWrapper, buffers::Buffers};
 use wgpu::{Buffer, Device};
 
 use crate::collisions::algos::lbvh::{
-    gpu::custom::radix_sort::phase::{RadixSortPhase, RadixSortStage},
     Key,
+    gpu::custom::radix_sort::phase::{RadixSortPhase, RadixSortStage},
 };
 
 pub mod phase;

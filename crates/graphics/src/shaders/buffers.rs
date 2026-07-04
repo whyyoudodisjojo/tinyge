@@ -5,9 +5,9 @@ use std::{
 
 use lru::LruCache;
 use wgpu::{
-    wgt::TextureViewDescriptor, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindingResource, Blas, Buffer, BufferDescriptor, BufferUsages, CommandEncoder, Device, Sampler,
-    Tlas,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Blas, Buffer,
+    BufferDescriptor, BufferUsages, CommandEncoder, Device, Sampler, Tlas,
+    wgt::TextureViewDescriptor,
 };
 
 use crate::shaders::{
