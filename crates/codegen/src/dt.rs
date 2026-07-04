@@ -1,10 +1,15 @@
 use crate::asts::lowered::Struct;
 
 #[derive(Clone, Debug)]
-pub enum BasicTy {
-    F32,
+pub enum IntegerTy {
     U32,
     I32,
+}
+
+#[derive(Clone, Debug)]
+pub enum BasicTy {
+    F32,
+    Integer(IntegerTy),
 }
 
 #[derive(Clone, Debug)]
@@ -14,15 +19,15 @@ pub enum MaybeAtomic<A> {
 }
 
 #[derive(Clone, Debug)]
-pub enum VecTy<I> {
-    Vec3(MaybeAtomic<I>),
-    Vec2(MaybeAtomic<I>),
-    Array(MaybeAtomic<I>),
+pub enum VecTy {
+    Vec3(BasicTy),
+    Vec2(BasicTy),
+    Array(MaybeAtomic<BasicTy>),
 }
 
 #[derive(Clone, Debug)]
 pub enum BasicTyOrStructRef {
-    StructRef { id: usize },
+    StructRef { ident: String },
     BasicTy(BasicTy),
 }
 
@@ -33,14 +38,9 @@ pub enum BasicTyOrStructDef {
 }
 
 #[derive(Clone, Debug)]
-pub enum BasicTyOrStructRefOrStructDef {
-    StructRef { id: usize },
-    StructDef(Struct),
-    BasicTy(BasicTy),
-}
-
-#[derive(Clone, Debug)]
-pub enum DType<T = BasicTyOrStructRef> {
-    Vector(VecTy<T>), // Vectors cant be nested they can onkly have atomics with struct or atomics with basic ty or just basic tys or structs
-    MaybeAtomic(MaybeAtomic<T>), // Naked struct or basic ty or atomic struct or basic ty
+pub enum DType {
+    Vector(VecTy),
+    Atomic(IntegerTy),
+    Basic(BasicTy),
+    StructRef { ident: String },
 }

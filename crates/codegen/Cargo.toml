@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 tinyge-graphics = {path = "../graphics"}
 wgpu ={ workspace = true}
+codegen-macros = {path = "../codegen-macros"}

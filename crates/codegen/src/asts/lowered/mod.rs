@@ -13,11 +13,11 @@ use crate::dt::{BasicTyOrStructRef, DType};
 pub struct BindedBuffer {
     pub ident: String,
     pub ty: BufferBindingType,
-    pub dt: DType<BasicTyOrStructRef>,
+    pub dt: DType,
 }
 
 pub struct Functions<'a> {
-    pub args: HashMap<String, DType<BasicTyOrStructRef>>,
+    pub args: HashMap<String, DType>,
     pub ret: Option<BasicTyOrStructRef>,
     pub ident: String,
     pub entrypoint_ty: Option<EntrypointData>,
@@ -48,11 +48,10 @@ pub enum EntrypointData {
 #[derive(Clone, Debug)]
 pub struct Struct {
     pub inner: HashMap<String, DType>,
-    pub ident: String,
 }
 
 pub struct ShaderIR<'a> {
-    pub structs: Vec<Struct>,
+    pub structs: HashMap<String, Struct>,
     pub binded: Vec<BindedBuffer>,
     pub entrypoint_globals: Vec<EntrypointGlobals>,
     pub functions: Vec<Functions<'a>>,
@@ -127,7 +126,7 @@ pub enum LoweredAST {
         body: ScopePtr,
     },
     Const {
-        dt: DType<BasicTyOrStructRef>,
+        dt: DType,
         data: Vec<u8>,
     },
     Continue,
