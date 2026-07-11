@@ -302,6 +302,13 @@ impl<'a> LoweredRenderer<'a> {
                 };
                 s
             }
+            LoweredAST::FunctionCall { ident, args } => format!(
+                "{ident}({});",
+                args.iter()
+                    .map(|a| self.render_ast(curr_scope, a))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 

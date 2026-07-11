@@ -129,6 +129,10 @@ pub enum LoweredAST {
         dt: DType,
         data: Vec<u8>,
     },
+    FunctionCall {
+        ident: String,
+        args: Vec<Box<Self>>,
+    },
     Continue,
     Break,
     Return,
