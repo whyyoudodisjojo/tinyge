@@ -8,7 +8,7 @@ use wgpu::BufferBindingType;
 
 use scope::Scope;
 
-use crate::dt::{BasicTyOrStructRef, DType};
+use crate::dt::{BasicTy, BasicTyOrStructRef, DType, VecTy};
 
 pub struct BindedBuffer {
     pub ident: String,
@@ -47,7 +47,44 @@ pub enum EntrypointData {
 
 #[derive(Clone, Debug)]
 pub struct Struct {
-    pub inner: HashMap<String, DType>,
+    pub inner: Vec<(String, DType)>,
+}
+
+impl Struct {
+    // sz, align
+    fn wgsl_size_align(dt: &DType) -> (usize, usize) {
+        match dt {
+            DType::Basic(BasicTy::F32) | DType::Basic(BasicTy::Integer(_)) => (4, 4),
+            DType::Atomic(_) => (4, 4),
+            DType::Vector(VecTy::Vec2(_)) => (8, 8),
+            DType::Vector(VecTy::Vec3(_)) => (12, 16),
+            DType::Vector(VecTy::Array(_)) => (0, 0),
+            DType::StructRef { ident: _ } => (0, 0),
+            DType::Pad(bytes) => (*bytes, *bytes),
+        }
+    }
+
+    pub fn required_padding(prev_field: &DType, next_field: &DType) -> usize {
+        let (prev_size, prev_align) = Self::wgsl_size_align(prev_field);
+        let (_, next_align) = Self::wgsl_size_align(next_field);
+
+        if prev_align == 0 || next_align == 0 {
+            return 0;
+        }
+
+        let prev_effective_size = if prev_size % prev_align == 0 {
+            prev_size
+        } else {
+            prev_size + (prev_align - prev_size % prev_align)
+        };
+
+        let misalignment = prev_effective_size % next_align;
+        if misalignment == 0 {
+            0
+        } else {
+            next_align - misalignment
+        }
+    }
 }
 
 pub struct ShaderIR<'a> {

@@ -30,6 +30,17 @@ impl<'a> LoweredRenderer<'a> {
                 VecTy::Vec3(b) => format!("vec3<{}>", self.render_basic_ty(b)),
             },
             DType::StructRef { ident } => ident.clone(),
+            DType::Pad(bytes) => self.render_pad_type(*bytes),
+        }
+    }
+
+    fn render_pad_type(&self, bytes: usize) -> String {
+        match bytes {
+            4 => "u32".to_string(),
+            8 => "vec2<u32>".to_string(),
+            12 => "vec3<u32>".to_string(),
+            16 => "vec4<u32>".to_string(),
+            n => panic!("Unsupported padding size: {} bytes. Use 4, 8, 12, or 16.", n),
         }
     }
 
@@ -299,6 +310,7 @@ impl<'a> LoweredRenderer<'a> {
                         let s = self.ir.structs.get(ident).unwrap();
                         self.render_struct_const(ident, s, data, 0)
                     }
+                    DType::Pad(bytes) => self.render_pad_const(*bytes, data, 0),
                 };
                 s
             }
@@ -357,6 +369,7 @@ impl<'a> LoweredRenderer<'a> {
                         .unwrap_or_else(|| panic!("Nested struct {} not found", ident));
                     self.render_struct_const(ident, nested, data, offset)
                 }
+                DType::Pad(bytes) => self.render_pad_const(*bytes, data, offset),
             };
             field_inits.push(format!("{field_name}: {field_val}"));
             offset += consumed;
@@ -389,6 +402,45 @@ impl<'a> LoweredRenderer<'a> {
                 unimplemented!("Can be lowered further with for loops and shit so ye")
             }
         }
+    }
+
+    fn render_pad_const(&self, bytes: usize, data: &[u8], offset: usize) -> (String, usize) {
+        let val = match bytes {
+            4 => {
+                let b = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
+                let v0 = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+                format!("{}u", v0)
+            }
+            8 => {
+                let b0 = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
+                let b1 = data.get(offset + 4..offset + 8).unwrap_or(&[0; 4]);
+                let v0 = u32::from_le_bytes([b0[0], b0[1], b0[2], b0[3]]);
+                let v1 = u32::from_le_bytes([b1[0], b1[1], b1[2], b1[3]]);
+                format!("vec2<u32>({}u, {}u)", v0, v1)
+            }
+            12 => {
+                let b0 = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
+                let b1 = data.get(offset + 4..offset + 8).unwrap_or(&[0; 4]);
+                let b2 = data.get(offset + 8..offset + 12).unwrap_or(&[0; 4]);
+                let v0 = u32::from_le_bytes([b0[0], b0[1], b0[2], b0[3]]);
+                let v1 = u32::from_le_bytes([b1[0], b1[1], b1[2], b1[3]]);
+                let v2 = u32::from_le_bytes([b2[0], b2[1], b2[2], b2[3]]);
+                format!("vec3<u32>({}u, {}u, {}u)", v0, v1, v2)
+            }
+            16 => {
+                let b0 = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
+                let b1 = data.get(offset + 4..offset + 8).unwrap_or(&[0; 4]);
+                let b2 = data.get(offset + 8..offset + 12).unwrap_or(&[0; 4]);
+                let b3 = data.get(offset + 12..offset + 16).unwrap_or(&[0; 4]);
+                let v0 = u32::from_le_bytes([b0[0], b0[1], b0[2], b0[3]]);
+                let v1 = u32::from_le_bytes([b1[0], b1[1], b1[2], b1[3]]);
+                let v2 = u32::from_le_bytes([b2[0], b2[1], b2[2], b2[3]]);
+                let v3 = u32::from_le_bytes([b3[0], b3[1], b3[2], b3[3]]);
+                format!("vec4<u32>({}u, {}u, {}u, {}u)", v0, v1, v2, v3)
+            }
+            n => panic!("Unsupported padding size: {} bytes", n),
+        };
+        (val, bytes)
     }
 
     pub fn render_scope(&self, scope: &Scope) -> String {

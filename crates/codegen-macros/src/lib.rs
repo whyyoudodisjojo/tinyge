@@ -13,6 +13,7 @@ struct Field {
     ident: Option<Ident>,
     ty: Type,
     atomic: darling::util::Flag,
+    pad: Option<usize>,
 }
 
 #[derive(FromDeriveInput)]
@@ -32,15 +33,19 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
 
     let field_insertions: Vec<_> = fields
         .iter()
-        .map(|f| {
+        .filter_map(|f| {
+            if f.pad.is_some() {
+                return None;
+            }
+            
             let field_name = f.ident.as_ref().unwrap().to_string();
             let is_atomic = f.atomic.is_present();
 
             let dtype_tokens = parse_type_to_dtype(&f.ty, is_atomic);
 
-            quote! {
-                fields.insert(#field_name.to_string(), #dtype_tokens);
-            }
+            Some(quote! {
+                fields.push((#field_name.to_string(), #dtype_tokens));
+            })
         })
         .collect();
 
@@ -50,10 +55,29 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
         impl From<#struct_name> for (String, codegen::asts::lowered::Struct) {
             fn from(_item: #struct_name) -> Self {
                 use codegen::dt::{BasicTy, DType, IntegerTy, MaybeAtomic, VecTy};
-                let mut fields = std::collections::HashMap::new();
+                let mut fields = Vec::new();
                 #(#field_insertions)*
+                
+                let mut result = Vec::new();
+                let mut prev_dtype: Option<DType> = None;
+                let mut pad_counter = 0usize;
+                
+                for (name, dtype) in fields {
+                    if let Some(ref prev) = prev_dtype {
+                        let padding_needed = codegen::asts::lowered::Struct::required_padding(prev, &dtype);
+                        if padding_needed > 0 {
+                            let pad_name = format!("__pad_{}", pad_counter);
+                            result.push((pad_name, DType::Pad(padding_needed)));
+                            pad_counter += 1;
+                        }
+                    }
+                    
+                    result.push((name, dtype.clone()));
+                    prev_dtype = Some(dtype);
+                }
+                
                 let s = codegen::asts::lowered::Struct {
-                    inner: fields,
+                    inner: result,
                 };
                 (#struct_ident.to_string(), s)
             }

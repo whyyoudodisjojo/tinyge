@@ -43,4 +43,5 @@ pub enum DType {
     Atomic(IntegerTy),
     Basic(BasicTy),
     StructRef { ident: String },
+    Pad(usize),
 }

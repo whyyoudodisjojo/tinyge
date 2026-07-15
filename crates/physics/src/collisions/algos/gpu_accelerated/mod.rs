@@ -12,24 +12,6 @@ pub struct AccelerationShader {
     gpu_ray_size: u64,
 }
 
-impl AccelerationShader {
-    pub fn new(
-        num_rays: u32,
-        max_candidates: u32,
-        max_instances: u32,
-        blas_vertex_count: u32,
-        gpu_ray_size: u64,
-    ) -> Self {
-        Self {
-            num_rays,
-            max_candidates,
-            max_instances,
-            blas_vertex_count,
-            gpu_ray_size,
-        }
-    }
-}
-
 pub struct AccelerationArgs {
     pub tlas: wgpu::Tlas,
     pub rays_buffer: wgpu::Buffer,
@@ -284,11 +266,11 @@ mod tests {
         pollster::block_on(async {
             let (device, queue) = setup_wgpu().await;
 
-            let num_rays = 2u32;
+            let num_rays = 8u32;
             let max_candidates = 16u32;
 
             let mut shader = ComputeShaderWrapper::new(
-                AccelerationShader::new(num_rays, max_candidates, 1, 3, 48),
+                AccelerationShader{num_rays, max_candidates, max_instances: 1, blas_vertex_count: 3, gpu_ray_size: 48},
                 &device,
             );
 
@@ -302,7 +284,6 @@ mod tests {
             let blas = &astructs.blas;
             let mut tlas = astructs.tlas.clone();
 
-            // Write ray data (shared GpuRay: 48 bytes each)
             let rays: Vec<crate::collisions::algos::GpuRay> = vec![
                 crate::collisions::algos::GpuRay {
                     origin: [0.0, 0.0, 1.0],
@@ -318,6 +299,54 @@ mod tests {
                     dir: [1.0, 0.0, 0.0],
                     _pad2: 0.0,
                     inv_dir: [1.0, 0.0, 0.0],
+                    _pad3: 0.0,
+                },
+                crate::collisions::algos::GpuRay {
+                    origin: [0.8, -0.8, 1.0],
+                    _pad1: 0.0,
+                    dir: [0.0, 0.0, -1.0],
+                    _pad2: 0.0,
+                    inv_dir: [0.0, 0.0, -1.0],
+                    _pad3: 0.0,
+                },
+                crate::collisions::algos::GpuRay {
+                    origin: [0.0, 0.0, 1.0],
+                    _pad1: 0.0,
+                    dir: [0.0, 0.0, 1.0],
+                    _pad2: 0.0,
+                    inv_dir: [0.0, 0.0, 1.0],
+                    _pad3: 0.0,
+                },
+                crate::collisions::algos::GpuRay {
+                    origin: [0.0, 0.0, 2.0],
+                    _pad1: 0.0,
+                    dir: [0.0, 0.0, -1.0],
+                    _pad2: 0.0,
+                    inv_dir: [0.0, 0.0, -1.0],
+                    _pad3: 0.0,
+                },
+                crate::collisions::algos::GpuRay {
+                    origin: [0.0, 0.0, -1.0],
+                    _pad1: 0.0,
+                    dir: [0.0, 0.0, -1.0],
+                    _pad2: 0.0,
+                    inv_dir: [0.0, 0.0, -1.0],
+                    _pad3: 0.0,
+                },
+                crate::collisions::algos::GpuRay {
+                    origin: [0.0, -0.5, 1.0],
+                    _pad1: 0.0,
+                    dir: [0.0, 0.0, -1.0],
+                    _pad2: 0.0,
+                    inv_dir: [0.0, 0.0, -1.0],
+                    _pad3: 0.0,
+                },
+                crate::collisions::algos::GpuRay {
+                    origin: [5.0, 5.0, 1.0],
+                    _pad1: 0.0,
+                    dir: [0.0, 0.0, -1.0],
+                    _pad2: 0.0,
+                    inv_dir: [0.0, 0.0, -1.0],
                     _pad3: 0.0,
                 },
             ];
@@ -408,25 +437,30 @@ mod tests {
 
             let counter: Vec<u32> = read_buffer(&device, &queue, &counter_buffer);
             println!("Counter value: {}", counter[0]);
-            assert!(counter[0] > 0, "Ray should have hit the triangle");
+            assert!(counter[0] >= 4, "Expected at least 4 hits, got {}", counter[0]);
 
             let candidates: Vec<RawCandidate> = read_buffer(&device, &queue, &candidates_buffer);
+            
+            for i in 0..counter[0].min(candidates.len() as u32) as usize {
+                let hit = &candidates[i];
+                println!(
+                    "Hit {}: ray_idx={}, instance={}, primitive={}, geometry={}, barycentrics=({},{}), t={}",
+                    i,
+                    hit.ray_idx,
+                    hit.instance_index,
+                    hit.primitive_index,
+                    hit.geometry_index,
+                    hit.barycentrics[0],
+                    hit.barycentrics[1],
+                    hit.t
+                );
+            }
+            
             let hit = &candidates[0];
-            println!(
-                "Hit: ray_idx={}, instance={}, primitive={}, geometry={}, barycentrics=({},{}), t={}",
-                hit.ray_idx,
-                hit.instance_index,
-                hit.primitive_index,
-                hit.geometry_index,
-                hit.barycentrics[0],
-                hit.barycentrics[1],
-                hit.t
-            );
-            assert_eq!(hit.ray_idx, 0, "Ray 0 should be the hit");
             assert_eq!(hit.instance_index, 0, "Instance index should be 0");
             assert!(
-                hit.t > 0.9 && hit.t < 1.1,
-                "t should be ~1.0, got {}",
+                hit.t > 0.9 && hit.t < 2.1,
+                "t should be ~1.0-2.0, got {}",
                 hit.t
             );
         });
