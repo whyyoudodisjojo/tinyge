@@ -6,8 +6,7 @@ use crate::{
         LoweredAST::{self},
         ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
-    },
-    dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy},
+    }, dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, IntegerTyOrStructRef, MaybeAtomic, VecTy},
 };
 
 pub trait Render {
@@ -51,10 +50,15 @@ impl<'a> LoweredRenderer<'a> {
         }
     }
 
-    pub fn render_array_inner(&self, inner: &MaybeAtomic<BasicTy>) -> String {
+    pub fn render_array_inner(&self, inner: &MaybeAtomic<IntegerTyOrStructRef, BasicTyOrStructRef>) -> String {
         match inner {
-            MaybeAtomic::Atomic(b) => format!("atomic<{}>", self.render_basic_ty(b)),
-            MaybeAtomic::Naked(b) => self.render_basic_ty(b),
+            MaybeAtomic::Naked(b) => format!("atomic<{}>", self.render_basic_ty_or_struct_ref(b)),
+            MaybeAtomic::Atomic(a) => {
+                match a{
+                    IntegerTyOrStructRef::Integer(i) => self.render_integer_ty(i),
+                    IntegerTyOrStructRef::StructRef { ident } => ident.to_string()
+                }
+            }
         }
     }
 

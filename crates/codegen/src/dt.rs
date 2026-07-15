@@ -13,16 +13,22 @@ pub enum BasicTy {
 }
 
 #[derive(Clone, Debug)]
-pub enum MaybeAtomic<A> {
+pub enum MaybeAtomic<A, N> {
     Atomic(A),
-    Naked(A),
+    Naked(N),
 }
 
 #[derive(Clone, Debug)]
-pub enum VecTy {
+pub enum IntegerTyOrStructRef{
+    Integer(IntegerTy),
+    StructRef{ident: String}
+}
+
+#[derive(Clone, Debug)]
+pub enum VecTy{
     Vec3(BasicTy),
     Vec2(BasicTy),
-    Array(MaybeAtomic<BasicTy>),
+    Array(MaybeAtomic<IntegerTyOrStructRef, BasicTyOrStructRef>),
 }
 
 #[derive(Clone, Debug)]

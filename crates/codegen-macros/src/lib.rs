@@ -54,7 +54,7 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
     let output = quote! {
         impl From<#struct_name> for (String, codegen::asts::lowered::Struct) {
             fn from(_item: #struct_name) -> Self {
-                use codegen::dt::{BasicTy, DType, IntegerTy, MaybeAtomic, VecTy};
+                use codegen::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
                 let mut fields = Vec::new();
                 #(#field_insertions)*
                 

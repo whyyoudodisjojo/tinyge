@@ -79,7 +79,7 @@ fn parse_path_type_to_dtype(type_path: &TypePath, is_atomic: bool) -> proc_macro
             let inner_tokens = parse_basic_ty(inner);
 
             quote! {
-                DType::Vector(VecTy::Array(MaybeAtomic::Naked(#inner_tokens)))
+                DType::Vector(VecTy::Array(MaybeAtomic::Naked(BasicTyOrStructRef::BasicTy(#inner_tokens))))
             }
         }
         _ => {

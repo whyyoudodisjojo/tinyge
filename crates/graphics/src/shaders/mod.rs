@@ -235,7 +235,7 @@ pub trait ComputeShader<'a> {
     fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
         vec![]
     }
-    fn load_source_code(&self) -> &'static str;
+    fn load_source_code<'b>(&'b self) -> &'b str;
     fn entry_point(&self) -> &'static str;
 
     fn build(&self, device: &Device) -> ComputeShaderBuiltData<'a> {
