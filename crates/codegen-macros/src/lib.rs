@@ -1,11 +1,15 @@
-mod struct_parser;
-
-use darling::{FromDeriveInput, FromField, ast::Data};
+use codegen::asts::lowered::{CustomBufferBindingType, EntrypointData};
+use darling::{FromDeriveInput, FromField, FromMeta, ast::Data};
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{DeriveInput, Ident, Type, parse_macro_input};
+use quote::{format_ident, quote};
+use syn::{DeriveInput, FnArg, Ident, Meta, Type, parse_macro_input};
 
-use crate::struct_parser::parse_type_to_dtype;
+use darling::ast::NestedMeta;
+
+#[derive(darling::FromMeta)]
+struct ComputeArgs {
+    workgroup_sz: usize,
+}
 
 #[derive(FromField)]
 #[darling(attributes(codegen))]
@@ -39,12 +43,15 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
             }
 
             let field_name = f.ident.as_ref().unwrap().to_string();
-            let is_atomic = f.atomic.is_present();
-
-            let dtype_tokens = parse_type_to_dtype(&f.ty, is_atomic);
+            let field_ty = &f.ty;
+            let dt = if f.atomic.is_present() {
+                quote! { codegen::asts::atomic(<#field_ty as codegen::asts::IntoWgslStruct>::dt()) }
+            } else {
+                quote! { <#field_ty as codegen::asts::IntoWgslStruct>::dt() }
+            };
 
             Some(quote! {
-                fields.push((#field_name.to_string(), #dtype_tokens));
+                fields.push((#field_name.to_string(), #dt));
             })
         })
         .collect();
@@ -54,17 +61,15 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
 
     let output = quote! {
         #[allow(non_snake_case)]
-        fn #make_fn_ident() -> (String, Vec<(String, codegen::dt::DType)>) {
-            use codegen::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
+        fn #make_fn_ident() -> codegen::asts::lowered::Struct {
             let mut fields = Vec::new();
             #(#field_insertions)*
-            (#struct_ident.to_string(), fields)
+            codegen::asts::lowered::Struct { name: #struct_ident.to_string(), inner: fields }
         }
 
         impl codegen::asts::IntoWgslStruct for #struct_name {
-            fn dt() -> (String, codegen::asts::lowered::Struct) {
-                let (name, fields) = #make_fn_ident();
-                (name, codegen::asts::lowered::Struct { inner: fields })
+            fn dt() -> codegen::dt::DType {
+                codegen::dt::DType::StructRef { ident: #struct_ident.to_string() }
             }
         }
 
@@ -77,4 +82,288 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
     };
 
     output.into()
+}
+
+#[proc_macro_attribute]
+pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let meta: Meta = syn::parse(attr).unwrap();
+    let ty = match meta {
+        Meta::List(list) if list.path.is_ident("compute") => {
+            let nested = NestedMeta::parse_meta_list(list.tokens).unwrap();
+            let args = ComputeArgs::from_list(&nested).unwrap();
+            EntrypointData::Compute {
+                workgroup_sz: args.workgroup_sz,
+            }
+        }
+        Meta::Path(path) if path.is_ident("shader") => EntrypointData::Shader,
+        _ => panic!("expected compute(...) or shader"),
+    };
+
+    let func = parse_macro_input!(item as syn::ItemFn);
+
+    let ident = &func.sig.ident;
+
+    let struct_ident = {
+        let name = ident.to_string();
+        let pascal = name
+            .split('_')
+            .map(|s| {
+                let mut c = s.chars();
+                match c.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().to_string() + c.as_str(),
+                }
+            })
+            .collect::<String>();
+        format_ident!("{}", pascal)
+    };
+
+    let args_ident = format_ident!("{ident}Args");
+
+    let args: Vec<_> = func
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|input| {
+            if let FnArg::Typed(pat) = input {
+                let name = if let syn::Pat::Ident(ident) = &*pat.pat {
+                    ident.ident.to_string()
+                } else {
+                    panic!("expected named argument");
+                };
+                let b = pat
+                    .attrs
+                    .iter()
+                    .find(|a| a.path().is_ident("binding"))
+                    .and_then(|a| FromMeta::from_meta(&a.meta).ok())?;
+                Some((name, b, &pat.ty))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let arg_names: Vec<_> = args.iter().map(|(n, _, _)| n.clone()).collect();
+    let arg_inner_types: Vec<_> = args
+        .iter()
+        .map(|(_, _, ty)| {
+            let Type::Path(p) = &***ty else {
+                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+            };
+            let seg = p.path.segments.last().unwrap();
+            assert!(
+                seg.ident == "BindedBuffer",
+                "expected BindedBuffer, got {}",
+                quote! { #ty }
+            );
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+            };
+            let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else {
+                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+            };
+            inner.clone()
+        })
+        .collect();
+
+    let arg_n_idents: Vec<_> = args
+        .iter()
+        .map(|(n, _, _)| Ident::new(n, ident.span()))
+        .collect();
+
+    let arg_struct_f = arg_n_idents.iter().map(|n| {
+        quote! {
+            #n : wgpu::Buffer
+        }
+    });
+
+    let mut clean_func = func.clone();
+    clean_func.sig.inputs = clean_func
+        .sig
+        .inputs
+        .into_iter()
+        .map(|input| match input {
+            FnArg::Typed(pat) => FnArg::Typed(syn::PatType {
+                attrs: pat
+                    .attrs
+                    .into_iter()
+                    .filter(|a| !a.path().is_ident("binding"))
+                    .collect(),
+                ..pat
+            }),
+            other => other,
+        })
+        .collect();
+
+    let arg_markers: Vec<_> = args.iter().enumerate().map(|(i, (_, _, ty))| {
+        let idx = syn::Index::from(i);
+        let Type::Path(p) = &***ty else { panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty }) };
+        let seg = p.path.segments.last().unwrap();
+        assert!(seg.ident == "BindedBuffer", "expected BindedBuffer, got {}", quote! { #ty });
+        let syn::PathArguments::AngleBracketed(args) = &seg.arguments else { panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty }) };
+        let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else { panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty }) };
+        quote! { codegen::asts::lowered::BindedBuffer::<#inner, #idx>(std::marker::PhantomData) }
+    }).collect();
+
+    let arg_binding_tys: Vec<_> = args.iter().map(|(_, b, _)| {
+        match b {
+            CustomBufferBindingType::Uniform => {
+                quote! { codegen::asts::lowered::CustomBufferBindingType::Uniform }
+            }
+            CustomBufferBindingType::Storage { read_only } => {
+                quote! { codegen::asts::lowered::CustomBufferBindingType::Storage { read_only: #read_only } }
+            }
+        }
+    }).collect();
+
+    let arg_group_layout = args
+        .iter()
+        .enumerate()
+        .map(|(i, (_n, b, _ty))| {
+            let binding_ty = match b {
+                CustomBufferBindingType::Uniform => {
+                    quote! { wgpu::BufferBindingType::Uniform }
+                }
+                CustomBufferBindingType::Storage { read_only } => {
+                    quote! { wgpu::BufferBindingType::Storage { read_only: #read_only } }
+                }
+            };
+            let buffer_usages = match b {
+                CustomBufferBindingType::Uniform => {
+                    quote! { wgpu::BufferUsages::UNIFORM }
+                }
+                CustomBufferBindingType::Storage { .. } => {
+                    quote! { wgpu::BufferUsages::STORAGE }
+                }
+            };
+            let i_u32 = i as u32;
+            quote! {
+                tinyge_graphics::shaders::descriptors::ResourceBinding {
+                    binding: #i_u32,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: tinyge_graphics::shaders::descriptors::ResourceBindingType::Buffer {
+                        ty: #binding_ty,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                        size: 0,
+                        usages: #buffer_usages,
+                        is_input: true,
+                    },
+                    count: None,
+                }
+            }
+        })
+        .collect::<Vec<_>>();
+
+    match ty {
+        EntrypointData::Shader => todo!("vertex/fragment shader not yet supported"),
+        EntrypointData::Compute { workgroup_sz } => {
+            let func_clean = &clean_func;
+            quote! {
+                #func_clean
+
+                pub struct #struct_ident;
+
+                pub struct #args_ident {
+                    #(#arg_struct_f,)*
+                }
+
+                impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for #struct_ident {
+                    type Args = #args_ident;
+                    type Ret = ();
+
+                    fn entry_point(&self) -> &'static str {
+                        stringify!(#ident)
+                    }
+
+                    fn load_source_code(&self) -> &'static str {
+                        static WGSL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+                        WGSL.get_or_init(|| {
+                            let structs = codegen::asts::build_struct_map();
+
+                            let binded = vec![
+                                #(codegen::asts::lowered::BindingMeta {
+                                    ident: #arg_names.to_string(),
+                                    ty: #arg_binding_tys,
+                                    struct_name: {
+                                        match <#arg_inner_types as codegen::asts::IntoWgslStruct>::dt() {
+                                            codegen::dt::DType::StructRef { ident } => ident,
+                                            _ => panic!("expected struct type"),
+                                        }
+                                    },
+                                },)*
+                            ];
+
+                            let entrypoint_globals = vec![
+                                codegen::asts::lowered::EntrypointGlobals::GlobalInvocationId,
+                                codegen::asts::lowered::EntrypointGlobals::LocalInvocationId,
+                            ];
+
+                            let mut ir = codegen::asts::lowered::ShaderIR {
+                                structs,
+                                binded,
+                                entrypoint_globals,
+                                functions: vec![],
+                            };
+
+                            let scope = #ident(#(#arg_markers,)*);
+
+                            ir.functions.push(
+                                codegen::asts::lowered::Functions {
+                                    args: {
+                                        let mut m = std::collections::HashMap::new();
+                                        #(m.insert(#arg_names.to_string(), <#arg_inner_types as codegen::asts::IntoWgslStruct>::dt());)*
+                                        m
+                                    },
+                                    ret: None,
+                                    ident: stringify!(#ident).to_string(),
+                                    entrypoint_ty: Some(codegen::asts::lowered::EntrypointData::Compute { workgroup_sz: #workgroup_sz }),
+                                    body: scope,
+                                },
+                            );
+                            codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir }.translate()
+                        })
+                    }
+
+                    fn resource_buffers_with_bind_group_layouts(
+                        &self,
+                    ) -> Vec<tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>> {
+                        vec![
+                            tinyge_graphics::shaders::descriptors::ResourceGroupLayout {
+                                entries: vec![#(#arg_group_layout,)*],
+                            },
+                        ]
+                    }
+
+                    fn dispatch(
+                        &mut self,
+                        args: Self::Args,
+                        built_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<'a>,
+                        device: &wgpu::Device,
+                        queue: &wgpu::Queue,
+                    ) -> Self::Ret {
+                        let mut encoder = device.create_command_encoder(
+                            &wgpu::CommandEncoderDescriptor { label: None }
+                        );
+                        let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
+                            &[#(tinyge_graphics::shaders::buffers::ResourceType::Buffer(args.#arg_n_idents),)*],
+                            device,
+                        );
+                        {
+                            let mut pass = encoder.begin_compute_pass(
+                                &wgpu::ComputePassDescriptor {
+                                    label: None,
+                                    timestamp_writes: None,
+                                }
+                            );
+                            pass.set_pipeline(&built_data.pipeline);
+                            pass.set_bind_group(0, Some(bind_group), &[]);
+                            pass.dispatch_workgroups(#workgroup_sz as u32, 1, 1);
+                        }
+                        queue.submit(std::iter::once(encoder.finish()));
+                    }
+                }
+            }
+        },
+    }.into()
 }

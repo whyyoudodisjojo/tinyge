@@ -368,6 +368,7 @@ name = "codegen"
 version = "0.1.0"
 dependencies = [
  "codegen-macros",
+ "darling",
  "inventory",
  "tinyge-graphics",
  "wgpu",
@@ -377,6 +378,7 @@ dependencies = [
 name = "codegen-macros"
 version = "0.1.0"
 dependencies = [
+ "codegen",
  "darling",
  "proc-macro2",
  "quote",

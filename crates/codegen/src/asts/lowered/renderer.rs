@@ -1,8 +1,6 @@
-use wgpu::BufferBindingType;
-
 use crate::{
     asts::lowered::{
-        BinOp, EntrypointData,
+        BinOp, CustomBufferBindingType, EntrypointData,
         LoweredAST::{self},
         ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
@@ -16,7 +14,7 @@ pub trait Render {
 }
 
 pub struct LoweredRenderer<'a> {
-    ir: &'a ShaderIR<'a>,
+    pub ir: &'a ShaderIR,
 }
 
 impl<'a> LoweredRenderer<'a> {
@@ -89,16 +87,17 @@ impl<'a> LoweredRenderer<'a> {
             .enumerate()
             .map(|(i, b)| {
                 let var_str = match &b.ty {
-                    BufferBindingType::Storage { read_only } => {
+                    CustomBufferBindingType::Storage { read_only } => {
                         let rw = if *read_only { "read" } else { "read_write" };
                         format!("var<{rw}>")
                     }
-                    BufferBindingType::Uniform => "var<uniform>".to_string(),
+                    CustomBufferBindingType::Uniform => "var<uniform>".to_string(),
                 };
 
-                let dt = self.render_dtype(&b.dt);
-
-                format!("@group(0) @binding({i}) {var_str} {}: {dt}", b.ident)
+                format!(
+                    "@group(0) @binding({i}) {var_str} {}: {}",
+                    b.ident, b.struct_name
+                )
             })
             .collect::<Vec<_>>()
             .join("")
@@ -217,7 +216,7 @@ impl<'a> LoweredRenderer<'a> {
                 // TODO: infer atomics and use atomicload
                 let (ident, index_str) = match r {
                     VarRefType::EntryPointGlobal(b) => (
-                        curr_scope.entrypoint_globals[b.id].to_string(),
+                        self.ir.entrypoint_globals[b.id].to_string(),
                         b.by_index
                             .iter()
                             .map(|i| format!("[{i}]"))
@@ -233,7 +232,7 @@ impl<'a> LoweredRenderer<'a> {
                             .join(""),
                     ),
                     VarRefType::Global(b) => (
-                        curr_scope.binded[b.id].ident.clone(),
+                        self.ir.binded[b.id].ident.clone(),
                         b.by_index
                             .iter()
                             .map(|i| format!("[{i}]"))
@@ -284,7 +283,7 @@ impl<'a> LoweredRenderer<'a> {
                 // TODO: Infer atomics and inject atomicstore
                 let (ident, index_str) = match var {
                     VarRefType::EntryPointGlobal(b) => (
-                        curr_scope.entrypoint_globals[b.id].to_string(),
+                        self.ir.entrypoint_globals[b.id].to_string(),
                         b.by_index
                             .iter()
                             .map(|i| format!("[{i}]"))
@@ -300,7 +299,7 @@ impl<'a> LoweredRenderer<'a> {
                             .join(""),
                     ),
                     VarRefType::Global(b) => (
-                        curr_scope.binded[b.id].ident.clone(),
+                        self.ir.binded[b.id].ident.clone(),
                         b.by_index
                             .iter()
                             .map(|i| format!("[{i}]"))

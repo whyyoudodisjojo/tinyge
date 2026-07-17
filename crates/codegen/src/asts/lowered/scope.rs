@@ -2,38 +2,32 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::asts::lowered::ScopePtr;
 
-use super::{BindedBuffer, EntrypointGlobals, LoweredAST, ShaderIR};
+use super::LoweredAST;
 
 #[derive(Clone)]
 pub struct LocalVariables {
     pub ast: LoweredAST,
 }
 
-pub struct Scope<'a> {
+pub struct Scope {
     pub ast: Option<LoweredAST>,
-    pub binded: &'a [BindedBuffer],
-    pub entrypoint_globals: &'a [EntrypointGlobals],
 
     pub local_vars: Vec<LocalVariables>,
     pub child_scopes: Vec<Rc<RefCell<Self>>>,
 }
 
-impl<'a> Scope<'a> {
-    pub fn new(ir: &'a ShaderIR) -> Self {
+impl Scope {
+    pub fn new() -> Self {
         Self {
             ast: None,
-            binded: &ir.binded,
-            entrypoint_globals: &ir.entrypoint_globals,
             local_vars: vec![],
             child_scopes: vec![],
         }
     }
 
-    pub fn new_scope(&mut self) -> Rc<RefCell<Scope<'a>>> {
+    pub fn new_scope(&mut self) -> Rc<RefCell<Scope>> {
         let new = Rc::new(RefCell::new(Self {
             ast: None,
-            binded: self.binded,
-            entrypoint_globals: self.entrypoint_globals,
             local_vars: self.local_vars.clone(),
             child_scopes: vec![],
         }));

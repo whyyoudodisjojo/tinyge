@@ -4,26 +4,37 @@ pub mod scope;
 
 use std::{collections::HashMap, fmt::Display};
 
-use wgpu::BufferBindingType;
-
-use scope::Scope;
+pub use scope::Scope;
 
 use crate::dt::{BasicTy, BasicTyOrStructRef, DType, VecTy};
 
-pub struct BindedBuffer {
-    pub ident: String,
-    pub ty: BufferBindingType,
-    pub dt: DType,
+#[derive(Clone, Debug, darling::FromMeta)]
+pub enum CustomBufferBindingType {
+    Uniform,
+    Storage { read_only: bool },
 }
 
-pub struct Functions<'a> {
+#[derive(Clone, Debug)]
+pub struct BindingMeta {
+    pub ident: String,
+    pub ty: CustomBufferBindingType,
+    pub struct_name: String,
+}
+
+use std::marker::PhantomData;
+
+#[derive(Debug)]
+pub struct BindedBuffer<T, const N: usize>(pub PhantomData<T>);
+
+pub struct Functions {
     pub args: HashMap<String, DType>,
     pub ret: Option<BasicTyOrStructRef>,
     pub ident: String,
     pub entrypoint_ty: Option<EntrypointData>,
-    pub body: Scope<'a>,
+    pub body: Scope,
 }
 
+#[derive(Clone)]
 pub enum EntrypointGlobals {
     GlobalInvocationId,
     LocalInvocationId,
@@ -40,13 +51,15 @@ impl Display for EntrypointGlobals {
     }
 }
 
+#[derive(Debug, darling::FromMeta)]
 pub enum EntrypointData {
     Compute { workgroup_sz: usize },
     Shader, // TODO
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Struct {
+    pub name: String,
     pub inner: Vec<(String, DType)>,
 }
 
@@ -124,15 +137,18 @@ impl Struct {
             prev_dtype = Some(dtype.clone());
         }
 
-        Self { inner: result }
+        Self {
+            name: self.name,
+            inner: result,
+        }
     }
 }
 
-pub struct ShaderIR<'a> {
+pub struct ShaderIR {
     pub structs: HashMap<String, Struct>,
-    pub binded: Vec<BindedBuffer>,
+    pub binded: Vec<BindingMeta>,
     pub entrypoint_globals: Vec<EntrypointGlobals>,
-    pub functions: Vec<Functions<'a>>,
+    pub functions: Vec<Functions>,
 }
 
 #[derive(Clone)]
@@ -167,6 +183,15 @@ pub enum VarRefType {
     Local(VarRef),
     Global(VarRef),
     EntryPointGlobal(VarRef),
+}
+
+impl<T, const N: usize> BindedBuffer<T, N> {
+    pub fn var_ref(&self) -> VarRefType {
+        VarRefType::Global(VarRef {
+            id: N,
+            by_index: vec![],
+        })
+    }
 }
 
 #[derive(Clone)]
