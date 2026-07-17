@@ -7,3 +7,4 @@ edition = "2024"
 tinyge-graphics = {path = "../graphics"}
 wgpu ={ workspace = true}
 codegen-macros = {path = "../codegen-macros"}
+inventory = { workspace = true }

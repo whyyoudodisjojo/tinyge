@@ -121,7 +121,10 @@ impl RenderAble<ShaderId> for State {
         encoder: &mut wgpu::CommandEncoder,
         pipeline_cache: &mut std::collections::HashMap<
             ShaderId,
-            tinyge_graphics::shaders::ShaderWrapper<'a, Arc<dyn tinyge_graphics::shaders::Shader<'a>>>,
+            tinyge_graphics::shaders::ShaderWrapper<
+                'a,
+                Arc<dyn tinyge_graphics::shaders::Shader<'a>>,
+            >,
         >,
         view: &wgpu::TextureView,
         device: &wgpu::Device,

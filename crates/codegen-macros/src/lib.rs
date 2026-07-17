@@ -50,40 +50,30 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
         .collect();
 
     let struct_ident = struct_name.to_string();
+    let make_fn_ident = quote::format_ident!("__make_struct_for_{}", struct_ident);
 
     let output = quote! {
-        impl From<#struct_name> for (String, codegen::asts::lowered::Struct) {
-            fn from(_item: #struct_name) -> Self {
-                use codegen::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
-                let mut fields = Vec::new();
-                #(#field_insertions)*
+        #[allow(non_snake_case)]
+        fn #make_fn_ident() -> (String, Vec<(String, codegen::dt::DType)>) {
+            use codegen::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
+            let mut fields = Vec::new();
+            #(#field_insertions)*
+            (#struct_ident.to_string(), fields)
+        }
 
-                let mut result = Vec::new();
-                let mut prev_dtype: Option<DType> = None;
-                let mut pad_counter = 0usize;
-
-                for (name, dtype) in fields {
-                    if let Some(ref prev) = prev_dtype {
-                        let padding_needed = codegen::asts::lowered::Struct::required_padding(prev, &dtype);
-                        if padding_needed > 0 {
-                            let pad_name = format!("__pad_{}", pad_counter);
-                            result.push((pad_name, DType::Pad(padding_needed)));
-                            pad_counter += 1;
-                        }
-                    }
-
-                    result.push((name, dtype.clone()));
-                    prev_dtype = Some(dtype);
-                }
-
-                let s = codegen::asts::lowered::Struct {
-                    inner: result,
-                };
-                (#struct_ident.to_string(), s)
+        impl codegen::asts::IntoWgslStruct for #struct_name {
+            fn dt() -> (String, codegen::asts::lowered::Struct) {
+                let (name, fields) = #make_fn_ident();
+                (name, codegen::asts::lowered::Struct { inner: fields })
             }
         }
 
-        impl codegen::asts::IntoWgslStruct for #struct_name {}
+        codegen::inventory::submit! {
+            codegen::asts::WgslStructFactory {
+                name: stringify!(#struct_name),
+                make: #make_fn_ident,
+            }
+        }
     };
 
     output.into()

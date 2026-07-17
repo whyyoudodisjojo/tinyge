@@ -1,3 +1,4 @@
+use codegen::asts::IntoWgslStruct;
 use codegen::asts::lowered::Struct;
 use codegen_macros::IntoWgslStruct;
 
@@ -43,56 +44,50 @@ pub struct OuterStruct {
 
 #[test]
 fn test_simple_particle() {
-    let particle = SimpleParticle {
-        position: [0.0; 3],
-        velocity: [0.0; 3],
-        id: 0,
-    };
-
-    let (name, s): (String, Struct) = particle.into();
+    let (name, s): (String, Struct) = SimpleParticle::dt();
     println!("SimpleParticle ({}): {:#?}", name, s);
 }
 
 #[test]
 fn test_buffer_data() {
-    let buffer = BufferData {
-        data: vec![1.0, 2.0, 3.0],
-        count: 3,
-    };
-
-    let (name, s): (String, Struct) = buffer.into();
+    let (name, s): (String, Struct) = BufferData::dt();
     println!("BufferData ({}): {:#?}", name, s);
 }
 
 #[test]
 fn test_basic_types() {
-    let basic = BasicTypes {
-        float_val: 1.0,
-        uint_val: 1,
-        int_val: -1,
-        vec2_val: [0.0; 2],
-        vec3_val: [0.0; 3],
-    };
-
-    let (name, s): (String, Struct) = basic.into();
+    let (name, s): (String, Struct) = BasicTypes::dt();
     println!("BasicTypes ({}): {:#?}", name, s);
 }
 
 #[test]
 fn test_atomic_counter() {
-    let counter = AtomicCounter { count: 42 };
-
-    let (name, s): (String, Struct) = counter.into();
+    let (name, s): (String, Struct) = AtomicCounter::dt();
     println!("AtomicCounter ({}): {:#?}", name, s);
 }
 
 #[test]
 fn test_nested_struct() {
-    let outer = OuterStruct {
-        inner: InnerStruct { value: 42.0 },
-        count: 5,
-    };
-
-    let (name, s): (String, Struct) = outer.into();
+    let (name, s): (String, Struct) = OuterStruct::dt();
     println!("OuterStruct ({}): {:#?}", name, s);
+
+    let store = codegen::asts::build_struct_map();
+
+    let inner_dt = codegen::dt::DType::StructRef {
+        ident: "InnerStruct".to_string(),
+    };
+    assert_eq!(
+        Struct::wgsl_size_align(&store, &inner_dt),
+        (4, 4),
+        "InnerStruct size/align"
+    );
+
+    let outer_dt = codegen::dt::DType::StructRef {
+        ident: "OuterStruct".to_string(),
+    };
+    assert_eq!(
+        Struct::wgsl_size_align(&store, &outer_dt),
+        (8, 4),
+        "OuterStruct size/align"
+    );
 }

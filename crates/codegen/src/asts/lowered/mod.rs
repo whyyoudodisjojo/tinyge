@@ -52,21 +52,42 @@ pub struct Struct {
 
 impl Struct {
     // sz, align
-    fn wgsl_size_align(dt: &DType) -> (usize, usize) {
+    pub fn wgsl_size_align(struct_store: &HashMap<String, Self>, dt: &DType) -> (usize, usize) {
         match dt {
             DType::Basic(BasicTy::F32) | DType::Basic(BasicTy::Integer(_)) => (4, 4),
             DType::Atomic(_) => (4, 4),
             DType::Vector(VecTy::Vec2(_)) => (8, 8),
             DType::Vector(VecTy::Vec3(_)) => (12, 16),
+            DType::Vector(VecTy::Vec4(_)) => (16, 16),
             DType::Vector(VecTy::Array(_)) => (0, 0),
-            DType::StructRef { ident: _ } => (0, 0),
+            DType::StructRef { ident } => {
+                let s = struct_store.get(ident).expect("struct not found in store");
+                let mut offset = 0;
+                let mut max_align = 0;
+                for (_, field_dt) in &s.inner {
+                    let (field_sz, field_al) = Self::wgsl_size_align(struct_store, field_dt);
+                    max_align = max_align.max(field_al);
+                    if max_align > 0 && offset % field_al != 0 {
+                        offset += field_al - offset % field_al;
+                    }
+                    offset += field_sz;
+                }
+                if max_align > 0 && offset % max_align != 0 {
+                    offset += max_align - offset % max_align;
+                }
+                (offset, max_align)
+            }
             DType::Pad(bytes) => (*bytes, *bytes),
         }
     }
 
-    pub fn required_padding(prev_field: &DType, next_field: &DType) -> usize {
-        let (prev_size, prev_align) = Self::wgsl_size_align(prev_field);
-        let (_, next_align) = Self::wgsl_size_align(next_field);
+    pub fn required_padding(
+        struct_store: &HashMap<String, Self>,
+        prev_field: &DType,
+        next_field: &DType,
+    ) -> usize {
+        let (prev_size, prev_align) = Self::wgsl_size_align(struct_store, prev_field);
+        let (_, next_align) = Self::wgsl_size_align(struct_store, next_field);
 
         if prev_align == 0 || next_align == 0 {
             return 0;
@@ -84,6 +105,26 @@ impl Struct {
         } else {
             next_align - misalignment
         }
+    }
+
+    pub(crate) fn with_padding(self, struct_store: &HashMap<String, Self>) -> Self {
+        let mut result = Vec::new();
+        let mut prev_dtype: Option<DType> = None;
+        let mut pad_counter = 0usize;
+
+        for (name, dtype) in &self.inner {
+            if let Some(ref prev) = prev_dtype {
+                let padding_needed = Self::required_padding(struct_store, prev, dtype);
+                if padding_needed > 0 {
+                    result.push((format!("__pad_{}", pad_counter), DType::Pad(padding_needed)));
+                    pad_counter += 1;
+                }
+            }
+            result.push((name.clone(), dtype.clone()));
+            prev_dtype = Some(dtype.clone());
+        }
+
+        Self { inner: result }
     }
 }
 

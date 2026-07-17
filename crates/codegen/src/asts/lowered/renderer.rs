@@ -28,6 +28,7 @@ impl<'a> LoweredRenderer<'a> {
                 VecTy::Array(inner) => format!("array<{}>", self.render_array_inner(inner)),
                 VecTy::Vec2(b) => format!("vec2<{}>", self.render_basic_ty(b)),
                 VecTy::Vec3(b) => format!("vec3<{}>", self.render_basic_ty(b)),
+                VecTy::Vec4(b) => format!("vec4<{}>", self.render_basic_ty(b)),
             },
             DType::StructRef { ident } => ident.clone(),
             DType::Pad(bytes) => self.render_pad_type(*bytes),
@@ -405,6 +406,18 @@ impl<'a> LoweredRenderer<'a> {
                 (
                     format!("vec3<{inner_ty}>({val0}, {val1}, {val2})"),
                     off0 + off1 + off2,
+                )
+            }
+            VecTy::Vec4(inner) => {
+                let inner_ty = self.render_basic_ty(inner);
+                let (val0, off0) = self.render_basic_ty_const(inner, data, offset);
+                let (val1, off1) = self.render_basic_ty_const(inner, data, offset + off0);
+                let (val2, off2) = self.render_basic_ty_const(inner, data, offset + off0 + off1);
+                let (val3, off3) =
+                    self.render_basic_ty_const(inner, data, offset + off0 + off1 + off2);
+                (
+                    format!("vec4<{inner_ty}>({val0}, {val1}, {val2}, {val3})"),
+                    off0 + off1 + off2 + off3,
                 )
             }
             VecTy::Array(_inner) => {

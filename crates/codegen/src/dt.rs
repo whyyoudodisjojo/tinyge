@@ -26,6 +26,7 @@ pub enum IntegerTyOrStructRef {
 
 #[derive(Clone, Debug)]
 pub enum VecTy {
+    Vec4(BasicTy),
     Vec3(BasicTy),
     Vec2(BasicTy),
     Array(MaybeAtomic<IntegerTyOrStructRef, BasicTyOrStructRef>),
