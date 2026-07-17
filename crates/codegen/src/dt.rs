@@ -19,13 +19,13 @@ pub enum MaybeAtomic<A, N> {
 }
 
 #[derive(Clone, Debug)]
-pub enum IntegerTyOrStructRef{
+pub enum IntegerTyOrStructRef {
     Integer(IntegerTy),
-    StructRef{ident: String}
+    StructRef { ident: String },
 }
 
 #[derive(Clone, Debug)]
-pub enum VecTy{
+pub enum VecTy {
     Vec3(BasicTy),
     Vec2(BasicTy),
     Array(MaybeAtomic<IntegerTyOrStructRef, BasicTyOrStructRef>),

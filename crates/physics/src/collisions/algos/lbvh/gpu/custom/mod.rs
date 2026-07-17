@@ -26,18 +26,18 @@ pub struct LBVHBuffers {
     pub params_buffer: Buffer,
 }
 
-pub struct LBVHBuilder<'a> {
-    compute_rects: ComputeShaderWrapper<'a, ComputeRects>,
-    mortonize: ComputeShaderWrapper<'a, Mortonize>,
-    build_leaves: ComputeShaderWrapper<'a, BuildTree>,
-    build_structure: ComputeShaderWrapper<'a, BuildTree>,
-    compute_bounds: ComputeShaderWrapper<'a, BuildTree>,
-    radix_sort: RadixSort<'a>,
+pub struct LBVHBuilder {
+    compute_rects: ComputeShaderWrapper<'static, ComputeRects>,
+    mortonize: ComputeShaderWrapper<'static, Mortonize>,
+    build_leaves: ComputeShaderWrapper<'static, BuildTree>,
+    build_structure: ComputeShaderWrapper<'static, BuildTree>,
+    compute_bounds: ComputeShaderWrapper<'static, BuildTree>,
+    radix_sort: RadixSort,
     buffers: LBVHBuffers,
     num_models: u32,
 }
 
-impl<'a> LBVHBuilder<'a> {
+impl LBVHBuilder {
     pub fn new(num_models: u32, num_verts: u32, device: &Device) -> Self {
         let compute_rects =
             ComputeShaderWrapper::new(ComputeRects::new(num_models, num_verts), device);
@@ -119,7 +119,7 @@ impl<'a> LBVHBuilder<'a> {
     }
 }
 
-impl<'a> GpuCollisionAlgorithm for LBVHBuilder<'a> {
+impl GpuCollisionAlgorithm for LBVHBuilder {
     fn build(
         &mut self,
         model_verts_buffer: wgpu::Buffer,

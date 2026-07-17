@@ -46,8 +46,8 @@ pub const INDICES: &[u16] = &[
 
 pub struct Pentagon;
 
-impl Shader<'_> for Pentagon {
-    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
+impl<'a> Shader<'a> for Pentagon {
+    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'a> {
         let vertex_sz = (3 * 4) + (3 * 4); // position (3 floats) + color (3 floats) = 24 bytes per vertex
         let vertex_buffer_sz = vertex_sz * VERTICES.len() as u64; // 5 vertices
 
@@ -77,7 +77,7 @@ impl Shader<'_> for Pentagon {
         }
     }
 
-    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'static>> {
+    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
         vec![ResourceGroupLayout {
             entries: vec![ResourceBinding {
                 binding: 0,

@@ -31,15 +31,15 @@ pub struct RadixSortInternalBuffers {
     pub global_offsets_buffer: Buffer,
 }
 
-pub struct RadixSort<'a> {
-    count: ComputeShaderWrapper<'a, RadixSortPhase>,
-    cumsum: ComputeShaderWrapper<'a, RadixSortPhase>,
-    rearrange: ComputeShaderWrapper<'a, RadixSortPhase>,
+pub struct RadixSort {
+    count: ComputeShaderWrapper<'static, RadixSortPhase>,
+    cumsum: ComputeShaderWrapper<'static, RadixSortPhase>,
+    rearrange: ComputeShaderWrapper<'static, RadixSortPhase>,
     num_elems: u32,
     buffers: RadixSortInternalBuffers,
 }
 
-impl<'a> RadixSort<'a> {
+impl RadixSort {
     pub fn new(num_elems: u32, device: &Device) -> Self {
         let count = ComputeShaderWrapper::new(
             RadixSortPhase::new(num_elems, RadixSortStage::Count),

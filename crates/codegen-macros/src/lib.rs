@@ -37,7 +37,7 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
             if f.pad.is_some() {
                 return None;
             }
-            
+
             let field_name = f.ident.as_ref().unwrap().to_string();
             let is_atomic = f.atomic.is_present();
 
@@ -57,11 +57,11 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
                 use codegen::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
                 let mut fields = Vec::new();
                 #(#field_insertions)*
-                
+
                 let mut result = Vec::new();
                 let mut prev_dtype: Option<DType> = None;
                 let mut pad_counter = 0usize;
-                
+
                 for (name, dtype) in fields {
                     if let Some(ref prev) = prev_dtype {
                         let padding_needed = codegen::asts::lowered::Struct::required_padding(prev, &dtype);
@@ -71,11 +71,11 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
                             pad_counter += 1;
                         }
                     }
-                    
+
                     result.push((name, dtype.clone()));
                     prev_dtype = Some(dtype);
                 }
-                
+
                 let s = codegen::asts::lowered::Struct {
                     inner: result,
                 };

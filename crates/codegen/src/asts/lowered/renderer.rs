@@ -6,7 +6,8 @@ use crate::{
         LoweredAST::{self},
         ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
-    }, dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, IntegerTyOrStructRef, MaybeAtomic, VecTy},
+    },
+    dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, IntegerTyOrStructRef, MaybeAtomic, VecTy},
 };
 
 pub trait Render {
@@ -39,7 +40,10 @@ impl<'a> LoweredRenderer<'a> {
             8 => "vec2<u32>".to_string(),
             12 => "vec3<u32>".to_string(),
             16 => "vec4<u32>".to_string(),
-            n => panic!("Unsupported padding size: {} bytes. Use 4, 8, 12, or 16.", n),
+            n => panic!(
+                "Unsupported padding size: {} bytes. Use 4, 8, 12, or 16.",
+                n
+            ),
         }
     }
 
@@ -50,15 +54,16 @@ impl<'a> LoweredRenderer<'a> {
         }
     }
 
-    pub fn render_array_inner(&self, inner: &MaybeAtomic<IntegerTyOrStructRef, BasicTyOrStructRef>) -> String {
+    pub fn render_array_inner(
+        &self,
+        inner: &MaybeAtomic<IntegerTyOrStructRef, BasicTyOrStructRef>,
+    ) -> String {
         match inner {
             MaybeAtomic::Naked(b) => format!("atomic<{}>", self.render_basic_ty_or_struct_ref(b)),
-            MaybeAtomic::Atomic(a) => {
-                match a{
-                    IntegerTyOrStructRef::Integer(i) => self.render_integer_ty(i),
-                    IntegerTyOrStructRef::StructRef { ident } => ident.to_string()
-                }
-            }
+            MaybeAtomic::Atomic(a) => match a {
+                IntegerTyOrStructRef::Integer(i) => self.render_integer_ty(i),
+                IntegerTyOrStructRef::StructRef { ident } => ident.to_string(),
+            },
         }
     }
 

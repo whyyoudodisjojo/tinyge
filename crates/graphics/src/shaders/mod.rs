@@ -27,14 +27,14 @@ pub struct ComputeShaderBuiltData<'a> {
 }
 
 pub trait Shader<'a> {
-    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
+    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'a> {
         MeshBufferSpecs::default()
     }
     fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
         vec![]
     }
-    fn load_source_code(&self) -> &'static str;
-    fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'static>;
+    fn load_source_code(&self) -> &str;
+    fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'_>;
 
     fn build(
         &self,
@@ -46,11 +46,10 @@ pub trait Shader<'a> {
             vertex_buffers: vertex_layouts,
             index_buffer_size,
         } = self.mesh_buffers_layouts();
-        let (vertex_layouts, vertex_buffer_sizes): (Vec<VertexBufferLayout<'static>>, Vec<u64>) =
-            vertex_layouts
-                .into_iter()
-                .map(|VertexBufferSpec { layout, size }| (layout, size))
-                .collect::<(Vec<_>, Vec<_>)>();
+        let (vertex_layouts, vertex_buffer_sizes) = vertex_layouts
+            .into_iter()
+            .map(|VertexBufferSpec { layout, size }| (layout, size))
+            .collect::<(Vec<_>, Vec<_>)>();
 
         let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
 
@@ -150,12 +149,11 @@ where
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
     ) -> Self {
-        let res = Self {
-            buffer_build_spec: None,
+        let buffer_build_spec = shader.build(device, texture_format, cache);
+        Self {
+            buffer_build_spec: Some(buffer_build_spec),
             inner: shader,
-        };
-        res.inner.build(device, texture_format, cache);
-        res
+        }
     }
 
     pub fn recompile(
@@ -182,11 +180,11 @@ where
         self.as_ref().build(device, texture_format, cache)
     }
 
-    fn load_source_code(&self) -> &'static str {
+    fn load_source_code(&self) -> &str {
         self.as_ref().load_source_code()
     }
 
-    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'static> {
+    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'a> {
         self.as_ref().mesh_buffers_layouts()
     }
 
@@ -194,7 +192,7 @@ where
         self.as_ref().resource_buffers_with_bind_group_layouts()
     }
 
-    fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'static> {
+    fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'_> {
         self.as_ref().shader_pipeline_desc()
     }
 }
@@ -217,7 +215,7 @@ where
         }
     }
 
-    pub fn recompile(&'a mut self, device: &Device) {
+    pub fn recompile(&mut self, device: &Device) {
         let buffer_build_spec = self.inner.build(device);
         self.buffer_build_spec = buffer_build_spec;
     }
@@ -235,7 +233,7 @@ pub trait ComputeShader<'a> {
     fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
         vec![]
     }
-    fn load_source_code<'b>(&'b self) -> &'b str;
+    fn load_source_code(&self) -> &str;
     fn entry_point(&self) -> &'static str;
 
     fn build(&self, device: &Device) -> ComputeShaderBuiltData<'a> {
@@ -301,7 +299,7 @@ pub trait ComputeShader<'a> {
     fn dispatch(
         &mut self,
         args: Self::Args,
-        build_data: &mut ComputeShaderBuiltData,
+        build_data: &mut ComputeShaderBuiltData<'a>,
         device: &Device,
         queue: &Queue,
     ) -> Self::Ret;

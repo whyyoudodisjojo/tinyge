@@ -32,7 +32,7 @@ pub trait RenderAble<K> {
     fn render_pass<'a>(
         &mut self,
         encoder: &mut CommandEncoder,
-        shaders: &mut HashMap<K, ShaderWrapper<Arc<dyn Shader<'a>>>>,
+        shaders: &mut HashMap<K, ShaderWrapper<'a, Arc<dyn Shader<'a>>>>,
         view: &TextureView,
         device: &wgpu::Device,
         queue: &wgpu::Queue,

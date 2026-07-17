@@ -138,7 +138,7 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
     fn dispatch(
         &mut self,
         args: Self::Args,
-        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData,
+        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<'a>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {
@@ -270,7 +270,13 @@ mod tests {
             let max_candidates = 16u32;
 
             let mut shader = ComputeShaderWrapper::new(
-                AccelerationShader{num_rays, max_candidates, max_instances: 1, blas_vertex_count: 3, gpu_ray_size: 48},
+                AccelerationShader {
+                    num_rays,
+                    max_candidates,
+                    max_instances: 1,
+                    blas_vertex_count: 3,
+                    gpu_ray_size: 48,
+                },
                 &device,
             );
 
@@ -437,10 +443,14 @@ mod tests {
 
             let counter: Vec<u32> = read_buffer(&device, &queue, &counter_buffer);
             println!("Counter value: {}", counter[0]);
-            assert!(counter[0] >= 4, "Expected at least 4 hits, got {}", counter[0]);
+            assert!(
+                counter[0] >= 4,
+                "Expected at least 4 hits, got {}",
+                counter[0]
+            );
 
             let candidates: Vec<RawCandidate> = read_buffer(&device, &queue, &candidates_buffer);
-            
+
             for i in 0..counter[0].min(candidates.len() as u32) as usize {
                 let hit = &candidates[i];
                 println!(
@@ -455,7 +465,7 @@ mod tests {
                     hit.t
                 );
             }
-            
+
             let hit = &candidates[0];
             assert_eq!(hit.instance_index, 0, "Instance index should be 0");
             assert!(

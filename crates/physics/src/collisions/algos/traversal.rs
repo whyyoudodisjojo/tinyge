@@ -167,7 +167,7 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for BvhTraversalShader {
     fn dispatch(
         &mut self,
         args: Self::Args,
-        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData,
+        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<'a>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {

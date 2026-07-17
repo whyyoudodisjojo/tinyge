@@ -120,7 +120,7 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
     fn dispatch(
         &mut self,
         args: Self::Args,
-        built_data: &mut ComputeShaderBuiltData,
+        built_data: &mut ComputeShaderBuiltData<'a>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {
