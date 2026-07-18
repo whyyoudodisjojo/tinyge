@@ -5,7 +5,7 @@ use crate::{
         ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
     },
-    dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, IntegerTyOrStructRef, MaybeAtomic, VecTy},
+    dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy},
 };
 
 pub trait Render {

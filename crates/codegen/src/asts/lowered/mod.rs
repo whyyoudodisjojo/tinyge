@@ -288,7 +288,7 @@ impl LoweredAST {
                     .clone()
                     .apply_accessor(&s.by, ir, scope),
                 VarRefType::Global(g) => DType::StructRef {
-                    ident: ir.binded[g.id].ident.clone(),
+                    ident: ir.binded[g.id].struct_name.clone(),
                 }
                 .apply_accessor(&g.by, ir, scope),
             },

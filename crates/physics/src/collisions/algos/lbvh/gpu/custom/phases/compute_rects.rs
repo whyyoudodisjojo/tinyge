@@ -4,6 +4,7 @@ use codegen::asts::lowered::{
 use codegen::asts::lowered::BindedBuffer;
 use codegen::dt::{BasicTy, DType, IntegerTy, VecTy};
 use codegen_macros::{IntoWgslStruct, shader};
+use tinyge_graphics::shaders::ComputeShader;
 
 #[derive(IntoWgslStruct)]
 pub struct Vertex {
@@ -370,4 +371,14 @@ fn compute_rects(
     ]));
 
     scope
+}
+
+#[test]
+fn test_compute_rects() {
+    let s = ComputeRects;
+    let wgsl = s.load_source_code();
+    println!("{wgsl}");
+    assert!(wgsl.contains("var<workgroup>"));
+    assert!(wgsl.contains("@compute @workgroup_size256"));
+    assert!(wgsl.contains("fn compute_rects"));
 }
