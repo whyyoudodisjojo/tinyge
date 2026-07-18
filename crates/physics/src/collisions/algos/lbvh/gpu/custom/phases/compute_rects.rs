@@ -1,12 +1,14 @@
 use codegen::asts::lowered::{
-    Accessor, BinOp, BindedBuffer, LoweredAST, Scope, VarRef, VarRefType,
+    Accessor, BinOp, LoweredAST, Scope, VarRef, VarRefType,
 };
+use codegen::asts::lowered::BindedBuffer;
 use codegen::dt::{BasicTy, DType, IntegerTy, VecTy};
 use codegen_macros::{IntoWgslStruct, shader};
 
 #[derive(IntoWgslStruct)]
 pub struct Vertex {
     pos: [f32; 3],
+    _pad: f32,
 }
 
 #[derive(IntoWgslStruct)]
@@ -32,87 +34,67 @@ fn compute_rects(
     let mut scope = Scope::new();
 
     let lid = scope.add_local(
-        "lid".to_string(),
-        false,
+        "lid".to_string(), false,
         LoweredAST::Load(VarRefType::EntryPointGlobal(VarRef {
             id: 1,
             by: vec![Accessor::Field("x".to_string())],
         })),
     );
     let model_idx = scope.add_local(
-        "model_idx".to_string(),
-        false,
+        "model_idx".to_string(), false,
         LoweredAST::Load(VarRefType::EntryPointGlobal(VarRef {
             id: 0,
             by: vec![Accessor::Field("x".to_string())],
         })),
     );
     let info = scope.add_local(
-        "info".to_string(),
-        false,
-        LoweredAST::Load(VarRefType::Global(VarRef {
-            id: 1,
-            by: vec![Accessor::Index(Box::new(LoweredAST::Load(
-                VarRefType::Local(VarRef {
-                    id: model_idx,
-                    by: vec![],
-                }),
-            )))],
-        })),
+        "info".to_string(), false,
+        LoweredAST::Load(
+            model_infos.var_ref().index(
+                LoweredAST::Load(VarRefType::Local(VarRef { id: model_idx, by: vec![] }))
+            )
+        ),
     );
     let model_offset = scope.add_local(
-        "model_offset".to_string(),
-        false,
-        LoweredAST::Load(VarRefType::Local(VarRef {
-            id: info,
-            by: vec![Accessor::Field("offset".to_string())],
-        })),
+        "model_offset".to_string(), false,
+        LoweredAST::Load(
+            VarRefType::Local(VarRef { id: info, by: vec![] })
+                .field("offset")
+        ),
     );
     let model_vertex_count = scope.add_local(
-        "model_vertex_count".to_string(),
-        false,
-        LoweredAST::Load(VarRefType::Local(VarRef {
-            id: info,
-            by: vec![Accessor::Field("stride".to_string())],
-        })),
+        "model_vertex_count".to_string(), false,
+        LoweredAST::Load(
+            VarRefType::Local(VarRef { id: info, by: vec![] })
+                .field("stride")
+        ),
     );
     let local_min = scope.add_local(
-        "local_min".to_string(),
-        true,
+        "local_min".to_string(), true,
         LoweredAST::Const {
             dt: DType::Vector(VecTy::Vec3(BasicTy::F32)),
-            data: f32::INFINITY
-                .to_le_bytes()
-                .into_iter()
+            data: f32::INFINITY.to_le_bytes().into_iter()
                 .chain(f32::INFINITY.to_le_bytes())
                 .chain(f32::INFINITY.to_le_bytes())
                 .collect(),
         },
     );
     let local_max = scope.add_local(
-        "local_max".to_string(),
-        true,
+        "local_max".to_string(), true,
         LoweredAST::Const {
             dt: DType::Vector(VecTy::Vec3(BasicTy::F32)),
-            data: (-f32::INFINITY)
-                .to_le_bytes()
-                .into_iter()
+            data: (-f32::INFINITY).to_le_bytes().into_iter()
                 .chain((-f32::INFINITY).to_le_bytes())
                 .chain((-f32::INFINITY).to_le_bytes())
                 .collect(),
         },
     );
     let i = scope.add_local(
-        "i".to_string(),
-        true,
-        LoweredAST::Load(VarRefType::Local(VarRef {
-            id: lid,
-            by: vec![],
-        })),
+        "i".to_string(), true,
+        LoweredAST::Load(VarRefType::Local(VarRef { id: lid, by: vec![] })),
     );
     let offset = scope.add_local(
-        "offset".to_string(),
-        true,
+        "offset".to_string(), true,
         LoweredAST::Const {
             dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
             data: 128u32.to_le_bytes().to_vec(),
@@ -123,72 +105,55 @@ fn compute_rects(
         scope.while_loop(
             LoweredAST::BinaryOp {
                 lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                    id: model_vertex_count,
-                    by: vec![],
+                    id: model_vertex_count, by: vec![],
                 }))),
                 rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                    id: i,
-                    by: vec![],
+                    id: i, by: vec![],
                 }))),
                 op: BinOp::Gt,
             },
             |b| {
                 let v = b.add_local(
-                    "v".to_string(),
-                    false,
-                    LoweredAST::Load(VarRefType::Global(VarRef {
-                        id: 0,
-                        by: vec![
-                            Accessor::Index(Box::new(LoweredAST::BinaryOp {
+                    "v".to_string(), false,
+                    LoweredAST::Load(
+                        model_verts.var_ref().index(
+                            LoweredAST::BinaryOp {
                                 lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: model_offset,
-                                    by: vec![],
+                                    id: model_offset, by: vec![],
                                 }))),
                                 rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: i,
-                                    by: vec![],
+                                    id: i, by: vec![],
                                 }))),
                                 op: BinOp::Add,
-                            })),
-                            Accessor::Field("pos".to_string()),
-                        ],
-                    })),
+                            },
+                        ).field("pos")
+                    ),
                 );
                 b.ast = Some(LoweredAST::Group(vec![
                     LoweredAST::Store {
-                        var: VarRefType::Local(VarRef {
-                            id: local_min,
-                            by: vec![],
-                        }),
+                        var: VarRefType::Local(VarRef { id: local_min, by: vec![] }),
                         val: Box::new(LoweredAST::FunctionCall {
                             ident: "min".to_string(),
                             args: vec![
                                 Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: local_min,
-                                    by: vec![],
+                                    id: local_min, by: vec![],
                                 }))),
                                 Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: v,
-                                    by: vec![],
+                                    id: v, by: vec![],
                                 }))),
                             ],
                         }),
                     },
                     LoweredAST::Store {
-                        var: VarRefType::Local(VarRef {
-                            id: local_max,
-                            by: vec![],
-                        }),
+                        var: VarRefType::Local(VarRef { id: local_max, by: vec![] }),
                         val: Box::new(LoweredAST::FunctionCall {
                             ident: "max".to_string(),
                             args: vec![
                                 Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: local_max,
-                                    by: vec![],
+                                    id: local_max, by: vec![],
                                 }))),
                                 Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: v,
-                                    by: vec![],
+                                    id: v, by: vec![],
                                 }))),
                             ],
                         }),
@@ -197,8 +162,7 @@ fn compute_rects(
                         var: VarRefType::Local(VarRef { id: i, by: vec![] }),
                         val: Box::new(LoweredAST::BinaryOp {
                             lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                id: i,
-                                by: vec![],
+                                id: i, by: vec![],
                             }))),
                             rhs: Box::new(LoweredAST::Const {
                                 dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
@@ -213,42 +177,32 @@ fn compute_rects(
         LoweredAST::Store {
             var: VarRefType::Shared(VarRef {
                 id: 0,
-                by: vec![Accessor::Index(Box::new(LoweredAST::Load(
-                    VarRefType::Local(VarRef {
-                        id: lid,
-                        by: vec![],
-                    }),
-                )))],
+                by: vec![Accessor::Index(Box::new(
+                    LoweredAST::Load(VarRefType::Local(VarRef { id: lid, by: vec![] })),
+                ))],
             }),
             val: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                id: local_min,
-                by: vec![],
+                id: local_min, by: vec![],
             }))),
         },
         LoweredAST::Store {
             var: VarRefType::Shared(VarRef {
                 id: 1,
-                by: vec![Accessor::Index(Box::new(LoweredAST::Load(
-                    VarRefType::Local(VarRef {
-                        id: lid,
-                        by: vec![],
-                    }),
-                )))],
+                by: vec![Accessor::Index(Box::new(
+                    LoweredAST::Load(VarRefType::Local(VarRef { id: lid, by: vec![] })),
+                ))],
             }),
             val: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                id: local_max,
-                by: vec![],
+                id: local_max, by: vec![],
             }))),
         },
         LoweredAST::FunctionCall {
-            ident: "workgroupBarrier".to_string(),
-            args: vec![],
+            ident: "workgroupBarrier".to_string(), args: vec![],
         },
         scope.while_loop(
             LoweredAST::BinaryOp {
                 lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                    id: offset,
-                    by: vec![],
+                    id: offset, by: vec![],
                 }))),
                 rhs: Box::new(LoweredAST::Const {
                     dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
@@ -260,12 +214,10 @@ fn compute_rects(
                 let if_ast = b.cond(
                     LoweredAST::BinaryOp {
                         lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                            id: offset,
-                            by: vec![],
+                            id: offset, by: vec![],
                         }))),
                         rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                            id: lid,
-                            by: vec![],
+                            id: lid, by: vec![],
                         }))),
                         op: BinOp::Gt,
                     },
@@ -274,41 +226,33 @@ fn compute_rects(
                             LoweredAST::Store {
                                 var: VarRefType::Shared(VarRef {
                                     id: 0,
-                                    by: vec![Accessor::Index(Box::new(LoweredAST::Load(
-                                        VarRefType::Local(VarRef {
-                                            id: lid,
-                                            by: vec![],
-                                        }),
-                                    )))],
+                                    by: vec![Accessor::Index(Box::new(
+                                        LoweredAST::Load(VarRefType::Local(VarRef {
+                                            id: lid, by: vec![],
+                                        })),
+                                    ))],
                                 }),
                                 val: Box::new(LoweredAST::FunctionCall {
                                     ident: "min".to_string(),
                                     args: vec![
                                         Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
                                             id: 0,
-                                            by: vec![Accessor::Index(Box::new(LoweredAST::Load(
-                                                VarRefType::Local(VarRef {
-                                                    id: lid,
-                                                    by: vec![],
-                                                }),
-                                            )))],
+                                            by: vec![Accessor::Index(Box::new(
+                                                LoweredAST::Load(VarRefType::Local(VarRef {
+                                                    id: lid, by: vec![],
+                                                })),
+                                            ))],
                                         }))),
                                         Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
                                             id: 0,
                                             by: vec![Accessor::Index(Box::new(
                                                 LoweredAST::BinaryOp {
-                                                    lhs: Box::new(LoweredAST::Load(
-                                                        VarRefType::Local(VarRef {
-                                                            id: lid,
-                                                            by: vec![],
-                                                        }),
-                                                    )),
-                                                    rhs: Box::new(LoweredAST::Load(
-                                                        VarRefType::Local(VarRef {
-                                                            id: offset,
-                                                            by: vec![],
-                                                        }),
-                                                    )),
+                                                    lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                                        id: lid, by: vec![],
+                                                    }))),
+                                                    rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                                        id: offset, by: vec![],
+                                                    }))),
                                                     op: BinOp::Add,
                                                 },
                                             ))],
@@ -319,41 +263,33 @@ fn compute_rects(
                             LoweredAST::Store {
                                 var: VarRefType::Shared(VarRef {
                                     id: 1,
-                                    by: vec![Accessor::Index(Box::new(LoweredAST::Load(
-                                        VarRefType::Local(VarRef {
-                                            id: lid,
-                                            by: vec![],
-                                        }),
-                                    )))],
+                                    by: vec![Accessor::Index(Box::new(
+                                        LoweredAST::Load(VarRefType::Local(VarRef {
+                                            id: lid, by: vec![],
+                                        })),
+                                    ))],
                                 }),
                                 val: Box::new(LoweredAST::FunctionCall {
                                     ident: "max".to_string(),
                                     args: vec![
                                         Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
                                             id: 1,
-                                            by: vec![Accessor::Index(Box::new(LoweredAST::Load(
-                                                VarRefType::Local(VarRef {
-                                                    id: lid,
-                                                    by: vec![],
-                                                }),
-                                            )))],
+                                            by: vec![Accessor::Index(Box::new(
+                                                LoweredAST::Load(VarRefType::Local(VarRef {
+                                                    id: lid, by: vec![],
+                                                })),
+                                            ))],
                                         }))),
                                         Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
                                             id: 1,
                                             by: vec![Accessor::Index(Box::new(
                                                 LoweredAST::BinaryOp {
-                                                    lhs: Box::new(LoweredAST::Load(
-                                                        VarRefType::Local(VarRef {
-                                                            id: lid,
-                                                            by: vec![],
-                                                        }),
-                                                    )),
-                                                    rhs: Box::new(LoweredAST::Load(
-                                                        VarRefType::Local(VarRef {
-                                                            id: offset,
-                                                            by: vec![],
-                                                        }),
-                                                    )),
+                                                    lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                                        id: lid, by: vec![],
+                                                    }))),
+                                                    rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                                        id: offset, by: vec![],
+                                                    }))),
                                                     op: BinOp::Add,
                                                 },
                                             ))],
@@ -368,18 +304,13 @@ fn compute_rects(
                 b.ast = Some(LoweredAST::Group(vec![
                     if_ast,
                     LoweredAST::FunctionCall {
-                        ident: "workgroupBarrier".to_string(),
-                        args: vec![],
+                        ident: "workgroupBarrier".to_string(), args: vec![],
                     },
                     LoweredAST::Store {
-                        var: VarRefType::Local(VarRef {
-                            id: offset,
-                            by: vec![],
-                        }),
+                        var: VarRefType::Local(VarRef { id: offset, by: vec![] }),
                         val: Box::new(LoweredAST::BinaryOp {
                             lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                id: offset,
-                                by: vec![],
+                                id: offset, by: vec![],
                             }))),
                             rhs: Box::new(LoweredAST::Const {
                                 dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
@@ -394,8 +325,7 @@ fn compute_rects(
         scope.cond(
             LoweredAST::BinaryOp {
                 lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                    id: lid,
-                    by: vec![],
+                    id: lid, by: vec![],
                 }))),
                 rhs: Box::new(LoweredAST::Const {
                     dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
@@ -406,18 +336,11 @@ fn compute_rects(
             |b| {
                 b.ast = Some(LoweredAST::Group(vec![
                     LoweredAST::Store {
-                        var: VarRefType::Global(VarRef {
-                            id: 2,
-                            by: vec![
-                                Accessor::Index(Box::new(LoweredAST::Load(VarRefType::Local(
-                                    VarRef {
-                                        id: model_idx,
-                                        by: vec![],
-                                    },
-                                )))),
-                                Accessor::Field("min".to_string()),
-                            ],
-                        }),
+                        var: output_rect.var_ref().index(
+                            LoweredAST::Load(VarRefType::Local(VarRef {
+                                id: model_idx, by: vec![],
+                            })),
+                        ).field("min"),
                         val: Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
                             id: 0,
                             by: vec![Accessor::Index(Box::new(LoweredAST::Const {
@@ -427,18 +350,11 @@ fn compute_rects(
                         }))),
                     },
                     LoweredAST::Store {
-                        var: VarRefType::Global(VarRef {
-                            id: 2,
-                            by: vec![
-                                Accessor::Index(Box::new(LoweredAST::Load(VarRefType::Local(
-                                    VarRef {
-                                        id: model_idx,
-                                        by: vec![],
-                                    },
-                                )))),
-                                Accessor::Field("max".to_string()),
-                            ],
-                        }),
+                        var: output_rect.var_ref().index(
+                            LoweredAST::Load(VarRefType::Local(VarRef {
+                                id: model_idx, by: vec![],
+                            })),
+                        ).field("max"),
                         val: Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
                             id: 1,
                             by: vec![Accessor::Index(Box::new(LoweredAST::Const {

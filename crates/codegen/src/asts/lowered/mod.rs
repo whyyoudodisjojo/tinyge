@@ -195,6 +195,27 @@ pub enum VarRefType {
     Shared(VarRef),
 }
 
+impl VarRefType {
+    fn into_var_ref(self) -> (VarRef, fn(VarRef) -> Self) {
+        match self {
+            VarRefType::Global(v) => (v, VarRefType::Global),
+            VarRefType::Local(v) => (v, VarRefType::Local),
+            VarRefType::Shared(v) => (v, VarRefType::Shared),
+            VarRefType::EntryPointGlobal(v) => (v, VarRefType::EntryPointGlobal),
+        }
+    }
+    pub fn index(self, idx: LoweredAST) -> Self {
+        let (mut v, ctor) = self.into_var_ref();
+        v.by.push(Accessor::Index(Box::new(idx)));
+        ctor(v)
+    }
+    pub fn field(self, name: &str) -> Self {
+        let (mut v, ctor) = self.into_var_ref();
+        v.by.push(Accessor::Field(name.to_string()));
+        ctor(v)
+    }
+}
+
 impl<T, const N: usize> BindedBuffer<T, N> {
     pub fn var_ref(&self) -> VarRefType {
         VarRefType::Global(VarRef { id: N, by: vec![] })
