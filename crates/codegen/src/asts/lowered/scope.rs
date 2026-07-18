@@ -48,31 +48,54 @@ impl Scope {
         new
     }
 
-    pub fn cond(
+    pub fn if_(
         &mut self,
         cond: LoweredAST,
-        then: impl FnOnce(&mut Self),
-        el: Option<impl FnOnce(&mut Self)>,
+        then: impl FnOnce(&mut Self) -> LoweredAST,
     ) -> LoweredAST {
         let new_scope = self.new_scope();
         let mut new_scope = new_scope.borrow_mut();
         let new_scope_ptr = ScopePtr(self.child_scopes.len() - 1);
-        then(&mut new_scope);
+        let ast = then(&mut new_scope);
+        new_scope.ast = Some(ast);
+
         LoweredAST::Conditional {
             cond: Box::new(cond),
             true_block: new_scope_ptr.clone(),
-            else_block: el.map(|e| {
-                e(&mut new_scope);
-                new_scope_ptr.clone()
-            }),
+            else_block: None,
         }
     }
 
-    pub fn while_loop(&mut self, cond: LoweredAST, body: impl FnOnce(&mut Self)) -> LoweredAST {
+    pub fn else_(
+        &mut self,
+        mut chain: LoweredAST,
+        el: impl FnOnce(&mut Self) -> LoweredAST,
+    ) -> LoweredAST {
+        let LoweredAST::Conditional { else_block, .. } = &mut chain else {
+            panic!("Cant use el without an immediate if")
+        };
+
+        let new_scope = self.new_scope();
+        let mut new_scope = new_scope.borrow_mut();
+        let ast = el(&mut new_scope);
+        let new_scope_ptr = ScopePtr(self.child_scopes.len() - 1);
+        new_scope.ast = Some(ast);
+
+        *else_block = Some(new_scope_ptr);
+
+        chain
+    }
+
+    pub fn while_loop(
+        &mut self,
+        cond: LoweredAST,
+        body: impl FnOnce(&mut Self) -> LoweredAST,
+    ) -> LoweredAST {
         let new_scope = self.new_scope();
         let mut new_scope = new_scope.borrow_mut();
         let new_scope_ptr = ScopePtr(self.child_scopes.len() - 1);
-        body(&mut new_scope);
+        let ast = body(&mut new_scope);
+        new_scope.ast = Some(ast);
         LoweredAST::WhileLoop {
             cond: Box::new(cond),
             body: new_scope_ptr,
@@ -98,12 +121,12 @@ impl Scope {
         }
     }
 
-    pub fn var(&mut self, name: &str, ast: LoweredAST) -> usize {
-        self.add_local(name.to_string(), false, ast)
+    pub fn var(&mut self, ast: LoweredAST) -> usize {
+        self.add_local(format!("_v{}", self.local_vars.len()), false, ast)
     }
 
-    pub fn mut_(&mut self, name: &str, ast: LoweredAST) -> usize {
-        self.add_local(name.to_string(), true, ast)
+    pub fn mut_(&mut self, ast: LoweredAST) -> usize {
+        self.add_local(format!("_m{}", self.local_vars.len()), true, ast)
     }
 }
 
