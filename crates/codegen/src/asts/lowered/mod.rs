@@ -6,7 +6,7 @@ use std::{collections::HashMap, fmt::Display};
 
 pub use scope::Scope;
 
-use crate::dt::{BasicTy, BasicTyOrStructRef, DType, VecTy};
+use crate::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, VecTy};
 
 #[derive(Clone, Debug, darling::FromMeta)]
 pub enum CustomBufferBindingType {
@@ -67,7 +67,9 @@ impl Struct {
     // sz, align
     pub fn wgsl_size_align(struct_store: &HashMap<String, Self>, dt: &DType) -> (usize, usize) {
         match dt {
-            DType::Basic(BasicTy::F32) | DType::Basic(BasicTy::Integer(_)) => (4, 4),
+            DType::Basic(BasicTy::F32)
+            | DType::Basic(BasicTy::Bool)
+            | DType::Basic(BasicTy::Integer(_)) => (4, 4),
             DType::Atomic(_) => (4, 4),
             DType::Vector(VecTy::Vec2(_)) => (8, 8),
             DType::Vector(VecTy::Vec3(_)) => (12, 16),
@@ -147,11 +149,12 @@ impl Struct {
 pub struct ShaderIR {
     pub structs: HashMap<String, Struct>,
     pub binded: Vec<BindingMeta>,
+    pub shared_vars: Vec<(String, DType)>,
     pub entrypoint_globals: Vec<EntrypointGlobals>,
     pub functions: Vec<Functions>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum BinOp {
     Add,
     Mul,
@@ -165,39 +168,43 @@ pub enum BinOp {
     Gt,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum UnaryOp {
     BitwiseNot,
     LogicalNot,
     Neg,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct VarRef {
     pub id: usize,
-    pub by_index: Vec<usize>,
+    pub by: Vec<Accessor>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
+pub enum Accessor {
+    Index(Box<LoweredAST>),
+    Field(String),
+}
+
+#[derive(Clone, Debug)]
 pub enum VarRefType {
     Local(VarRef),
     Global(VarRef),
     EntryPointGlobal(VarRef),
+    Shared(VarRef),
 }
 
 impl<T, const N: usize> BindedBuffer<T, N> {
     pub fn var_ref(&self) -> VarRefType {
-        VarRefType::Global(VarRef {
-            id: N,
-            by_index: vec![],
-        })
+        VarRefType::Global(VarRef { id: N, by: vec![] })
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ScopePtr(pub usize);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum LoweredAST {
     Store {
         var: VarRefType,
@@ -209,6 +216,7 @@ pub enum LoweredAST {
         rhs: Box<Self>,
         op: BinOp,
     },
+    Group(Vec<Self>),
     UnaryOp {
         operand: Box<Self>,
         op: UnaryOp,
@@ -239,4 +247,44 @@ pub enum LoweredAST {
     Continue,
     Break,
     Return,
+}
+
+impl LoweredAST {
+    pub fn dt(&self, ir: &ShaderIR, scope: &Scope) -> DType {
+        match self {
+            Self::Load(l) => match l {
+                VarRefType::EntryPointGlobal(g) => {
+                    DType::Vector(VecTy::Vec3(BasicTy::Integer(IntegerTy::U32)))
+                        .apply_accessor(&g.by, ir, scope)
+                }
+                VarRefType::Local(l) => scope.local_vars[l.id]
+                    .ast
+                    .clone()
+                    .dt(ir, scope)
+                    .apply_accessor(&l.by, ir, scope),
+                VarRefType::Shared(s) => ir.shared_vars[s.id]
+                    .1
+                    .clone()
+                    .apply_accessor(&s.by, ir, scope),
+                VarRefType::Global(g) => DType::StructRef {
+                    ident: ir.binded[g.id].ident.clone(),
+                }
+                .apply_accessor(&g.by, ir, scope),
+            },
+            Self::BinaryOp {
+                lhs: _,
+                op: BinOp::Eq | BinOp::Gt | BinOp::LogicalAnd,
+                ..
+            } => DType::Basic(BasicTy::Bool),
+            Self::BinaryOp { lhs, .. } => lhs.dt(ir, scope),
+            Self::UnaryOp {
+                operand: _,
+                op: UnaryOp::LogicalNot,
+                ..
+            } => DType::Basic(BasicTy::Bool),
+            Self::UnaryOp { operand, .. } => operand.dt(ir, scope),
+            Self::Const { dt, .. } => dt.clone(),
+            _ => panic!("cannot infer type from {:?}", self),
+        }
+    }
 }

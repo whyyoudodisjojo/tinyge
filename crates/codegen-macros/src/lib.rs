@@ -103,22 +103,19 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let ident = &func.sig.ident;
 
-    let struct_ident = {
-        let name = ident.to_string();
-        let pascal = name
-            .split('_')
-            .map(|s| {
-                let mut c = s.chars();
-                match c.next() {
-                    None => String::new(),
-                    Some(f) => f.to_uppercase().to_string() + c.as_str(),
-                }
-            })
-            .collect::<String>();
-        format_ident!("{}", pascal)
-    };
-
-    let args_ident = format_ident!("{ident}Args");
+    let pascal = ident
+        .to_string()
+        .split('_')
+        .map(|s| {
+            let mut c = s.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().to_string() + c.as_str(),
+            }
+        })
+        .collect::<String>();
+    let struct_ident = format_ident!("{}", pascal);
+    let args_ident = format_ident!("{}Args", struct_ident);
 
     let args: Vec<_> = func
         .sig
@@ -143,28 +140,57 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let arg_names: Vec<_> = args.iter().map(|(n, _, _)| n.clone()).collect();
-    let arg_inner_types: Vec<_> = args
+    let shared_args: Vec<_> = func
+        .sig
+        .inputs
         .iter()
-        .map(|(_, _, ty)| {
-            let Type::Path(p) = &***ty else {
-                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
-            };
-            let seg = p.path.segments.last().unwrap();
-            assert!(
-                seg.ident == "BindedBuffer",
-                "expected BindedBuffer, got {}",
-                quote! { #ty }
-            );
-            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
-                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
-            };
-            let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else {
-                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
-            };
-            inner.clone()
+        .filter_map(|input| {
+            if let FnArg::Typed(pat) = input {
+                let name = if let syn::Pat::Ident(ident) = &*pat.pat {
+                    ident.ident.to_string()
+                } else {
+                    panic!("expected named argument");
+                };
+                if pat.attrs.iter().any(|a| a.path().is_ident("shared")) {
+                    Some((name, &pat.ty))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         })
         .collect();
+
+    let (shared_arg_names, shared_arg_types): (Vec<_>, Vec<_>) = shared_args
+        .iter()
+        .map(|(n, ty)| (n.clone(), (*ty).clone()))
+        .unzip();
+
+    let (arg_names, arg_inner_types): (Vec<_>, Vec<_>) = args
+        .iter()
+        .map(|(n, _, ty)| {
+            let inner_ty = {
+                let Type::Path(p) = &***ty else {
+                    panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+                };
+                let seg = p.path.segments.last().unwrap();
+                assert!(
+                    seg.ident == "BindedBuffer",
+                    "expected BindedBuffer, got {}",
+                    quote! { #ty }
+                );
+                let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                    panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+                };
+                let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else {
+                    panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+                };
+                inner.clone()
+            };
+            (n.clone(), inner_ty)
+        })
+        .unzip();
 
     let arg_n_idents: Vec<_> = args
         .iter()
@@ -173,7 +199,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let arg_struct_f = arg_n_idents.iter().map(|n| {
         quote! {
-            #n : wgpu::Buffer
+            pub #n : wgpu::Buffer
         }
     });
 
@@ -182,15 +208,18 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         .sig
         .inputs
         .into_iter()
+        .filter(|input| {
+            if let FnArg::Typed(pat) = input {
+                !pat.attrs.iter().any(|a| a.path().is_ident("shared"))
+            } else {
+                true
+            }
+        })
         .map(|input| match input {
-            FnArg::Typed(pat) => FnArg::Typed(syn::PatType {
-                attrs: pat
-                    .attrs
-                    .into_iter()
-                    .filter(|a| !a.path().is_ident("binding"))
-                    .collect(),
-                ..pat
-            }),
+            FnArg::Typed(mut pat) => {
+                pat.attrs.retain(|a| !a.path().is_ident("binding"));
+                FnArg::Typed(pat)
+            }
             other => other,
         })
         .collect();
@@ -216,7 +245,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }).collect();
 
-    let arg_group_layout = args
+    let arg_group_layout: Vec<_> = args
         .iter()
         .enumerate()
         .map(|(i, (_n, b, _ty))| {
@@ -281,30 +310,36 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                         WGSL.get_or_init(|| {
                             let structs = codegen::asts::build_struct_map();
 
-                            let binded = vec![
+                            let mut ir = codegen::asts::lowered::ShaderIR {
+                                structs,
+                                binded: vec![],
+                                shared_vars: vec![],
+                                entrypoint_globals: vec![],
+                                functions: vec![],
+                            };
+
+                            ir.binded = vec![
                                 #(codegen::asts::lowered::BindingMeta {
                                     ident: #arg_names.to_string(),
                                     ty: #arg_binding_tys,
                                     struct_name: {
-                                        match <#arg_inner_types as codegen::asts::IntoWgslStruct>::dt() {
-                                            codegen::dt::DType::StructRef { ident } => ident,
-                                            _ => panic!("expected struct type"),
-                                        }
+                                        let r = codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir };
+                                        r.render_dtype(&<#arg_inner_types as codegen::asts::IntoWgslStruct>::dt())
                                     },
                                 },)*
                             ];
 
-                            let entrypoint_globals = vec![
+                            ir.shared_vars = vec![
+                                #((
+                                    #shared_arg_names.to_string(),
+                                    <#shared_arg_types as codegen::asts::IntoWgslStruct>::dt(),
+                                ),)*
+                            ];
+
+                            ir.entrypoint_globals = vec![
                                 codegen::asts::lowered::EntrypointGlobals::GlobalInvocationId,
                                 codegen::asts::lowered::EntrypointGlobals::LocalInvocationId,
                             ];
-
-                            let mut ir = codegen::asts::lowered::ShaderIR {
-                                structs,
-                                binded,
-                                entrypoint_globals,
-                                functions: vec![],
-                            };
 
                             let scope = #ident(#(#arg_markers,)*);
 

@@ -1,6 +1,6 @@
 use crate::{
     asts::lowered::{
-        BinOp, CustomBufferBindingType, EntrypointData,
+        Accessor, BinOp, CustomBufferBindingType, EntrypointData,
         LoweredAST::{self},
         ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
@@ -53,22 +53,17 @@ impl<'a> LoweredRenderer<'a> {
         }
     }
 
-    pub fn render_array_inner(
-        &self,
-        inner: &MaybeAtomic<IntegerTyOrStructRef, BasicTyOrStructRef>,
-    ) -> String {
+    pub fn render_array_inner(&self, inner: &MaybeAtomic<IntegerTy, BasicTyOrStructRef>) -> String {
         match inner {
             MaybeAtomic::Naked(b) => format!("atomic<{}>", self.render_basic_ty_or_struct_ref(b)),
-            MaybeAtomic::Atomic(a) => match a {
-                IntegerTyOrStructRef::Integer(i) => self.render_integer_ty(i),
-                IntegerTyOrStructRef::StructRef { ident } => ident.to_string(),
-            },
+            MaybeAtomic::Atomic(a) => self.render_integer_ty(a),
         }
     }
 
     pub fn render_basic_ty(&self, b: &BasicTy) -> String {
         match b {
             BasicTy::F32 => "f32".to_string(),
+            BasicTy::Bool => "bool".to_string(),
             BasicTy::Integer(int_ty) => self.render_integer_ty(int_ty),
         }
     }
@@ -217,25 +212,49 @@ impl<'a> LoweredRenderer<'a> {
                 let (ident, index_str) = match r {
                     VarRefType::EntryPointGlobal(b) => (
                         self.ir.entrypoint_globals[b.id].to_string(),
-                        b.by_index
-                            .iter()
-                            .map(|i| format!("[{i}]"))
+                        b.by.iter()
+                            .map(|a| match a {
+                                Accessor::Index(expr) => {
+                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                }
+                                Accessor::Field(name) => format!(".{}", name),
+                            })
                             .collect::<Vec<_>>()
                             .join(""),
                     ),
                     VarRefType::Local(b) => (
-                        self.render_ast(curr_scope, &curr_scope.local_vars[b.id].ast),
-                        b.by_index
-                            .iter()
-                            .map(|i| format!("[{i}]"))
+                        curr_scope.local_vars[b.id].name.clone(),
+                        b.by.iter()
+                            .map(|a| match a {
+                                Accessor::Index(expr) => {
+                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                }
+                                Accessor::Field(name) => format!(".{}", name),
+                            })
                             .collect::<Vec<_>>()
                             .join(""),
                     ),
                     VarRefType::Global(b) => (
                         self.ir.binded[b.id].ident.clone(),
-                        b.by_index
-                            .iter()
-                            .map(|i| format!("[{i}]"))
+                        b.by.iter()
+                            .map(|a| match a {
+                                Accessor::Index(expr) => {
+                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                }
+                                Accessor::Field(name) => format!(".{}", name),
+                            })
+                            .collect::<Vec<_>>()
+                            .join(""),
+                    ),
+                    VarRefType::Shared(b) => (
+                        self.ir.shared_vars[b.id].0.clone(),
+                        b.by.iter()
+                            .map(|a| match a {
+                                Accessor::Index(expr) => {
+                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                }
+                                Accessor::Field(name) => format!(".{}", name),
+                            })
                             .collect::<Vec<_>>()
                             .join(""),
                     ),
@@ -266,7 +285,7 @@ impl<'a> LoweredRenderer<'a> {
                 let cond_str = self.render_ast(curr_scope, cond);
                 let body_str = self.render_scope(&curr_scope.child_scopes[body.0].borrow());
 
-                format!("for({cond_str}){{{body_str}}}")
+                format!("while ({cond_str}){{{body_str}}}")
             }
             LoweredAST::Return => "return;".to_string(),
             LoweredAST::UnaryOp { operand, op } => {
@@ -284,25 +303,49 @@ impl<'a> LoweredRenderer<'a> {
                 let (ident, index_str) = match var {
                     VarRefType::EntryPointGlobal(b) => (
                         self.ir.entrypoint_globals[b.id].to_string(),
-                        b.by_index
-                            .iter()
-                            .map(|i| format!("[{i}]"))
+                        b.by.iter()
+                            .map(|a| match a {
+                                Accessor::Index(expr) => {
+                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                }
+                                Accessor::Field(name) => format!(".{}", name),
+                            })
                             .collect::<Vec<_>>()
                             .join(""),
                     ),
                     VarRefType::Local(b) => (
-                        self.render_ast(curr_scope, &curr_scope.local_vars[b.id].ast),
-                        b.by_index
-                            .iter()
-                            .map(|i| format!("[{i}]"))
+                        curr_scope.local_vars[b.id].name.clone(),
+                        b.by.iter()
+                            .map(|a| match a {
+                                Accessor::Index(expr) => {
+                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                }
+                                Accessor::Field(name) => format!(".{}", name),
+                            })
                             .collect::<Vec<_>>()
                             .join(""),
                     ),
                     VarRefType::Global(b) => (
                         self.ir.binded[b.id].ident.clone(),
-                        b.by_index
-                            .iter()
-                            .map(|i| format!("[{i}]"))
+                        b.by.iter()
+                            .map(|a| match a {
+                                Accessor::Index(expr) => {
+                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                }
+                                Accessor::Field(name) => format!(".{}", name),
+                            })
+                            .collect::<Vec<_>>()
+                            .join(""),
+                    ),
+                    VarRefType::Shared(b) => (
+                        self.ir.shared_vars[b.id].0.clone(),
+                        b.by.iter()
+                            .map(|a| match a {
+                                Accessor::Index(expr) => {
+                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                }
+                                Accessor::Field(name) => format!(".{}", name),
+                            })
                             .collect::<Vec<_>>()
                             .join(""),
                     ),
@@ -324,12 +367,25 @@ impl<'a> LoweredRenderer<'a> {
                 s
             }
             LoweredAST::FunctionCall { ident, args } => format!(
-                "{ident}({});",
+                "{}({})",
+                ident,
                 args.iter()
                     .map(|a| self.render_ast(curr_scope, a))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            LoweredAST::Group(stmts) => stmts
+                .iter()
+                .map(|s| {
+                    let r = self.render_ast(curr_scope, s);
+                    if r.ends_with('}') || r.ends_with(';') {
+                        r
+                    } else {
+                        r + ";"
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
         }
     }
 
@@ -339,6 +395,18 @@ impl<'a> LoweredRenderer<'a> {
                 let bytes = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
                 let val = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
                 (format!("{}f", val), 4)
+            }
+            BasicTy::Bool => {
+                let bytes = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
+                let val = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                (
+                    if val != 0 {
+                        "true".to_string()
+                    } else {
+                        "false".to_string()
+                    },
+                    4,
+                )
             }
             BasicTy::Integer(int_ty) => match int_ty {
                 IntegerTy::I32 => {
@@ -464,16 +532,42 @@ impl<'a> LoweredRenderer<'a> {
         (val, bytes)
     }
 
+    pub fn render_workgroup_vars(&self) -> String {
+        self.ir
+            .shared_vars
+            .iter()
+            .map(|(name, dt)| format!("var<workgroup> {}: {};\n", name, self.render_dtype(dt)))
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
     pub fn render_scope(&self, scope: &Scope) -> String {
-        self.render_ast(scope, scope.ast.as_ref().unwrap())
+        let decls: String = scope
+            .local_vars
+            .iter()
+            .skip(scope.num_inherited_locals)
+            .map(|v| {
+                let kw = if v.mut_ { "var" } else { "let" };
+                format!(
+                    "{} {}: {} = {};\n",
+                    kw,
+                    v.name,
+                    self.render_dtype(&v.ast.dt(&self.ir, scope)),
+                    self.render_ast(scope, &v.ast),
+                )
+            })
+            .collect();
+        let body = self.render_ast(scope, scope.ast.as_ref().unwrap());
+        format!("{}{}", decls, body)
     }
 
     pub fn translate(&self) -> String {
         let structs_str = self.render_structs();
         let bindings_str = self.render_binded_buffers();
+        let workgroup_str = self.render_workgroup_vars();
 
         let funcs_str = self.render_funcs();
 
-        [structs_str, bindings_str, funcs_str].join("\n\n\n\n")
+        [structs_str, bindings_str, workgroup_str, funcs_str].join("\n\n\n\n")
     }
 }

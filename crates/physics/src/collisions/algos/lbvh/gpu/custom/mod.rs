@@ -38,9 +38,8 @@ pub struct LBVHBuilder {
 }
 
 impl LBVHBuilder {
-    pub fn new(num_models: u32, num_verts: u32, device: &Device) -> Self {
-        let compute_rects =
-            ComputeShaderWrapper::new(ComputeRects::new(num_models, num_verts), device);
+    pub fn new(num_models: u32, _num_verts: u32, device: &Device) -> Self {
+        let compute_rects = ComputeShaderWrapper::new(ComputeRects, device);
         let mortonize = ComputeShaderWrapper::new(Mortonize::new(num_models), device);
         let build_leaves = ComputeShaderWrapper::new(
             BuildTree::new(num_models, BuildTreeStage::BuildLeaves),
@@ -140,9 +139,9 @@ impl GpuCollisionAlgorithm for LBVHBuilder {
 
         self.compute_rects.dispatch(
             ComputeRectsArgs {
-                model_verts_buffer: model_verts_buffer.clone(),
-                model_infos_buffer: model_infos_buffer.clone(),
-                output_rect_buffer: self.buffers.rects_buffer.clone(),
+                model_verts: model_verts_buffer.clone(),
+                model_infos: model_infos_buffer.clone(),
+                output_rect: self.buffers.rects_buffer.clone(),
             },
             device,
             queue,

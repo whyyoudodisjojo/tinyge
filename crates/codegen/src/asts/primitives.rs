@@ -12,6 +12,7 @@ macro_rules! impl_primitive {
 }
 
 impl_primitive!(f32, DType::Basic(BasicTy::F32));
+impl_primitive!(bool, DType::Basic(BasicTy::Bool));
 impl_primitive!(u32, DType::Basic(BasicTy::Integer(IntegerTy::U32)));
 impl_primitive!(i32, DType::Basic(BasicTy::Integer(IntegerTy::I32)));
 

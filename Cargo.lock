@@ -2434,6 +2434,8 @@ name = "tinyge-physics"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "codegen",
+ "codegen-macros",
  "glam",
  "pollster",
  "rayon",

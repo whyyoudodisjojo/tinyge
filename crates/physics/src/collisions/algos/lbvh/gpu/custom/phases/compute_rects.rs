@@ -1,129 +1,457 @@
-use tinyge_graphics::shaders::{
-    ComputeShader,
-    buffers::ResourceType,
-    descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
+use codegen::asts::lowered::{
+    Accessor, BinOp, BindedBuffer, LoweredAST, Scope, VarRef, VarRefType,
 };
-use wgpu::{
-    Buffer, BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor,
-};
+use codegen::dt::{BasicTy, DType, IntegerTy, VecTy};
+use codegen_macros::{IntoWgslStruct, shader};
 
-#[repr(C)]
+#[derive(IntoWgslStruct)]
+pub struct Vertex {
+    pos: [f32; 3],
+}
+
+#[derive(IntoWgslStruct)]
 pub struct ModelInfo {
-    pub offset: u32,
-    pub stride: u32,
+    offset: u32,
+    stride: u32,
 }
 
-pub struct ComputeRectsArgs {
-    pub model_verts_buffer: Buffer,
-    pub model_infos_buffer: Buffer,
-    pub output_rect_buffer: Buffer,
+#[derive(IntoWgslStruct)]
+pub struct RectangleBounds {
+    min: [f32; 3],
+    max: [f32; 3],
 }
 
-pub struct ComputeRects {
-    num_models: u32,
-    num_verts: u32,
-}
+#[shader(compute(workgroup_sz = 256))]
+fn compute_rects(
+    #[binding(storage(read_only = true))] model_verts: BindedBuffer<Vertex, 0>,
+    #[binding(storage(read_only = true))] model_infos: BindedBuffer<ModelInfo, 1>,
+    #[binding(storage(read_only = false))] output_rect: BindedBuffer<RectangleBounds, 2>,
+    #[shared] sdata_min: [f32; 3],
+    #[shared] sdata_max: [f32; 3],
+) -> Scope {
+    let mut scope = Scope::new();
 
-impl ComputeRects {
-    pub fn new(num_models: u32, num_verts: u32) -> Self {
-        Self {
-            num_models,
-            num_verts,
-        }
-    }
-}
+    let lid = scope.add_local(
+        "lid".to_string(),
+        false,
+        LoweredAST::Load(VarRefType::EntryPointGlobal(VarRef {
+            id: 1,
+            by: vec![Accessor::Field("x".to_string())],
+        })),
+    );
+    let model_idx = scope.add_local(
+        "model_idx".to_string(),
+        false,
+        LoweredAST::Load(VarRefType::EntryPointGlobal(VarRef {
+            id: 0,
+            by: vec![Accessor::Field("x".to_string())],
+        })),
+    );
+    let info = scope.add_local(
+        "info".to_string(),
+        false,
+        LoweredAST::Load(VarRefType::Global(VarRef {
+            id: 1,
+            by: vec![Accessor::Index(Box::new(LoweredAST::Load(
+                VarRefType::Local(VarRef {
+                    id: model_idx,
+                    by: vec![],
+                }),
+            )))],
+        })),
+    );
+    let model_offset = scope.add_local(
+        "model_offset".to_string(),
+        false,
+        LoweredAST::Load(VarRefType::Local(VarRef {
+            id: info,
+            by: vec![Accessor::Field("offset".to_string())],
+        })),
+    );
+    let model_vertex_count = scope.add_local(
+        "model_vertex_count".to_string(),
+        false,
+        LoweredAST::Load(VarRefType::Local(VarRef {
+            id: info,
+            by: vec![Accessor::Field("stride".to_string())],
+        })),
+    );
+    let local_min = scope.add_local(
+        "local_min".to_string(),
+        true,
+        LoweredAST::Const {
+            dt: DType::Vector(VecTy::Vec3(BasicTy::F32)),
+            data: f32::INFINITY
+                .to_le_bytes()
+                .into_iter()
+                .chain(f32::INFINITY.to_le_bytes())
+                .chain(f32::INFINITY.to_le_bytes())
+                .collect(),
+        },
+    );
+    let local_max = scope.add_local(
+        "local_max".to_string(),
+        true,
+        LoweredAST::Const {
+            dt: DType::Vector(VecTy::Vec3(BasicTy::F32)),
+            data: (-f32::INFINITY)
+                .to_le_bytes()
+                .into_iter()
+                .chain((-f32::INFINITY).to_le_bytes())
+                .chain((-f32::INFINITY).to_le_bytes())
+                .collect(),
+        },
+    );
+    let i = scope.add_local(
+        "i".to_string(),
+        true,
+        LoweredAST::Load(VarRefType::Local(VarRef {
+            id: lid,
+            by: vec![],
+        })),
+    );
+    let offset = scope.add_local(
+        "offset".to_string(),
+        true,
+        LoweredAST::Const {
+            dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
+            data: 128u32.to_le_bytes().to_vec(),
+        },
+    );
 
-impl<'a> ComputeShader<'a> for ComputeRects {
-    type Args = ComputeRectsArgs;
-    type Ret = ComputeRectsArgs;
-
-    fn resource_buffers_with_bind_group_layouts(
-        &self,
-    ) -> Vec<tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>> {
-        vec![ResourceGroupLayout {
-            entries: vec![
-                ResourceBinding {
-                    binding: 0,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                        size: (16 * self.num_verts) as u64,
-                        usages: BufferUsages::STORAGE,
-                        is_input: true,
+    scope.ast = Some(LoweredAST::Group(vec![
+        scope.while_loop(
+            LoweredAST::BinaryOp {
+                lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                    id: model_vertex_count,
+                    by: vec![],
+                }))),
+                rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                    id: i,
+                    by: vec![],
+                }))),
+                op: BinOp::Gt,
+            },
+            |b| {
+                let v = b.add_local(
+                    "v".to_string(),
+                    false,
+                    LoweredAST::Load(VarRefType::Global(VarRef {
+                        id: 0,
+                        by: vec![
+                            Accessor::Index(Box::new(LoweredAST::BinaryOp {
+                                lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                    id: model_offset,
+                                    by: vec![],
+                                }))),
+                                rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                    id: i,
+                                    by: vec![],
+                                }))),
+                                op: BinOp::Add,
+                            })),
+                            Accessor::Field("pos".to_string()),
+                        ],
+                    })),
+                );
+                b.ast = Some(LoweredAST::Group(vec![
+                    LoweredAST::Store {
+                        var: VarRefType::Local(VarRef {
+                            id: local_min,
+                            by: vec![],
+                        }),
+                        val: Box::new(LoweredAST::FunctionCall {
+                            ident: "min".to_string(),
+                            args: vec![
+                                Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                    id: local_min,
+                                    by: vec![],
+                                }))),
+                                Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                    id: v,
+                                    by: vec![],
+                                }))),
+                            ],
+                        }),
                     },
-                    count: None,
-                },
-                ResourceBinding {
-                    binding: 1,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                        size: (8 * self.num_models) as u64,
-                        usages: BufferUsages::STORAGE,
-                        is_input: true,
+                    LoweredAST::Store {
+                        var: VarRefType::Local(VarRef {
+                            id: local_max,
+                            by: vec![],
+                        }),
+                        val: Box::new(LoweredAST::FunctionCall {
+                            ident: "max".to_string(),
+                            args: vec![
+                                Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                    id: local_max,
+                                    by: vec![],
+                                }))),
+                                Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                    id: v,
+                                    by: vec![],
+                                }))),
+                            ],
+                        }),
                     },
-                    count: None,
-                },
-                ResourceBinding {
-                    binding: 2,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: ResourceBindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                        size: (32 * self.num_models) as u64,
-                        usages: BufferUsages::STORAGE,
-                        is_input: false,
+                    LoweredAST::Store {
+                        var: VarRefType::Local(VarRef { id: i, by: vec![] }),
+                        val: Box::new(LoweredAST::BinaryOp {
+                            lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                id: i,
+                                by: vec![],
+                            }))),
+                            rhs: Box::new(LoweredAST::Const {
+                                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
+                                data: 256u32.to_le_bytes().to_vec(),
+                            }),
+                            op: BinOp::Add,
+                        }),
                     },
-                    count: None,
-                },
-            ],
-        }]
-    }
+                ]));
+            },
+        ),
+        LoweredAST::Store {
+            var: VarRefType::Shared(VarRef {
+                id: 0,
+                by: vec![Accessor::Index(Box::new(LoweredAST::Load(
+                    VarRefType::Local(VarRef {
+                        id: lid,
+                        by: vec![],
+                    }),
+                )))],
+            }),
+            val: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                id: local_min,
+                by: vec![],
+            }))),
+        },
+        LoweredAST::Store {
+            var: VarRefType::Shared(VarRef {
+                id: 1,
+                by: vec![Accessor::Index(Box::new(LoweredAST::Load(
+                    VarRefType::Local(VarRef {
+                        id: lid,
+                        by: vec![],
+                    }),
+                )))],
+            }),
+            val: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                id: local_max,
+                by: vec![],
+            }))),
+        },
+        LoweredAST::FunctionCall {
+            ident: "workgroupBarrier".to_string(),
+            args: vec![],
+        },
+        scope.while_loop(
+            LoweredAST::BinaryOp {
+                lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                    id: offset,
+                    by: vec![],
+                }))),
+                rhs: Box::new(LoweredAST::Const {
+                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
+                    data: 0u32.to_le_bytes().to_vec(),
+                }),
+                op: BinOp::Gt,
+            },
+            |b| {
+                let if_ast = b.cond(
+                    LoweredAST::BinaryOp {
+                        lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                            id: offset,
+                            by: vec![],
+                        }))),
+                        rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                            id: lid,
+                            by: vec![],
+                        }))),
+                        op: BinOp::Gt,
+                    },
+                    |ib| {
+                        ib.ast = Some(LoweredAST::Group(vec![
+                            LoweredAST::Store {
+                                var: VarRefType::Shared(VarRef {
+                                    id: 0,
+                                    by: vec![Accessor::Index(Box::new(LoweredAST::Load(
+                                        VarRefType::Local(VarRef {
+                                            id: lid,
+                                            by: vec![],
+                                        }),
+                                    )))],
+                                }),
+                                val: Box::new(LoweredAST::FunctionCall {
+                                    ident: "min".to_string(),
+                                    args: vec![
+                                        Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
+                                            id: 0,
+                                            by: vec![Accessor::Index(Box::new(LoweredAST::Load(
+                                                VarRefType::Local(VarRef {
+                                                    id: lid,
+                                                    by: vec![],
+                                                }),
+                                            )))],
+                                        }))),
+                                        Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
+                                            id: 0,
+                                            by: vec![Accessor::Index(Box::new(
+                                                LoweredAST::BinaryOp {
+                                                    lhs: Box::new(LoweredAST::Load(
+                                                        VarRefType::Local(VarRef {
+                                                            id: lid,
+                                                            by: vec![],
+                                                        }),
+                                                    )),
+                                                    rhs: Box::new(LoweredAST::Load(
+                                                        VarRefType::Local(VarRef {
+                                                            id: offset,
+                                                            by: vec![],
+                                                        }),
+                                                    )),
+                                                    op: BinOp::Add,
+                                                },
+                                            ))],
+                                        }))),
+                                    ],
+                                }),
+                            },
+                            LoweredAST::Store {
+                                var: VarRefType::Shared(VarRef {
+                                    id: 1,
+                                    by: vec![Accessor::Index(Box::new(LoweredAST::Load(
+                                        VarRefType::Local(VarRef {
+                                            id: lid,
+                                            by: vec![],
+                                        }),
+                                    )))],
+                                }),
+                                val: Box::new(LoweredAST::FunctionCall {
+                                    ident: "max".to_string(),
+                                    args: vec![
+                                        Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
+                                            id: 1,
+                                            by: vec![Accessor::Index(Box::new(LoweredAST::Load(
+                                                VarRefType::Local(VarRef {
+                                                    id: lid,
+                                                    by: vec![],
+                                                }),
+                                            )))],
+                                        }))),
+                                        Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
+                                            id: 1,
+                                            by: vec![Accessor::Index(Box::new(
+                                                LoweredAST::BinaryOp {
+                                                    lhs: Box::new(LoweredAST::Load(
+                                                        VarRefType::Local(VarRef {
+                                                            id: lid,
+                                                            by: vec![],
+                                                        }),
+                                                    )),
+                                                    rhs: Box::new(LoweredAST::Load(
+                                                        VarRefType::Local(VarRef {
+                                                            id: offset,
+                                                            by: vec![],
+                                                        }),
+                                                    )),
+                                                    op: BinOp::Add,
+                                                },
+                                            ))],
+                                        }))),
+                                    ],
+                                }),
+                            },
+                        ]));
+                    },
+                    None::<fn(&mut Scope)>,
+                );
+                b.ast = Some(LoweredAST::Group(vec![
+                    if_ast,
+                    LoweredAST::FunctionCall {
+                        ident: "workgroupBarrier".to_string(),
+                        args: vec![],
+                    },
+                    LoweredAST::Store {
+                        var: VarRefType::Local(VarRef {
+                            id: offset,
+                            by: vec![],
+                        }),
+                        val: Box::new(LoweredAST::BinaryOp {
+                            lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                                id: offset,
+                                by: vec![],
+                            }))),
+                            rhs: Box::new(LoweredAST::Const {
+                                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
+                                data: 1u32.to_le_bytes().to_vec(),
+                            }),
+                            op: BinOp::Shr,
+                        }),
+                    },
+                ]));
+            },
+        ),
+        scope.cond(
+            LoweredAST::BinaryOp {
+                lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
+                    id: lid,
+                    by: vec![],
+                }))),
+                rhs: Box::new(LoweredAST::Const {
+                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
+                    data: 0u32.to_le_bytes().to_vec(),
+                }),
+                op: BinOp::Eq,
+            },
+            |b| {
+                b.ast = Some(LoweredAST::Group(vec![
+                    LoweredAST::Store {
+                        var: VarRefType::Global(VarRef {
+                            id: 2,
+                            by: vec![
+                                Accessor::Index(Box::new(LoweredAST::Load(VarRefType::Local(
+                                    VarRef {
+                                        id: model_idx,
+                                        by: vec![],
+                                    },
+                                )))),
+                                Accessor::Field("min".to_string()),
+                            ],
+                        }),
+                        val: Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
+                            id: 0,
+                            by: vec![Accessor::Index(Box::new(LoweredAST::Const {
+                                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
+                                data: 0u32.to_le_bytes().to_vec(),
+                            }))],
+                        }))),
+                    },
+                    LoweredAST::Store {
+                        var: VarRefType::Global(VarRef {
+                            id: 2,
+                            by: vec![
+                                Accessor::Index(Box::new(LoweredAST::Load(VarRefType::Local(
+                                    VarRef {
+                                        id: model_idx,
+                                        by: vec![],
+                                    },
+                                )))),
+                                Accessor::Field("max".to_string()),
+                            ],
+                        }),
+                        val: Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
+                            id: 1,
+                            by: vec![Accessor::Index(Box::new(LoweredAST::Const {
+                                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
+                                data: 0u32.to_le_bytes().to_vec(),
+                            }))],
+                        }))),
+                    },
+                ]));
+            },
+            None::<fn(&mut Scope)>,
+        ),
+    ]));
 
-    fn entry_point(&self) -> &'static str {
-        "compute_rects"
-    }
-
-    fn load_source_code(&self) -> &'static str {
-        include_str!("../../../../shaders/lbvh/compute_rects.wgsl")
-    }
-
-    fn dispatch(
-        &mut self,
-        args: Self::Args,
-        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<'a>,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> Self::Ret {
-        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
-
-        let buffers = vec![
-            ResourceType::Buffer(args.model_verts_buffer.clone()),
-            ResourceType::Buffer(args.model_infos_buffer.clone()),
-            ResourceType::Buffer(args.output_rect_buffer.clone()),
-        ];
-
-        {
-            let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
-                label: None,
-                timestamp_writes: None,
-            });
-            pass.set_bind_group(
-                0,
-                build_data.bind_groups[0].get_or_create_bind_group(&buffers, device),
-                &[],
-            );
-            pass.set_pipeline(&build_data.pipeline);
-            pass.dispatch_workgroups(self.num_models, 1, 1);
-        }
-
-        queue.submit(std::iter::once(encoder.finish()));
-
-        args
-    }
+    scope
 }
