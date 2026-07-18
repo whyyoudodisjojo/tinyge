@@ -123,12 +123,15 @@ impl<'a> LoweredRenderer<'a> {
             .functions
             .iter()
             .map(|f| {
-                let args_str = if f.entrypoint_ty.is_none(){f
-                    .args
-                    .iter()
-                    .map(|(n, d)| format!("{}:{}", n, self.render_dtype(d)))
-                    .collect::<Vec<_>>()
-                    .join(", ")}else{"".to_string()};
+                let args_str = if f.entrypoint_ty.is_none() {
+                    f.args
+                        .iter()
+                        .map(|(n, d)| format!("{}:{}", n, self.render_dtype(d)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                } else {
+                    "".to_string()
+                };
 
                 let body_str = self.render_scope(&f.body, 1);
                 let ret_str = f
@@ -194,10 +197,8 @@ impl<'a> LoweredRenderer<'a> {
                 let else_block_str = else_block
                     .as_ref()
                     .map(|e| {
-                        let else_body = self.render_scope(
-                            &curr_scope.child_scopes[e.0].borrow(),
-                            indent + 1,
-                        );
+                        let else_body =
+                            self.render_scope(&curr_scope.child_scopes[e.0].borrow(), indent + 1);
                         format!(" else {{\n{else_body}\n{tab}}}")
                     })
                     .unwrap_or_default();
@@ -268,21 +269,27 @@ impl<'a> LoweredRenderer<'a> {
                 body,
             } => {
                 let init_str = init.as_ref().map(|i| self.render_ast(curr_scope, i, 0));
-                let halt_cond_str = halt_cond.as_ref().map(|h| self.render_ast(curr_scope, h, 0));
-                let increment_str = increment.as_ref().map(|i| self.render_ast(curr_scope, i, 0));
+                let halt_cond_str = halt_cond
+                    .as_ref()
+                    .map(|h| self.render_ast(curr_scope, h, 0));
+                let increment_str = increment
+                    .as_ref()
+                    .map(|i| self.render_ast(curr_scope, i, 0));
 
                 let cond_block = [init_str, halt_cond_str, increment_str]
                     .into_iter()
                     .filter_map(|f| f)
                     .collect::<Vec<_>>()
                     .join("; ");
-                let body_str = self.render_scope(&curr_scope.child_scopes[body.0].borrow(), indent + 1);
+                let body_str =
+                    self.render_scope(&curr_scope.child_scopes[body.0].borrow(), indent + 1);
 
                 format!("{tab}for ({cond_block}) {{\n{body_str}\n{tab}}}")
             }
             LoweredAST::WhileLoop { cond, body } => {
                 let cond_str = self.render_ast(curr_scope, cond, 0);
-                let body_str = self.render_scope(&curr_scope.child_scopes[body.0].borrow(), indent + 1);
+                let body_str =
+                    self.render_scope(&curr_scope.child_scopes[body.0].borrow(), indent + 1);
 
                 format!("{tab}while ({cond_str}) {{\n{body_str}\n{tab}}}")
             }
@@ -348,7 +355,10 @@ impl<'a> LoweredRenderer<'a> {
                     ),
                 };
 
-                format!("{tab}{ident}{index_str} = {};", self.render_ast(curr_scope, val, 0))
+                format!(
+                    "{tab}{ident}{index_str} = {};",
+                    self.render_ast(curr_scope, val, 0)
+                )
             }
             LoweredAST::Const { dt, data } => {
                 let (s, _) = match dt {
@@ -375,6 +385,11 @@ impl<'a> LoweredRenderer<'a> {
                 .iter()
                 .map(|s| {
                     let r = self.render_ast(curr_scope, s, indent);
+                    let r = if r.starts_with('\t') {
+                        r
+                    } else {
+                        format!("{}{r}", "\t".repeat(indent))
+                    };
                     if r.ends_with('}') || r.ends_with(';') {
                         r
                     } else {

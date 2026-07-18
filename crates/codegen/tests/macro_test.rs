@@ -1,4 +1,4 @@
-use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope, VarRef, VarRefType};
+use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope, SharedData};
 use codegen_macros::{IntoWgslStruct, shader};
 use tinyge_graphics::shaders::ComputeShader;
 
@@ -22,16 +22,13 @@ fn my_shader(#[binding(uniform)] _input: BindedBuffer<MyData, 0>) -> Scope {
 #[shader(compute(workgroup_sz = 256))]
 fn shared_shader(
     #[binding(storage(read_only = true))] _input: BindedBuffer<MyData, 0>,
-    #[shared] _sdata: SharedElem,
+    _sdata: SharedData<SharedElem>,
 ) -> Scope {
     let mut scope = Scope::new();
-    scope.ast = Some(LoweredAST::Store {
-        var: VarRefType::Shared(VarRef { id: 0, by: vec![] }),
-        val: Box::new(LoweredAST::Const {
-            dt: <SharedElem as codegen::asts::IntoWgslStruct>::dt(),
-            data: vec![0u8; 4],
-        }),
-    });
+    scope.ast = Some(_sdata.var_ref().store(LoweredAST::Const {
+        dt: <SharedElem as codegen::asts::IntoWgslStruct>::dt(),
+        data: vec![0u8; 4],
+    }));
     scope
 }
 

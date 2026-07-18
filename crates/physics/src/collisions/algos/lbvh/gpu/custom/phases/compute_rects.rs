@@ -1,6 +1,6 @@
-use codegen::asts::lowered::BindedBuffer;
 use codegen::asts::lowered::Scope;
 use codegen::asts::lowered::scope::*;
+use codegen::asts::lowered::{BindedBuffer, SharedData};
 use codegen::{call, group};
 use codegen_macros::{IntoWgslStruct, shader};
 use tinyge_graphics::shaders::ComputeShader;
@@ -27,14 +27,17 @@ fn compute_rects(
     #[binding(storage(read_only = true))] model_verts: BindedBuffer<Vertex, 0>,
     #[binding(storage(read_only = true))] model_infos: BindedBuffer<ModelInfo, 1>,
     #[binding(storage(read_only = false))] output_rect: BindedBuffer<RectangleBounds, 2>,
-    #[shared] sdata_min: [f32; 3],
-    #[shared] sdata_max: [f32; 3],
+    sdata_min: SharedData<[f32; 3]>,
+    sdata_max: SharedData<[f32; 3]>,
 ) -> Scope {
     let mut scope = Scope::new();
 
     let lid = scope.var("lid", entrypoint(1).f("x").load());
     let model_idx = scope.var("model_idx", entrypoint(0).f("x").load());
-    let info = scope.var("info", global(1).i(local(model_idx).load()).load());
+    let info = scope.var(
+        "info",
+        model_infos.var_ref().i(local(model_idx).load()).load(),
+    );
     let model_offset = scope.var("model_offset", local(info).f("offset").load());
     let model_vertex_count = scope.var("model_vertex_count", local(info).f("stride").load());
     let local_min = scope.mut_(
@@ -59,41 +62,41 @@ fn compute_rects(
                     .load(),
             );
             b.ast = Some(group!(
-                store(
-                    local(local_min),
-                    call!("min", local(local_min).load(), local(v).load())
-                ),
-                store(
-                    local(local_max),
-                    call!("max", local(local_max).load(), local(v).load())
-                ),
-                store(local(i), local(i).load() + u32(256)),
+                local(local_min).store(call!("min", local(local_min).load(), local(v).load())),
+                local(local_max).store(call!("max", local(local_max).load(), local(v).load())),
+                local(i).store(local(i).load() + u32(256)),
             ));
         },),
-        store(shared(0).i(local(lid).load()), local(local_min).load()),
-        store(shared(1).i(local(lid).load()), local(local_max).load()),
+        sdata_min
+            .var_ref()
+            .i(local(lid).load())
+            .store(local(local_min).load()),
+        sdata_max
+            .var_ref()
+            .i(local(lid).load())
+            .store(local(local_max).load()),
         call!("workgroupBarrier"),
         scope.while_loop(local(offset).load().gt(u32(0)), |b| {
             let if_ast = b.cond(
                 local(offset).load().gt(local(lid).load()),
                 |ib| {
                     ib.ast = Some(group!(
-                        store(
-                            shared(0).i(local(lid).load()),
-                            call!(
-                                "min",
-                                shared(0).i(local(lid).load()).load(),
-                                shared(0).i(local(lid).load() + local(offset).load()).load(),
-                            )
-                        ),
-                        store(
-                            shared(1).i(local(lid).load()),
-                            call!(
-                                "max",
-                                shared(1).i(local(lid).load()).load(),
-                                shared(1).i(local(lid).load() + local(offset).load()).load(),
-                            )
-                        ),
+                        sdata_min.var_ref().i(local(lid).load()).store(call!(
+                            "min",
+                            sdata_min.var_ref().i(local(lid).load()).load(),
+                            sdata_min
+                                .var_ref()
+                                .i(local(lid).load() + local(offset).load())
+                                .load(),
+                        )),
+                        sdata_max.var_ref().i(local(lid).load()).store(call!(
+                            "max",
+                            sdata_max.var_ref().i(local(lid).load()).load(),
+                            sdata_max
+                                .var_ref()
+                                .i(local(lid).load() + local(offset).load())
+                                .load(),
+                        )),
                     ));
                 },
                 None::<fn(&mut Scope)>,
@@ -101,21 +104,23 @@ fn compute_rects(
             b.ast = Some(group!(
                 if_ast,
                 call!("workgroupBarrier"),
-                store(local(offset), local(offset).load() >> u32(1)),
+                local(offset).store(local(offset).load() >> u32(1)),
             ));
         }),
         scope.cond(
             local(lid).load().eq(u32(0)),
             |b| {
                 b.ast = Some(group!(
-                    store(
-                        output_rect.var_ref().i(local(model_idx).load()).f("min"),
-                        shared(0).i(u32(0)).load()
-                    ),
-                    store(
-                        output_rect.var_ref().i(local(model_idx).load()).f("max"),
-                        shared(1).i(u32(0)).load()
-                    ),
+                    output_rect
+                        .var_ref()
+                        .i(local(model_idx).load())
+                        .f("min")
+                        .store(sdata_min.var_ref().i(u32(0)).load()),
+                    output_rect
+                        .var_ref()
+                        .i(local(model_idx).load())
+                        .f("max")
+                        .store(sdata_max.var_ref().i(u32(0)).load()),
                 ));
             },
             None::<fn(&mut Scope)>

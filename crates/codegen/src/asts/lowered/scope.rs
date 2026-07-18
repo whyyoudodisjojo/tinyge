@@ -176,13 +176,6 @@ pub fn entrypoint(id: usize) -> VarRefType {
     VarRefType::EntryPointGlobal(VarRef { id, by: vec![] })
 }
 
-pub fn store(var: VarRefType, val: LoweredAST) -> LoweredAST {
-    LoweredAST::Store {
-        var,
-        val: Box::new(val),
-    }
-}
-
 pub fn call(ident: &str, args: Vec<LoweredAST>) -> LoweredAST {
     LoweredAST::FunctionCall {
         ident: ident.to_string(),

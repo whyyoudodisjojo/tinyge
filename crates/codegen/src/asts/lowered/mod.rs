@@ -26,6 +26,28 @@ use std::marker::PhantomData;
 #[derive(Debug)]
 pub struct BindedBuffer<T, const N: usize>(pub PhantomData<T>);
 
+#[derive(Debug)]
+pub struct SharedData<T> {
+    pub id: usize,
+    _phantom: PhantomData<T>,
+}
+
+impl<T> SharedData<T> {
+    pub fn new(id: usize) -> Self {
+        Self {
+            id,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn var_ref(&self) -> VarRefType {
+        VarRefType::Shared(VarRef {
+            id: self.id,
+            by: vec![],
+        })
+    }
+}
+
 pub struct Functions {
     pub args: HashMap<String, DType>,
     pub ret: Option<BasicTyOrStructRef>,
@@ -217,6 +239,12 @@ impl VarRefType {
     pub fn load(self) -> LoweredAST {
         LoweredAST::Load(self)
     }
+    pub fn store(self, val: LoweredAST) -> LoweredAST {
+        LoweredAST::Store {
+            var: self,
+            val: Box::new(val),
+        }
+    }
 }
 
 impl<T, const N: usize> BindedBuffer<T, N> {
@@ -347,5 +375,15 @@ impl LoweredAST {
     }
     pub fn logical_or(self, rhs: Self) -> Self {
         !(!self).logical_and(!rhs)
+    }
+
+    pub fn store(self, val: Self) -> Self {
+        match self {
+            Self::Load(var) => Self::Store {
+                var,
+                val: Box::new(val),
+            },
+            _ => panic!("expected Load target for store, got {:?}", self),
+        }
     }
 }

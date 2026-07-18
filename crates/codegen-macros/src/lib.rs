@@ -151,8 +151,16 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                 } else {
                     panic!("expected named argument");
                 };
-                if pat.attrs.iter().any(|a| a.path().is_ident("shared")) {
-                    Some((name, &pat.ty))
+                if let Type::Path(p) = &*pat.ty {
+                    if let Some(seg) = p.path.segments.last() {
+                        if seg.ident == "SharedData" {
+                            Some((name, &pat.ty))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -162,10 +170,36 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let (shared_arg_names, shared_arg_types): (Vec<_>, Vec<_>) = shared_args
+    let (shared_arg_names, shared_arg_inner_types): (Vec<_>, Vec<_>) = shared_args
         .iter()
-        .map(|(n, ty)| (n.clone(), (*ty).clone()))
+        .map(|(n, ty)| {
+            let Type::Path(p) = &***ty else {
+                panic!("expected SharedData<T>, got {}", quote! { #ty })
+            };
+            let seg = p.path.segments.last().unwrap();
+            assert!(
+                seg.ident == "SharedData",
+                "expected SharedData, got {}",
+                quote! { #ty }
+            );
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                panic!("expected SharedData<T>, got {}", quote! { #ty })
+            };
+            let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else {
+                panic!("expected SharedData<T>, got {}", quote! { #ty })
+            };
+            (n.clone(), inner.clone())
+        })
         .unzip();
+
+    let shared_arg_markers: Vec<_> = shared_arg_inner_types
+        .iter()
+        .enumerate()
+        .map(|(i, inner_ty)| {
+            let idx = i;
+            quote! { codegen::asts::lowered::SharedData::<#inner_ty>::new(#idx) }
+        })
+        .collect();
 
     let (arg_names, arg_inner_types): (Vec<_>, Vec<_>) = args
         .iter()
@@ -208,13 +242,6 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         .sig
         .inputs
         .into_iter()
-        .filter(|input| {
-            if let FnArg::Typed(pat) = input {
-                !pat.attrs.iter().any(|a| a.path().is_ident("shared"))
-            } else {
-                true
-            }
-        })
         .map(|input| match input {
             FnArg::Typed(mut pat) => {
                 pat.attrs.retain(|a| !a.path().is_ident("binding"));
@@ -332,7 +359,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                             ir.shared_vars = vec![
                                 #((
                                     #shared_arg_names.to_string(),
-                                    <#shared_arg_types as codegen::asts::IntoWgslStruct>::dt(),
+                                    <#shared_arg_inner_types as codegen::asts::IntoWgslStruct>::dt(),
                                 ),)*
                             ];
 
@@ -341,7 +368,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                                 codegen::asts::lowered::EntrypointGlobals::LocalInvocationId,
                             ];
 
-                            let scope = #ident(#(#arg_markers,)*);
+                            let scope = #ident(#(#arg_markers,)* #(#shared_arg_markers,)*);
 
                             ir.functions.push(
                                 codegen::asts::lowered::Functions {
