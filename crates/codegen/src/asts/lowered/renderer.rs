@@ -90,7 +90,7 @@ impl<'a> LoweredRenderer<'a> {
                 };
 
                 format!(
-                    "@group(0) @binding({i}) {var_str} {}: {}",
+                    "@group(0) @binding({i}) {var_str} {}: {};\n",
                     b.ident, b.struct_name
                 )
             })
@@ -102,11 +102,11 @@ impl<'a> LoweredRenderer<'a> {
         let f = s
             .inner
             .iter()
-            .map(|(name, ty)| format!("{name}: {},", format!("{}", self.render_dtype(ty))))
+            .map(|(name, ty)| format!("\t{name}: {},\n", format!("{}", self.render_dtype(ty))))
             .collect::<Vec<_>>()
-            .join("\n\n");
+            .join("");
 
-        format!("struct {} {{{}}}", ident, f)
+        format!("struct {} {{\n{}}}", ident, f)
     }
 
     pub fn render_structs(&self) -> String {
@@ -123,14 +123,14 @@ impl<'a> LoweredRenderer<'a> {
             .functions
             .iter()
             .map(|f| {
-                let args_str = f
+                let args_str = if f.entrypoint_ty.is_none(){f
                     .args
                     .iter()
                     .map(|(n, d)| format!("{}:{}", n, self.render_dtype(d)))
                     .collect::<Vec<_>>()
-                    .join(", ");
+                    .join(", ")}else{"".to_string()};
 
-                let body_str = self.render_scope(&f.body);
+                let body_str = self.render_scope(&f.body, 1);
                 let ret_str = f
                     .ret
                     .as_ref()
@@ -142,14 +142,14 @@ impl<'a> LoweredRenderer<'a> {
                     .as_ref()
                     .map(|e| match e {
                         EntrypointData::Compute { workgroup_sz } => {
-                            format!("@compute @workgroup_size{workgroup_sz}")
+                            format!("@compute @workgroup_size({workgroup_sz})\n")
                         }
                         EntrypointData::Shader => todo!(), // Shader requires proper builtin mangement
                     })
                     .unwrap_or_default();
 
                 format!(
-                    "{}fn {}({}){}{{{}}}",
+                    "{}fn {}({}){}{{\n{}\n}}",
                     entrypoint_headers_str, f.ident, args_str, ret_str, body_str
                 )
             })
@@ -157,10 +157,11 @@ impl<'a> LoweredRenderer<'a> {
             .join("\n\n")
     }
 
-    pub fn render_ast(&self, curr_scope: &Scope, ast: &LoweredAST) -> String {
+    pub fn render_ast(&self, curr_scope: &Scope, ast: &LoweredAST, indent: usize) -> String {
+        let tab = "\t".repeat(indent);
+
         match ast {
             LoweredAST::BinaryOp { lhs, rhs, op } => {
-                // TODO: Infer atomics and add atomicops fn call
                 let sign = match op {
                     BinOp::Add => "+",
                     BinOp::BitwiseAnd => "&",
@@ -175,47 +176,45 @@ impl<'a> LoweredRenderer<'a> {
                 };
 
                 format!(
-                    "{}{}{}",
-                    self.render_ast(curr_scope, lhs),
+                    "{} {} {}",
+                    self.render_ast(curr_scope, lhs, 0),
                     sign,
-                    self.render_ast(curr_scope, rhs)
+                    self.render_ast(curr_scope, rhs, 0)
                 )
             }
-            LoweredAST::Break => "break;".to_string(),
+            LoweredAST::Break => format!("{tab}break;"),
             LoweredAST::Conditional {
                 cond,
                 true_block,
                 else_block,
             } => {
-                let cond = self.render_ast(curr_scope, cond);
+                let cond = self.render_ast(curr_scope, cond, 0);
 
                 let true_block_scope = &curr_scope.child_scopes[true_block.0];
                 let else_block_str = else_block
                     .as_ref()
                     .map(|e| {
-                        format!(
-                            "else{{{}}}",
-                            self.render_scope(&curr_scope.child_scopes[e.0].borrow())
-                        )
+                        let else_body = self.render_scope(
+                            &curr_scope.child_scopes[e.0].borrow(),
+                            indent + 1,
+                        );
+                        format!(" else {{\n{else_body}\n{tab}}}")
                     })
                     .unwrap_or_default();
                 format!(
-                    "if ({}){{{}}}{}",
-                    cond,
-                    self.render_scope(&true_block_scope.borrow()),
-                    else_block_str
+                    "{tab}if ({cond}) {{\n{}\n{tab}}}{else_block_str}",
+                    self.render_scope(&true_block_scope.borrow(), indent + 1),
                 )
             }
-            LoweredAST::Continue => "continue;".to_string(),
+            LoweredAST::Continue => format!("{tab}continue;"),
             LoweredAST::Load(r) => {
-                // TODO: infer atomics and use atomicload
                 let (ident, index_str) = match r {
                     VarRefType::EntryPointGlobal(b) => (
                         self.ir.entrypoint_globals[b.id].to_string(),
                         b.by.iter()
                             .map(|a| match a {
                                 Accessor::Index(expr) => {
-                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                    format!("[{}]", self.render_ast(curr_scope, expr, 0))
                                 }
                                 Accessor::Field(name) => format!(".{}", name),
                             })
@@ -227,7 +226,7 @@ impl<'a> LoweredRenderer<'a> {
                         b.by.iter()
                             .map(|a| match a {
                                 Accessor::Index(expr) => {
-                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                    format!("[{}]", self.render_ast(curr_scope, expr, 0))
                                 }
                                 Accessor::Field(name) => format!(".{}", name),
                             })
@@ -239,7 +238,7 @@ impl<'a> LoweredRenderer<'a> {
                         b.by.iter()
                             .map(|a| match a {
                                 Accessor::Index(expr) => {
-                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                    format!("[{}]", self.render_ast(curr_scope, expr, 0))
                                 }
                                 Accessor::Field(name) => format!(".{}", name),
                             })
@@ -251,7 +250,7 @@ impl<'a> LoweredRenderer<'a> {
                         b.by.iter()
                             .map(|a| match a {
                                 Accessor::Index(expr) => {
-                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                    format!("[{}]", self.render_ast(curr_scope, expr, 0))
                                 }
                                 Accessor::Field(name) => format!(".{}", name),
                             })
@@ -268,45 +267,43 @@ impl<'a> LoweredRenderer<'a> {
                 increment,
                 body,
             } => {
-                let init_str = init.as_ref().map(|i| self.render_ast(curr_scope, &i));
-                let halt_cond_str = halt_cond.as_ref().map(|h| self.render_ast(curr_scope, &h));
-                let increment_str = increment.as_ref().map(|i| self.render_ast(curr_scope, &i));
+                let init_str = init.as_ref().map(|i| self.render_ast(curr_scope, i, 0));
+                let halt_cond_str = halt_cond.as_ref().map(|h| self.render_ast(curr_scope, h, 0));
+                let increment_str = increment.as_ref().map(|i| self.render_ast(curr_scope, i, 0));
 
                 let cond_block = [init_str, halt_cond_str, increment_str]
                     .into_iter()
                     .filter_map(|f| f)
                     .collect::<Vec<_>>()
                     .join("; ");
-                let body_str = self.render_scope(&curr_scope.child_scopes[body.0].borrow());
+                let body_str = self.render_scope(&curr_scope.child_scopes[body.0].borrow(), indent + 1);
 
-                format!("for({cond_block}){{{body_str}}}")
+                format!("{tab}for ({cond_block}) {{\n{body_str}\n{tab}}}")
             }
             LoweredAST::WhileLoop { cond, body } => {
-                let cond_str = self.render_ast(curr_scope, cond);
-                let body_str = self.render_scope(&curr_scope.child_scopes[body.0].borrow());
+                let cond_str = self.render_ast(curr_scope, cond, 0);
+                let body_str = self.render_scope(&curr_scope.child_scopes[body.0].borrow(), indent + 1);
 
-                format!("while ({cond_str}){{{body_str}}}")
+                format!("{tab}while ({cond_str}) {{\n{body_str}\n{tab}}}")
             }
-            LoweredAST::Return => "return;".to_string(),
+            LoweredAST::Return => format!("{tab}return;"),
             LoweredAST::UnaryOp { operand, op } => {
-                // TODO: Infer atomics and inject atomicops fn calls
                 let op_str = match op {
                     UnaryOp::BitwiseNot => "!",
                     UnaryOp::LogicalNot => "!",
                     UnaryOp::Neg => "-",
                 };
 
-                format!("{}{}", op_str, self.render_ast(curr_scope, operand))
+                format!("{}{}", op_str, self.render_ast(curr_scope, operand, 0))
             }
             LoweredAST::Store { var, val } => {
-                // TODO: Infer atomics and inject atomicstore
                 let (ident, index_str) = match var {
                     VarRefType::EntryPointGlobal(b) => (
                         self.ir.entrypoint_globals[b.id].to_string(),
                         b.by.iter()
                             .map(|a| match a {
                                 Accessor::Index(expr) => {
-                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                    format!("[{}]", self.render_ast(curr_scope, expr, 0))
                                 }
                                 Accessor::Field(name) => format!(".{}", name),
                             })
@@ -318,7 +315,7 @@ impl<'a> LoweredRenderer<'a> {
                         b.by.iter()
                             .map(|a| match a {
                                 Accessor::Index(expr) => {
-                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                    format!("[{}]", self.render_ast(curr_scope, expr, 0))
                                 }
                                 Accessor::Field(name) => format!(".{}", name),
                             })
@@ -330,7 +327,7 @@ impl<'a> LoweredRenderer<'a> {
                         b.by.iter()
                             .map(|a| match a {
                                 Accessor::Index(expr) => {
-                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                    format!("[{}]", self.render_ast(curr_scope, expr, 0))
                                 }
                                 Accessor::Field(name) => format!(".{}", name),
                             })
@@ -342,7 +339,7 @@ impl<'a> LoweredRenderer<'a> {
                         b.by.iter()
                             .map(|a| match a {
                                 Accessor::Index(expr) => {
-                                    format!("[{}]", self.render_ast(curr_scope, expr))
+                                    format!("[{}]", self.render_ast(curr_scope, expr, 0))
                                 }
                                 Accessor::Field(name) => format!(".{}", name),
                             })
@@ -351,7 +348,7 @@ impl<'a> LoweredRenderer<'a> {
                     ),
                 };
 
-                format!("{ident}{index_str} = {};", self.render_ast(curr_scope, val))
+                format!("{tab}{ident}{index_str} = {};", self.render_ast(curr_scope, val, 0))
             }
             LoweredAST::Const { dt, data } => {
                 let (s, _) = match dt {
@@ -370,14 +367,14 @@ impl<'a> LoweredRenderer<'a> {
                 "{}({})",
                 ident,
                 args.iter()
-                    .map(|a| self.render_ast(curr_scope, a))
+                    .map(|a| self.render_ast(curr_scope, a, 0))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
             LoweredAST::Group(stmts) => stmts
                 .iter()
                 .map(|s| {
-                    let r = self.render_ast(curr_scope, s);
+                    let r = self.render_ast(curr_scope, s, indent);
                     if r.ends_with('}') || r.ends_with(';') {
                         r
                     } else {
@@ -394,7 +391,15 @@ impl<'a> LoweredRenderer<'a> {
             BasicTy::F32 => {
                 let bytes = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
                 let val = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                (format!("{}f", val), 4)
+                if val.is_infinite() {
+                    if val.is_sign_negative() {
+                        (String::from("-0x1p+127f"), 4)
+                    } else {
+                        (String::from("0x1p+127f"), 4)
+                    }
+                } else {
+                    (format!("{}f", val), 4)
+                }
             }
             BasicTy::Bool => {
                 let bytes = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
@@ -541,7 +546,8 @@ impl<'a> LoweredRenderer<'a> {
             .join("")
     }
 
-    pub fn render_scope(&self, scope: &Scope) -> String {
+    pub fn render_scope(&self, scope: &Scope, indent: usize) -> String {
+        let tab = "\t".repeat(indent);
         let decls: String = scope
             .local_vars
             .iter()
@@ -549,15 +555,15 @@ impl<'a> LoweredRenderer<'a> {
             .map(|v| {
                 let kw = if v.mut_ { "var" } else { "let" };
                 format!(
-                    "{} {}: {} = {};\n",
+                    "{tab}{} {}: {} = {};\n",
                     kw,
                     v.name,
                     self.render_dtype(&v.ast.dt(&self.ir, scope)),
-                    self.render_ast(scope, &v.ast),
+                    self.render_ast(scope, &v.ast, 0),
                 )
             })
             .collect();
-        let body = self.render_ast(scope, scope.ast.as_ref().unwrap());
+        let body = self.render_ast(scope, scope.ast.as_ref().unwrap(), indent);
         format!("{}{}", decls, body)
     }
 

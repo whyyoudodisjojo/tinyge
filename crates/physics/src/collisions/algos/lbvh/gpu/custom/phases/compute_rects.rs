@@ -132,6 +132,6 @@ fn test_compute_rects() {
     let wgsl = s.load_source_code();
     println!("{wgsl}");
     assert!(wgsl.contains("var<workgroup>"));
-    assert!(wgsl.contains("@compute @workgroup_size256"));
+    assert!(wgsl.contains("@compute @workgroup_size(256)"));
     assert!(wgsl.contains("fn compute_rects"));
 }

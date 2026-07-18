@@ -44,7 +44,7 @@ fn test_shader_expands_and_runs() {
     assert!(!wgsl.is_empty());
     println!("{wgsl}");
     assert!(wgsl.contains("struct MyData"));
-    assert!(wgsl.contains("@compute @workgroup_size64"));
+    assert!(wgsl.contains("@compute @workgroup_size(64)"));
     assert!(wgsl.contains("fn my_shader"));
 }
 
@@ -56,6 +56,6 @@ fn test_shared_var() {
     println!("{wgsl}");
     assert!(wgsl.contains("var<workgroup>"));
     assert!(wgsl.contains("_sdata"));
-    assert!(wgsl.contains("@compute @workgroup_size256"));
+    assert!(wgsl.contains("@compute @workgroup_size(256)"));
     assert!(wgsl.contains("fn shared_shader"));
 }
