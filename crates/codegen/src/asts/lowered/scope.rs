@@ -222,7 +222,7 @@ macro_rules! call {
 
 #[macro_export]
 macro_rules! group {
-    ($($stmt:expr),* $(,)?) => {
+    ($($stmt:expr);* $(;)?) => {
         $crate::asts::lowered::scope::group(vec![$($stmt),*])
     };
 }

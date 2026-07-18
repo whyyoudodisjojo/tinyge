@@ -63,24 +63,19 @@ impl IntoWgslStruct for [i32; 4] {
     }
 }
 
-impl IntoWgslStruct for Vec<f32> {
+impl<T> IntoWgslStruct for Vec<T> 
+    where T: IntoWgslStruct
+{
     fn dt() -> DType {
-        DType::Vector(VecTy::Array(MaybeAtomic::Naked(
-            BasicTyOrStructRef::BasicTy(BasicTy::F32),
-        )))
-    }
-}
-impl IntoWgslStruct for Vec<u32> {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Array(MaybeAtomic::Naked(
-            BasicTyOrStructRef::BasicTy(BasicTy::Integer(IntegerTy::U32)),
-        )))
-    }
-}
-impl IntoWgslStruct for Vec<i32> {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Array(MaybeAtomic::Naked(
-            BasicTyOrStructRef::BasicTy(BasicTy::Integer(IntegerTy::I32)),
-        )))
+        let dt = T::dt();
+
+        let inner = match dt{
+            DType::Basic(BasicTy::Integer(i)) => MaybeAtomic::Atomic(i),
+            DType::Basic(b) => MaybeAtomic::Naked(BasicTyOrStructRef::BasicTy(b)),
+            DType::StructRef { ident } => MaybeAtomic::Naked(BasicTyOrStructRef::StructRef { ident }),
+            _ => panic!("Cant get this brothr")
+        };
+
+        DType::Vector(VecTy::Array(inner))
     }
 }

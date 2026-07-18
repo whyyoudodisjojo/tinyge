@@ -52,20 +52,20 @@ fn compute_rects(
                     .load(),
             );
             group!(
-                local(local_min).store(call!("min", local(local_min).load(), local(v).load())),
-                local(local_max).store(call!("max", local(local_max).load(), local(v).load())),
-                local(i).store(local(i).load() + u32(256)),
+                local(local_min).store(call!("min", local(local_min).load(), local(v).load()));
+                local(local_max).store(call!("max", local(local_max).load(), local(v).load()));
+                local(i).store(local(i).load() + u32(256));
             )
-        },),
+        },);
         sdata_min
             .var_ref()
             .i(local(lid).load())
-            .store(local(local_min).load()),
+            .store(local(local_min).load());
         sdata_max
             .var_ref()
             .i(local(lid).load())
-            .store(local(local_max).load()),
-        call!("workgroupBarrier"),
+            .store(local(local_max).load());
+        call!("workgroupBarrier");
         scope.while_loop(local(offset).load().gt(u32(0)), |b| {
             let if_ast = b.if_(local(offset).load().gt(local(lid).load()), |_| {
                 group!(
@@ -76,7 +76,7 @@ fn compute_rects(
                             .var_ref()
                             .i(local(lid).load() + local(offset).load())
                             .load(),
-                    )),
+                    ));
                     sdata_max.var_ref().i(local(lid).load()).store(call!(
                         "max",
                         sdata_max.var_ref().i(local(lid).load()).load(),
@@ -84,29 +84,29 @@ fn compute_rects(
                             .var_ref()
                             .i(local(lid).load() + local(offset).load())
                             .load(),
-                    )),
+                    ));
                 )
             });
             group!(
-                if_ast,
-                call!("workgroupBarrier"),
-                local(offset).store(local(offset).load() >> u32(1)),
+                if_ast;
+                call!("workgroupBarrier");
+                local(offset).store(local(offset).load() >> u32(1));
             )
-        }),
+        });
         scope.if_(local(lid).load().eq(u32(0)), |_| {
             group!(
                 output_rect
                     .var_ref()
                     .i(local(model_idx).load())
                     .f("min")
-                    .store(sdata_min.var_ref().i(u32(0)).load()),
+                    .store(sdata_min.var_ref().i(u32(0)).load());
                 output_rect
                     .var_ref()
                     .i(local(model_idx).load())
                     .f("max")
-                    .store(sdata_max.var_ref().i(u32(0)).load()),
+                    .store(sdata_max.var_ref().i(u32(0)).load());
             )
-        },),
+        },);
     );
     scope.ast = Some(body);
 

@@ -55,7 +55,7 @@ impl<'a> LoweredRenderer<'a> {
 
     pub fn render_array_inner(&self, inner: &MaybeAtomic<IntegerTy, BasicTyOrStructRef>) -> String {
         match inner {
-            MaybeAtomic::Naked(b) => format!("atomic<{}>", self.render_basic_ty_or_struct_ref(b)),
+            MaybeAtomic::Naked(b) => self.render_basic_ty_or_struct_ref(b),
             MaybeAtomic::Atomic(a) => self.render_integer_ty(a),
         }
     }

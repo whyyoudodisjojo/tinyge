@@ -92,11 +92,14 @@ impl BitOr for LoweredAST {
             operand: Box::new(rhs),
             op: super::UnaryOp::BitwiseNot,
         };
-
-        Self::BinaryOp {
+        let and = Self::BinaryOp {
             lhs: Box::new(neg_lhs),
             rhs: Box::new(neg_rhs),
             op: BinOp::BitwiseAnd,
+        };
+        Self::UnaryOp {
+            operand: Box::new(and),
+            op: super::UnaryOp::BitwiseNot,
         }
     }
 }
