@@ -204,15 +204,18 @@ impl VarRefType {
             VarRefType::EntryPointGlobal(v) => (v, VarRefType::EntryPointGlobal),
         }
     }
-    pub fn index(self, idx: LoweredAST) -> Self {
+    pub fn i(self, idx: LoweredAST) -> Self {
         let (mut v, ctor) = self.into_var_ref();
         v.by.push(Accessor::Index(Box::new(idx)));
         ctor(v)
     }
-    pub fn field(self, name: &str) -> Self {
+    pub fn f(self, name: &str) -> Self {
         let (mut v, ctor) = self.into_var_ref();
         v.by.push(Accessor::Field(name.to_string()));
         ctor(v)
+    }
+    pub fn load(self) -> LoweredAST {
+        LoweredAST::Load(self)
     }
 }
 
@@ -307,5 +310,42 @@ impl LoweredAST {
             Self::Const { dt, .. } => dt.clone(),
             _ => panic!("cannot infer type from {:?}", self),
         }
+    }
+
+    pub fn eq(self, rhs: Self) -> Self {
+        Self::BinaryOp {
+            lhs: Box::new(self),
+            rhs: Box::new(rhs),
+            op: BinOp::Eq,
+        }
+    }
+    pub fn ne(self, rhs: Self) -> Self {
+        !self.eq(rhs)
+    }
+    pub fn gt(self, rhs: Self) -> Self {
+        Self::BinaryOp {
+            lhs: Box::new(self),
+            rhs: Box::new(rhs),
+            op: BinOp::Gt,
+        }
+    }
+    pub fn lt(self, rhs: Self) -> Self {
+        rhs.gt(self)
+    }
+    pub fn ge(self, rhs: Self) -> Self {
+        !self.lt(rhs)
+    }
+    pub fn le(self, rhs: Self) -> Self {
+        !self.gt(rhs)
+    }
+    pub fn logical_and(self, rhs: Self) -> Self {
+        Self::BinaryOp {
+            lhs: Box::new(self),
+            rhs: Box::new(rhs),
+            op: BinOp::LogicalAnd,
+        }
+    }
+    pub fn logical_or(self, rhs: Self) -> Self {
+        !(!self).logical_and(!rhs)
     }
 }

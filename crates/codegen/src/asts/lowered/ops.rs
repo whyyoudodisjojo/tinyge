@@ -1,8 +1,8 @@
-use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Shl, Shr, Sub};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Not, Rem, Shl, Shr, Sub};
 
 use crate::asts::lowered::LoweredAST;
 
-use super::BinOp;
+use super::{BinOp, UnaryOp};
 
 impl Add for LoweredAST {
     type Output = LoweredAST;
@@ -125,5 +125,34 @@ impl BitXor for LoweredAST {
         };
 
         a | b
+    }
+}
+
+impl Rem for LoweredAST {
+    type Output = LoweredAST;
+    fn rem(self, rhs: Self) -> Self::Output {
+        let div = self.clone() / rhs.clone();
+        let mul = div * rhs.clone();
+        self - mul
+    }
+}
+
+impl Not for LoweredAST {
+    type Output = LoweredAST;
+    fn not(self) -> Self::Output {
+        Self::UnaryOp {
+            operand: Box::new(self),
+            op: UnaryOp::LogicalNot,
+        }
+    }
+}
+
+impl Neg for LoweredAST {
+    type Output = LoweredAST;
+    fn neg(self) -> Self::Output {
+        Self::UnaryOp {
+            operand: Box::new(self),
+            op: UnaryOp::Neg,
+        }
     }
 }

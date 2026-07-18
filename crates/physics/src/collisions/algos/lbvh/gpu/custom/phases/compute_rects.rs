@@ -1,15 +1,13 @@
-use codegen::asts::lowered::{
-    Accessor, BinOp, LoweredAST, Scope, VarRef, VarRefType,
-};
 use codegen::asts::lowered::BindedBuffer;
-use codegen::dt::{BasicTy, DType, IntegerTy, VecTy};
+use codegen::asts::lowered::Scope;
+use codegen::asts::lowered::scope::*;
 use codegen_macros::{IntoWgslStruct, shader};
 use tinyge_graphics::shaders::ComputeShader;
+use codegen::{call, group};
 
 #[derive(IntoWgslStruct)]
 pub struct Vertex {
     pos: [f32; 3],
-    _pad: f32,
 }
 
 #[derive(IntoWgslStruct)]
@@ -34,341 +32,58 @@ fn compute_rects(
 ) -> Scope {
     let mut scope = Scope::new();
 
-    let lid = scope.add_local(
-        "lid".to_string(), false,
-        LoweredAST::Load(VarRefType::EntryPointGlobal(VarRef {
-            id: 1,
-            by: vec![Accessor::Field("x".to_string())],
-        })),
-    );
-    let model_idx = scope.add_local(
-        "model_idx".to_string(), false,
-        LoweredAST::Load(VarRefType::EntryPointGlobal(VarRef {
-            id: 0,
-            by: vec![Accessor::Field("x".to_string())],
-        })),
-    );
-    let info = scope.add_local(
-        "info".to_string(), false,
-        LoweredAST::Load(
-            model_infos.var_ref().index(
-                LoweredAST::Load(VarRefType::Local(VarRef { id: model_idx, by: vec![] }))
-            )
-        ),
-    );
-    let model_offset = scope.add_local(
-        "model_offset".to_string(), false,
-        LoweredAST::Load(
-            VarRefType::Local(VarRef { id: info, by: vec![] })
-                .field("offset")
-        ),
-    );
-    let model_vertex_count = scope.add_local(
-        "model_vertex_count".to_string(), false,
-        LoweredAST::Load(
-            VarRefType::Local(VarRef { id: info, by: vec![] })
-                .field("stride")
-        ),
-    );
-    let local_min = scope.add_local(
-        "local_min".to_string(), true,
-        LoweredAST::Const {
-            dt: DType::Vector(VecTy::Vec3(BasicTy::F32)),
-            data: f32::INFINITY.to_le_bytes().into_iter()
-                .chain(f32::INFINITY.to_le_bytes())
-                .chain(f32::INFINITY.to_le_bytes())
-                .collect(),
-        },
-    );
-    let local_max = scope.add_local(
-        "local_max".to_string(), true,
-        LoweredAST::Const {
-            dt: DType::Vector(VecTy::Vec3(BasicTy::F32)),
-            data: (-f32::INFINITY).to_le_bytes().into_iter()
-                .chain((-f32::INFINITY).to_le_bytes())
-                .chain((-f32::INFINITY).to_le_bytes())
-                .collect(),
-        },
-    );
-    let i = scope.add_local(
-        "i".to_string(), true,
-        LoweredAST::Load(VarRefType::Local(VarRef { id: lid, by: vec![] })),
-    );
-    let offset = scope.add_local(
-        "offset".to_string(), true,
-        LoweredAST::Const {
-            dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-            data: 128u32.to_le_bytes().to_vec(),
-        },
-    );
+    let lid = scope.var("lid", entrypoint(1).f("x").load());
+    let model_idx = scope.var("model_idx", entrypoint(0).f("x").load());
+    let info = scope.var("info", global(1).i(local(model_idx).load()).load());
+    let model_offset = scope.var("model_offset", local(info).f("offset").load());
+    let model_vertex_count = scope.var("model_vertex_count", local(info).f("stride").load());
+    let local_min = scope.mut_("local_min", vec3(f32::INFINITY, f32::INFINITY, f32::INFINITY));
+    let local_max = scope.mut_("local_max", vec3(-f32::INFINITY, -f32::INFINITY, -f32::INFINITY));
+    let i = scope.mut_("i", local(lid).load());
+    let offset = scope.mut_("offset", u32(128));
 
-    scope.ast = Some(LoweredAST::Group(vec![
+    let body = group!(
         scope.while_loop(
-            LoweredAST::BinaryOp {
-                lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                    id: model_vertex_count, by: vec![],
-                }))),
-                rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                    id: i, by: vec![],
-                }))),
-                op: BinOp::Gt,
-            },
-            |b| {
-                let v = b.add_local(
-                    "v".to_string(), false,
-                    LoweredAST::Load(
-                        model_verts.var_ref().index(
-                            LoweredAST::BinaryOp {
-                                lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: model_offset, by: vec![],
-                                }))),
-                                rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: i, by: vec![],
-                                }))),
-                                op: BinOp::Add,
-                            },
-                        ).field("pos")
-                    ),
-                );
-                b.ast = Some(LoweredAST::Group(vec![
-                    LoweredAST::Store {
-                        var: VarRefType::Local(VarRef { id: local_min, by: vec![] }),
-                        val: Box::new(LoweredAST::FunctionCall {
-                            ident: "min".to_string(),
-                            args: vec![
-                                Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: local_min, by: vec![],
-                                }))),
-                                Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: v, by: vec![],
-                                }))),
-                            ],
-                        }),
-                    },
-                    LoweredAST::Store {
-                        var: VarRefType::Local(VarRef { id: local_max, by: vec![] }),
-                        val: Box::new(LoweredAST::FunctionCall {
-                            ident: "max".to_string(),
-                            args: vec![
-                                Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: local_max, by: vec![],
-                                }))),
-                                Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                    id: v, by: vec![],
-                                }))),
-                            ],
-                        }),
-                    },
-                    LoweredAST::Store {
-                        var: VarRefType::Local(VarRef { id: i, by: vec![] }),
-                        val: Box::new(LoweredAST::BinaryOp {
-                            lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                id: i, by: vec![],
-                            }))),
-                            rhs: Box::new(LoweredAST::Const {
-                                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                                data: 256u32.to_le_bytes().to_vec(),
-                            }),
-                            op: BinOp::Add,
-                        }),
-                    },
-                ]));
-            },
-        ),
-        LoweredAST::Store {
-            var: VarRefType::Shared(VarRef {
-                id: 0,
-                by: vec![Accessor::Index(Box::new(
-                    LoweredAST::Load(VarRefType::Local(VarRef { id: lid, by: vec![] })),
-                ))],
-            }),
-            val: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                id: local_min, by: vec![],
-            }))),
+        local(model_vertex_count).load().gt(local(i).load()),
+        |b| {
+            let v = b.var("v", model_verts.var_ref().i(local(model_offset).load() + local(i).load()).f("pos").load());
+            b.ast = Some(group!(
+                store(local(local_min), call!("min", local(local_min).load(), local(v).load())),
+                store(local(local_max), call!("max", local(local_max).load(), local(v).load())),
+                store(local(i), local(i).load() + u32(256)),
+            ));
         },
-        LoweredAST::Store {
-            var: VarRefType::Shared(VarRef {
-                id: 1,
-                by: vec![Accessor::Index(Box::new(
-                    LoweredAST::Load(VarRefType::Local(VarRef { id: lid, by: vec![] })),
-                ))],
-            }),
-            val: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                id: local_max, by: vec![],
-            }))),
-        },
-        LoweredAST::FunctionCall {
-            ident: "workgroupBarrier".to_string(), args: vec![],
-        },
-        scope.while_loop(
-            LoweredAST::BinaryOp {
-                lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                    id: offset, by: vec![],
-                }))),
-                rhs: Box::new(LoweredAST::Const {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: 0u32.to_le_bytes().to_vec(),
-                }),
-                op: BinOp::Gt,
-            },
-            |b| {
-                let if_ast = b.cond(
-                    LoweredAST::BinaryOp {
-                        lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                            id: offset, by: vec![],
-                        }))),
-                        rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                            id: lid, by: vec![],
-                        }))),
-                        op: BinOp::Gt,
-                    },
-                    |ib| {
-                        ib.ast = Some(LoweredAST::Group(vec![
-                            LoweredAST::Store {
-                                var: VarRefType::Shared(VarRef {
-                                    id: 0,
-                                    by: vec![Accessor::Index(Box::new(
-                                        LoweredAST::Load(VarRefType::Local(VarRef {
-                                            id: lid, by: vec![],
-                                        })),
-                                    ))],
-                                }),
-                                val: Box::new(LoweredAST::FunctionCall {
-                                    ident: "min".to_string(),
-                                    args: vec![
-                                        Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
-                                            id: 0,
-                                            by: vec![Accessor::Index(Box::new(
-                                                LoweredAST::Load(VarRefType::Local(VarRef {
-                                                    id: lid, by: vec![],
-                                                })),
-                                            ))],
-                                        }))),
-                                        Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
-                                            id: 0,
-                                            by: vec![Accessor::Index(Box::new(
-                                                LoweredAST::BinaryOp {
-                                                    lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                                        id: lid, by: vec![],
-                                                    }))),
-                                                    rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                                        id: offset, by: vec![],
-                                                    }))),
-                                                    op: BinOp::Add,
-                                                },
-                                            ))],
-                                        }))),
-                                    ],
-                                }),
-                            },
-                            LoweredAST::Store {
-                                var: VarRefType::Shared(VarRef {
-                                    id: 1,
-                                    by: vec![Accessor::Index(Box::new(
-                                        LoweredAST::Load(VarRefType::Local(VarRef {
-                                            id: lid, by: vec![],
-                                        })),
-                                    ))],
-                                }),
-                                val: Box::new(LoweredAST::FunctionCall {
-                                    ident: "max".to_string(),
-                                    args: vec![
-                                        Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
-                                            id: 1,
-                                            by: vec![Accessor::Index(Box::new(
-                                                LoweredAST::Load(VarRefType::Local(VarRef {
-                                                    id: lid, by: vec![],
-                                                })),
-                                            ))],
-                                        }))),
-                                        Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
-                                            id: 1,
-                                            by: vec![Accessor::Index(Box::new(
-                                                LoweredAST::BinaryOp {
-                                                    lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                                        id: lid, by: vec![],
-                                                    }))),
-                                                    rhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                                        id: offset, by: vec![],
-                                                    }))),
-                                                    op: BinOp::Add,
-                                                },
-                                            ))],
-                                        }))),
-                                    ],
-                                }),
-                            },
-                        ]));
-                    },
-                    None::<fn(&mut Scope)>,
-                );
-                b.ast = Some(LoweredAST::Group(vec![
-                    if_ast,
-                    LoweredAST::FunctionCall {
-                        ident: "workgroupBarrier".to_string(), args: vec![],
-                    },
-                    LoweredAST::Store {
-                        var: VarRefType::Local(VarRef { id: offset, by: vec![] }),
-                        val: Box::new(LoweredAST::BinaryOp {
-                            lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                                id: offset, by: vec![],
-                            }))),
-                            rhs: Box::new(LoweredAST::Const {
-                                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                                data: 1u32.to_le_bytes().to_vec(),
-                            }),
-                            op: BinOp::Shr,
-                        }),
-                    },
-                ]));
-            },
-        ),
-        scope.cond(
-            LoweredAST::BinaryOp {
-                lhs: Box::new(LoweredAST::Load(VarRefType::Local(VarRef {
-                    id: lid, by: vec![],
-                }))),
-                rhs: Box::new(LoweredAST::Const {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: 0u32.to_le_bytes().to_vec(),
-                }),
-                op: BinOp::Eq,
-            },
-            |b| {
-                b.ast = Some(LoweredAST::Group(vec![
-                    LoweredAST::Store {
-                        var: output_rect.var_ref().index(
-                            LoweredAST::Load(VarRefType::Local(VarRef {
-                                id: model_idx, by: vec![],
-                            })),
-                        ).field("min"),
-                        val: Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
-                            id: 0,
-                            by: vec![Accessor::Index(Box::new(LoweredAST::Const {
-                                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                                data: 0u32.to_le_bytes().to_vec(),
-                            }))],
-                        }))),
-                    },
-                    LoweredAST::Store {
-                        var: output_rect.var_ref().index(
-                            LoweredAST::Load(VarRefType::Local(VarRef {
-                                id: model_idx, by: vec![],
-                            })),
-                        ).field("max"),
-                        val: Box::new(LoweredAST::Load(VarRefType::Shared(VarRef {
-                            id: 1,
-                            by: vec![Accessor::Index(Box::new(LoweredAST::Const {
-                                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                                data: 0u32.to_le_bytes().to_vec(),
-                            }))],
-                        }))),
-                    },
-                ]));
-            },
-            None::<fn(&mut Scope)>,
-        ),
-    ]));
+    ),
+    store(shared(0).i(local(lid).load()), local(local_min).load()),
+    store(shared(1).i(local(lid).load()), local(local_max).load()),
+    call!("workgroupBarrier"),
+    scope.while_loop(local(offset).load().gt(u32(0)), |b| {
+        let if_ast = b.cond(local(offset).load().gt(local(lid).load()), |ib| {
+            ib.ast = Some(group!(
+                store(shared(0).i(local(lid).load()), call!("min",
+                    shared(0).i(local(lid).load()).load(),
+                    shared(0).i(local(lid).load() + local(offset).load()).load(),
+                )),
+                store(shared(1).i(local(lid).load()), call!("max",
+                    shared(1).i(local(lid).load()).load(),
+                    shared(1).i(local(lid).load() + local(offset).load()).load(),
+                )),
+            ));
+        }, None::<fn(&mut Scope)>);
+        b.ast = Some(group!(
+            if_ast,
+            call!("workgroupBarrier"),
+            store(local(offset), local(offset).load() >> u32(1)),
+        ));
+    }),
+    scope.cond(local(lid).load().eq(u32(0)), |b| {
+        b.ast = Some(group!(
+            store(output_rect.var_ref().i(local(model_idx).load()).f("min"), shared(0).i(u32(0)).load()),
+            store(output_rect.var_ref().i(local(model_idx).load()).f("max"), shared(1).i(u32(0)).load()),
+        ));
+    }, None::<fn(&mut Scope)>),
+    );
+    scope.ast = Some(body);
 
     scope
 }
