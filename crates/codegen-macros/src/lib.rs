@@ -164,6 +164,33 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
+    let extra_args: Vec<_> = func
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|input| {
+            let FnArg::Typed(pat) = input else {
+                return None;
+            };
+            let name = if let syn::Pat::Ident(ident) = &*pat.pat {
+                ident.ident.to_string()
+            } else {
+                panic!("expected named argument");
+            };
+            if pat.attrs.iter().any(|a| a.path().is_ident("binding")) {
+                return None;
+            }
+            if let Type::Path(p) = &*pat.ty {
+                if let Some(seg) = p.path.segments.last() {
+                    if seg.ident == "SharedData" {
+                        return None;
+                    }
+                }
+            }
+            Some((name, &pat.ty))
+        })
+        .collect();
+
     let (shared_arg_names, shared_arg_inner_types): (Vec<_>, Vec<_>) = shared_args
         .iter()
         .map(|(n, ty)| {
@@ -231,6 +258,22 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     });
 
+    let extra_arg_tys: Vec<_> = extra_args.iter().map(|(_, ty)| *ty).collect();
+    let extra_arg_n_idents: Vec<_> = extra_args
+        .iter()
+        .map(|(n, _)| Ident::new(n, ident.span()))
+        .collect();
+
+    let extra_struct_f: Vec<_> = extra_arg_n_idents
+        .iter()
+        .zip(extra_arg_tys.iter())
+        .map(|(n, ty)| {
+            quote! {
+                pub #n : #ty
+            }
+        })
+        .collect();
+
     let mut clean_func = func.clone();
     clean_func.sig.inputs = clean_func
         .sig
@@ -254,6 +297,19 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else { panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty }) };
         quote! { codegen::asts::lowered::BindedBuffer::<#inner, #idx>(std::marker::PhantomData) }
     }).collect();
+
+    let extra_arg_self_refs: Vec<_> = extra_arg_n_idents
+        .iter()
+        .map(|n| {
+            quote! { self.#n }
+        })
+        .collect();
+
+    let struct_def = if extra_args.is_empty() {
+        quote! { pub struct #struct_ident; }
+    } else {
+        quote! { pub struct #struct_ident { #(#extra_struct_f,)* } }
+    };
 
     let arg_binding_tys: Vec<_> = args.iter().map(|(_, b, _)| {
         match b {
@@ -312,7 +368,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
             quote! {
                 #func_clean
 
-                pub struct #struct_ident;
+                #struct_def
 
                 pub struct #args_ident {
                     #(#arg_struct_f,)*
@@ -326,59 +382,56 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                         stringify!(#ident)
                     }
 
-                    fn load_source_code(&self) -> &'static str {
-                        static WGSL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-                        WGSL.get_or_init(|| {
-                            let structs = codegen::asts::build_struct_map();
+                    fn load_source_code(&self) -> String {
+                        let structs = codegen::asts::build_struct_map();
 
-                            let mut ir = codegen::asts::lowered::ShaderIR {
-                                structs,
-                                binded: vec![],
-                                shared_vars: vec![],
-                                entrypoint_globals: vec![],
-                                functions: vec![],
-                            };
+                        let mut ir = codegen::asts::lowered::ShaderIR {
+                            structs,
+                            binded: vec![],
+                            shared_vars: vec![],
+                            entrypoint_globals: vec![],
+                            functions: vec![],
+                        };
 
-                            ir.binded = vec![
-                                #(codegen::asts::lowered::BindingMeta {
-                                    ident: #arg_names.to_string(),
-                                    ty: #arg_binding_tys,
-                                    struct_name: {
-                                        let r = codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir };
-                                        r.render_dtype(&<#arg_inner_types as codegen::asts::IntoWgslStruct>::dt())
-                                    },
-                                },)*
-                            ];
-
-                            ir.shared_vars = vec![
-                                #((
-                                    #shared_arg_names.to_string(),
-                                    <#shared_arg_inner_types as codegen::asts::IntoWgslStruct>::dt(),
-                                ),)*
-                            ];
-
-                            ir.entrypoint_globals = vec![
-                                codegen::asts::lowered::EntrypointGlobals::GlobalInvocationId,
-                                codegen::asts::lowered::EntrypointGlobals::LocalInvocationId,
-                            ];
-
-                            let scope = #ident(#(#arg_markers,)* #(#shared_arg_markers,)*);
-
-                            ir.functions.push(
-                                codegen::asts::lowered::Functions {
-                                    args: {
-                                        let mut m = std::collections::HashMap::new();
-                                        #(m.insert(#arg_names.to_string(), <#arg_inner_types as codegen::asts::IntoWgslStruct>::dt());)*
-                                        m
-                                    },
-                                    ret: None,
-                                    ident: stringify!(#ident).to_string(),
-                                    entrypoint_ty: Some(codegen::asts::lowered::EntrypointData::Compute { workgroup_sz: #workgroup_sz }),
-                                    body: scope,
+                        ir.binded = vec![
+                            #(codegen::asts::lowered::BindingMeta {
+                                ident: #arg_names.to_string(),
+                                ty: #arg_binding_tys,
+                                struct_name: {
+                                    let r = codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir };
+                                    r.render_dtype(&<#arg_inner_types as codegen::asts::IntoWgslStruct>::dt())
                                 },
-                            );
-                            codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir }.translate()
-                        })
+                            },)*
+                        ];
+
+                        ir.shared_vars = vec![
+                            #((
+                                #shared_arg_names.to_string(),
+                                <#shared_arg_inner_types as codegen::asts::IntoWgslStruct>::dt(),
+                            ),)*
+                        ];
+
+                        ir.entrypoint_globals = vec![
+                            codegen::asts::lowered::EntrypointGlobals::GlobalInvocationId,
+                            codegen::asts::lowered::EntrypointGlobals::LocalInvocationId,
+                        ];
+
+                        let scope = #ident(#(#arg_markers,)* #(#shared_arg_markers,)* #(#extra_arg_self_refs,)*);
+
+                        ir.functions.push(
+                            codegen::asts::lowered::Functions {
+                                args: {
+                                    let mut m = std::collections::HashMap::new();
+                                    #(m.insert(#arg_names.to_string(), <#arg_inner_types as codegen::asts::IntoWgslStruct>::dt());)*
+                                    m
+                                },
+                                ret: None,
+                                ident: stringify!(#ident).to_string(),
+                                entrypoint_ty: Some(codegen::asts::lowered::EntrypointData::Compute { workgroup_sz: #workgroup_sz }),
+                                body: scope,
+                            },
+                        );
+                        codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir }.translate()
                     }
 
                     fn resource_buffers_with_bind_group_layouts(

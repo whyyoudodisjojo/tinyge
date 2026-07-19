@@ -127,8 +127,8 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
         }]
     }
 
-    fn load_source_code(&self) -> &'static str {
-        include_str!("../shaders/acceleration.wgsl")
+    fn load_source_code(&self) -> String {
+        include_str!("../shaders/acceleration.wgsl").to_string()
     }
 
     fn entry_point(&self) -> &'static str {

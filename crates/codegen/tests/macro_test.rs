@@ -91,14 +91,38 @@ struct WithAtomic {
     counter: Atomic<u32>,
 }
 
+fn my_inject() -> LoweredAST {
+    LoweredAST::FunctionCall {
+        ident: "injected_helper".to_string(),
+        args: vec![],
+    }
+}
+
+#[shader(compute(workgroup_sz = 64))]
+fn shader_with_extra(
+    #[binding(uniform)] _input: BindedBuffer<MyData, 0>,
+    inject: fn() -> LoweredAST,
+) -> Scope {
+    let mut scope = Scope::new();
+    scope.ast = Some(LoweredAST::Group(vec![inject(), LoweredAST::Return]));
+    scope
+}
+
+#[test]
+fn test_extra_args() {
+    let s = ShaderWithExtra { inject: my_inject };
+    let wgsl = s.load_source_code();
+    println!("{wgsl}");
+    assert!(wgsl.contains("injected_helper"));
+    assert!(wgsl.contains("@compute @workgroup_size(64)"));
+    assert!(wgsl.contains("fn shader_with_extra"));
+}
+
 #[test]
 fn test_derive_atomic_field() {
     let structs = codegen::asts::build_struct_map();
     let s = structs.get("WithAtomic").unwrap();
     assert_eq!(s.inner.len(), 1);
     assert_eq!(s.inner[0].0, "counter");
-    assert_eq!(
-        s.inner[0].1,
-        DType::Atomic(IntegerTy::U32),
-    );
+    assert_eq!(s.inner[0].1, DType::Atomic(IntegerTy::U32),);
 }

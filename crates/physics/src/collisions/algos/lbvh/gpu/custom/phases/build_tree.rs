@@ -42,8 +42,8 @@ impl<'a> ComputeShader<'a> for BuildTree {
         }
     }
 
-    fn load_source_code(&self) -> &'static str {
-        include_str!("../../../../shaders/lbvh/build_tree.wgsl")
+    fn load_source_code(&self) -> String {
+        include_str!("../../../../shaders/lbvh/build_tree.wgsl").to_string()
     }
 
     fn resource_buffers_with_bind_group_layouts(

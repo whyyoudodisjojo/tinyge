@@ -95,8 +95,8 @@ impl<'a> Shader<'a> for Pentagon {
         }]
     }
 
-    fn load_source_code(&self) -> &'static str {
-        include_str!("../../shaders/triangle.wgsl")
+    fn load_source_code(&self) -> String {
+        include_str!("../../shaders/triangle.wgsl").to_string()
     }
 
     fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'static> {

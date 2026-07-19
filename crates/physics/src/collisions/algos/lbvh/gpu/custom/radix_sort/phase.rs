@@ -39,8 +39,8 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
         }
     }
 
-    fn load_source_code(&self) -> &'static str {
-        include_str!("../../../../shaders/lbvh/radix_sort.wgsl")
+    fn load_source_code(&self) -> String {
+        include_str!("../../../../shaders/lbvh/radix_sort.wgsl").to_string()
     }
 
     fn resource_buffers_with_bind_group_layouts(

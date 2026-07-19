@@ -156,8 +156,8 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for BvhTraversalShader {
         }]
     }
 
-    fn load_source_code<'b>(&'b self) -> &'b str {
-        include_str!("shaders/traversal.wgsl")
+    fn load_source_code(&self) -> String {
+        include_str!("shaders/traversal.wgsl").to_string()
     }
 
     fn entry_point(&self) -> &'static str {

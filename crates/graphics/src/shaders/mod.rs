@@ -33,7 +33,7 @@ pub trait Shader<'a> {
     fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
         vec![]
     }
-    fn load_source_code(&self) -> &str;
+    fn load_source_code(&self) -> String;
     fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'_>;
 
     fn build(
@@ -77,7 +77,7 @@ pub trait Shader<'a> {
         });
         let shader_module = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
-            source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(self.load_source_code())),
+            source: ShaderSource::Wgsl(std::borrow::Cow::Owned(self.load_source_code())),
         });
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: None,
@@ -180,7 +180,7 @@ where
         self.as_ref().build(device, texture_format, cache)
     }
 
-    fn load_source_code(&self) -> &str {
+    fn load_source_code(&self) -> String {
         self.as_ref().load_source_code()
     }
 
@@ -233,7 +233,7 @@ pub trait ComputeShader<'a> {
     fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
         vec![]
     }
-    fn load_source_code(&self) -> &str;
+    fn load_source_code(&self) -> String;
     fn entry_point(&self) -> &'static str;
 
     fn build(&self, device: &Device) -> ComputeShaderBuiltData<'a> {
@@ -262,7 +262,7 @@ pub trait ComputeShader<'a> {
 
         let shader_module = device.create_shader_module(ShaderModuleDescriptor {
             label: None,
-            source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(self.load_source_code())),
+            source: ShaderSource::Wgsl(std::borrow::Cow::Owned(self.load_source_code())),
         });
 
         let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
