@@ -88,6 +88,7 @@ where
 
         let inner = match dt {
             DType::Basic(BasicTy::Integer(i)) => MaybeAtomic::Atomic(i),
+            DType::Atomic(i) => MaybeAtomic::Atomic(i),
             DType::Basic(b) => MaybeAtomic::Naked(BasicTyOrStructRef::BasicTy(b)),
             DType::StructRef { ident } => {
                 MaybeAtomic::Naked(BasicTyOrStructRef::StructRef { ident })

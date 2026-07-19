@@ -16,7 +16,6 @@ struct ComputeArgs {
 struct Field {
     ident: Option<Ident>,
     ty: Type,
-    atomic: darling::util::Flag,
     pad: Option<usize>,
 }
 
@@ -44,14 +43,9 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
 
             let field_name = f.ident.as_ref().unwrap().to_string();
             let field_ty = &f.ty;
-            let dt = if f.atomic.is_present() {
-                quote! { codegen::asts::atomic(<#field_ty as codegen::asts::IntoWgslStruct>::dt()) }
-            } else {
-                quote! { <#field_ty as codegen::asts::IntoWgslStruct>::dt() }
-            };
 
             Some(quote! {
-                fields.push((#field_name.to_string(), #dt));
+                fields.push((#field_name.to_string(), <#field_ty as codegen::asts::IntoWgslStruct>::dt()));
             })
         })
         .collect();

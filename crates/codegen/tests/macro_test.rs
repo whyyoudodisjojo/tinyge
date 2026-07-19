@@ -1,4 +1,6 @@
 use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope, SharedData};
+use codegen::asts::{Atomic, IntoWgslStruct};
+use codegen::dt::{DType, IntegerTy, MaybeAtomic, VecTy};
 use codegen_macros::{IntoWgslStruct, shader};
 use tinyge_graphics::shaders::ComputeShader;
 
@@ -58,4 +60,45 @@ fn test_shared_var() {
     assert!(wgsl.contains("_sdata"));
     assert!(wgsl.contains("@compute @workgroup_size(256)"));
     assert!(wgsl.contains("fn shared_shader"));
+}
+
+#[test]
+fn test_atomic_dt() {
+    assert_eq!(
+        <Atomic<u32> as IntoWgslStruct>::dt(),
+        DType::Atomic(IntegerTy::U32),
+    );
+    assert_eq!(
+        <Atomic<i32> as IntoWgslStruct>::dt(),
+        DType::Atomic(IntegerTy::I32),
+    );
+}
+
+#[test]
+fn test_vec_atomic_dt() {
+    assert_eq!(
+        <Vec<Atomic<u32>> as IntoWgslStruct>::dt(),
+        DType::Vector(VecTy::Array(MaybeAtomic::Atomic(IntegerTy::U32))),
+    );
+    assert_eq!(
+        <Vec<Atomic<i32>> as IntoWgslStruct>::dt(),
+        DType::Vector(VecTy::Array(MaybeAtomic::Atomic(IntegerTy::I32))),
+    );
+}
+
+#[derive(IntoWgslStruct)]
+struct WithAtomic {
+    counter: Atomic<u32>,
+}
+
+#[test]
+fn test_derive_atomic_field() {
+    let structs = codegen::asts::build_struct_map();
+    let s = structs.get("WithAtomic").unwrap();
+    assert_eq!(s.inner.len(), 1);
+    assert_eq!(s.inner[0].0, "counter");
+    assert_eq!(
+        s.inner[0].1,
+        DType::Atomic(IntegerTy::U32),
+    );
 }

@@ -17,10 +17,14 @@ pub trait IntoWgslStruct {
     }
 }
 
-pub fn atomic(dt: DType) -> DType {
-    match dt {
-        DType::Basic(BasicTy::Integer(ity)) => DType::Atomic(ity),
-        _ => panic!("atomic only valid for integer types"),
+pub struct Atomic<T>(pub T);
+
+impl<T: IntoWgslStruct> IntoWgslStruct for Atomic<T> {
+    fn dt() -> DType {
+        match T::dt() {
+            DType::Basic(BasicTy::Integer(ity)) => DType::Atomic(ity),
+            _ => panic!("atomic only valid for integer types"),
+        }
     }
 }
 
