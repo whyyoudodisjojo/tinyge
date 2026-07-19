@@ -2,7 +2,7 @@ use crate::{
     asts::lowered::{
         Accessor, BinOp, CustomBufferBindingType, EntrypointData,
         LoweredAST::{self},
-        ShaderIR, Struct, UnaryOp, VarRefType,
+        LoweredASTOrConst, ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
     },
     dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy},
@@ -168,11 +168,18 @@ impl<'a> LoweredRenderer<'a> {
                 let sign = match op {
                     BinOp::Add => "+",
                     BinOp::BitwiseAnd => "&",
+                    BinOp::BitwiseOr => "|",
+                    BinOp::BitwiseXor => "^",
                     BinOp::Div => "/",
                     BinOp::Eq => "==",
+                    BinOp::Ge => ">=",
                     BinOp::Gt => ">",
+                    BinOp::Le => "<=",
                     BinOp::LogicalAnd => "&&",
+                    BinOp::Lt => "<",
                     BinOp::Mul => "*",
+                    BinOp::Ne => "!=",
+                    BinOp::Rem => "%",
                     BinOp::Shl => "<<",
                     BinOp::Shr => ">>",
                     BinOp::Sub => "-",
@@ -360,19 +367,16 @@ impl<'a> LoweredRenderer<'a> {
                     self.render_ast(curr_scope, val, 0)
                 )
             }
-            LoweredAST::Const { dt, data } => {
-                let (s, _) = match dt {
-                    DType::Atomic(_) => panic!("Cannot have atomic constants"),
-                    DType::Basic(b) => self.render_basic_ty_const(b, data, 0),
-                    DType::Vector(v) => self.render_vec_const(v, data, 0),
-                    DType::StructRef { ident } => {
-                        let s = self.ir.structs.get(ident).unwrap();
-                        self.render_struct_const(ident, s, data, 0)
-                    }
-                    DType::Pad(bytes) => self.render_pad_const(*bytes, data, 0),
-                };
-                s
-            }
+            LoweredAST::Const { dt, data } => match dt {
+                DType::Atomic(_) => panic!("Cannot have atomic constants"),
+                DType::Basic(b) => self.render_basic_ty_const(b, data, curr_scope, indent),
+                DType::Vector(v) => self.render_vec_const(v, data, curr_scope, indent),
+                DType::StructRef { ident } => {
+                    let s = self.ir.structs.get(ident).unwrap();
+                    self.render_struct_const(ident, s, data, curr_scope, indent)
+                }
+                DType::Pad(bytes) => self.render_pad_const(*bytes, data, curr_scope, indent),
+            },
             LoweredAST::FunctionCall { ident, args } => format!(
                 "{}({})",
                 ident,
@@ -401,44 +405,71 @@ impl<'a> LoweredRenderer<'a> {
         }
     }
 
-    fn render_basic_ty_const(&self, b: &BasicTy, data: &[u8], offset: usize) -> (String, usize) {
+    fn render_basic_ty_const(
+        &self,
+        b: &BasicTy,
+        data: &[LoweredASTOrConst],
+        curr_scope: &Scope,
+        indent: usize,
+    ) -> String {
         match b {
-            BasicTy::F32 => {
-                let bytes = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
-                let val = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                if val.is_infinite() {
-                    if val.is_sign_negative() {
-                        (String::from("-0x1p+127f"), 4)
-                    } else {
-                        (String::from("0x1p+127f"), 4)
+            BasicTy::F32 => data
+                .iter()
+                .map(|d| match d {
+                    LoweredASTOrConst::Const(c) => {
+                        let val = f32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+                        if val.is_infinite() {
+                            if val.is_sign_negative() {
+                                String::from("-0x1p+127f")
+                            } else {
+                                String::from("0x1p+127f")
+                            }
+                        } else {
+                            format!("{}f", val)
+                        }
                     }
-                } else {
-                    (format!("{}f", val), 4)
-                }
-            }
-            BasicTy::Bool => {
-                let bytes = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
-                let val = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                (
-                    if val != 0 {
-                        "true".to_string()
-                    } else {
-                        "false".to_string()
-                    },
-                    4,
-                )
-            }
+                    LoweredASTOrConst::LoweredAST(l) => self.render_ast(curr_scope, l, indent),
+                })
+                .next()
+                .unwrap(),
+            BasicTy::Bool => data
+                .iter()
+                .map(|d| match d {
+                    LoweredASTOrConst::Const(c) => {
+                        let val = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+                        if val != 0 {
+                            "true".to_string()
+                        } else {
+                            "false".to_string()
+                        }
+                    }
+                    LoweredASTOrConst::LoweredAST(l) => self.render_ast(curr_scope, l, indent),
+                })
+                .next()
+                .unwrap(),
             BasicTy::Integer(int_ty) => match int_ty {
-                IntegerTy::I32 => {
-                    let bytes = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
-                    let val = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                    (format!("{}i", val), 4)
-                }
-                IntegerTy::U32 => {
-                    let bytes = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
-                    let val = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                    (format!("{}u", val), 4)
-                }
+                IntegerTy::I32 => data
+                    .iter()
+                    .map(|d| match d {
+                        LoweredASTOrConst::Const(c) => {
+                            let val = i32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+                            format!("{}i", val)
+                        }
+                        LoweredASTOrConst::LoweredAST(l) => self.render_ast(curr_scope, l, indent),
+                    })
+                    .next()
+                    .unwrap(),
+                IntegerTy::U32 => data
+                    .iter()
+                    .map(|d| match d {
+                        LoweredASTOrConst::Const(c) => {
+                            let val = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
+                            format!("{}u", val)
+                        }
+                        LoweredASTOrConst::LoweredAST(l) => self.render_ast(curr_scope, l, indent),
+                    })
+                    .next()
+                    .unwrap(),
             },
         }
     }
@@ -447,65 +478,137 @@ impl<'a> LoweredRenderer<'a> {
         &self,
         ident: &str,
         s: &Struct,
-        data: &[u8],
-        mut offset: usize,
-    ) -> (String, usize) {
+        data: &[LoweredASTOrConst],
+        curr_scope: &Scope,
+        indent: usize,
+    ) -> String {
         let mut field_inits = Vec::new();
-        let mut total_consumed = 0;
+        let mut current_offset = 0;
 
         for (field_name, field_ty) in &s.inner {
             let (field_val, consumed) = match field_ty {
                 DType::Atomic(_) => panic!("Cannot have atomic constants"),
-                DType::Basic(b) => self.render_basic_ty_const(b, data, offset),
-                DType::Vector(v) => self.render_vec_const(v, data, offset),
-                DType::StructRef { ident } => {
+                DType::Basic(b) => {
+                    let val =
+                        self.render_basic_ty_const(b, &data[current_offset..], curr_scope, indent);
+                    (val, 1)
+                }
+                DType::Vector(v) => {
+                    let consumed = match v {
+                        VecTy::Vec2(_) => 2,
+                        VecTy::Vec3(_) => 3,
+                        VecTy::Vec4(_) => 4,
+                        _ => unimplemented!(),
+                    };
+
+                    (
+                        self.render_vec_const(v, &data[current_offset..], curr_scope, indent),
+                        consumed,
+                    )
+                }
+                DType::StructRef {
+                    ident: nested_ident,
+                } => {
                     let nested = self
                         .ir
                         .structs
-                        .get(ident)
-                        .unwrap_or_else(|| panic!("Nested struct {} not found", ident));
-                    self.render_struct_const(ident, nested, data, offset)
+                        .get(nested_ident)
+                        .unwrap_or_else(|| panic!("Nested struct {} not found", nested_ident));
+
+                    let mut nested_inits = Vec::new();
+                    let mut nested_offset = current_offset;
+
+                    for (n_name, n_ty) in &nested.inner {
+                        let (n_val, n_consumed) = match n_ty {
+                            DType::Atomic(_) => panic!("Cannot have atomic constants"),
+                            DType::Basic(b) => (
+                                self.render_basic_ty_const(
+                                    b,
+                                    &data[nested_offset..],
+                                    curr_scope,
+                                    indent,
+                                ),
+                                1,
+                            ),
+                            DType::Vector(v) => {
+                                let consumed = match v {
+                                    VecTy::Vec2(_) => 2,
+                                    VecTy::Vec3(_) => 3,
+                                    VecTy::Vec4(_) => 4,
+                                    _ => unimplemented!(),
+                                };
+                                (
+                                    self.render_vec_const(
+                                        v,
+                                        &data[nested_offset..],
+                                        curr_scope,
+                                        indent,
+                                    ),
+                                    consumed,
+                                )
+                            }
+                            DType::Pad(elements) => (String::new(), *elements),
+                            DType::StructRef { .. } => {
+                                unimplemented!("Deeply nested structs not yet implemented")
+                            }
+                        };
+
+                        if !matches!(n_ty, DType::Pad(_)) {
+                            nested_inits.push(format!("{n_name}: {n_val}"));
+                        }
+                        nested_offset += n_consumed;
+                    }
+
+                    let nested_str = format!("{}({})", nested_ident, nested_inits.join(", "));
+                    let consumed_by_nested = nested_offset - current_offset;
+                    (nested_str, consumed_by_nested)
                 }
-                DType::Pad(bytes) => self.render_pad_const(*bytes, data, offset),
+                DType::Pad(elements) => (String::new(), *elements),
             };
-            field_inits.push(format!("{field_name}: {field_val}"));
-            offset += consumed;
-            total_consumed += consumed;
+
+            if !matches!(field_ty, DType::Pad(_)) {
+                field_inits.push(format!("{field_name}: {field_val}"));
+            }
+
+            current_offset += consumed;
         }
 
-        let init = format!("{}({})", ident, field_inits.join(", "));
-        (init, total_consumed)
+        format!("{}({})", ident, field_inits.join(", "))
     }
 
-    fn render_vec_const(&self, v: &VecTy, data: &[u8], offset: usize) -> (String, usize) {
+    fn render_vec_const(
+        &self,
+        v: &VecTy,
+        data: &[LoweredASTOrConst],
+        curr_scope: &Scope,
+        indent: usize,
+    ) -> String {
         match v {
             VecTy::Vec2(inner) => {
                 let inner_ty = self.render_basic_ty(inner);
-                let (val0, off0) = self.render_basic_ty_const(inner, data, offset);
-                let (val1, off1) = self.render_basic_ty_const(inner, data, offset + off0);
-                (format!("vec2<{inner_ty}>({val0}, {val1})"), off0 + off1)
+
+                let val0 = self.render_basic_ty_const(inner, &data[0..], curr_scope, indent);
+                let val1 = self.render_basic_ty_const(inner, &data[1..], curr_scope, indent);
+
+                format!("vec2<{inner_ty}>({val0}, {val1})")
             }
             VecTy::Vec3(inner) => {
                 let inner_ty = self.render_basic_ty(inner);
-                let (val0, off0) = self.render_basic_ty_const(inner, data, offset);
-                let (val1, off1) = self.render_basic_ty_const(inner, data, offset + off0);
-                let (val2, off2) = self.render_basic_ty_const(inner, data, offset + off0 + off1);
-                (
-                    format!("vec3<{inner_ty}>({val0}, {val1}, {val2})"),
-                    off0 + off1 + off2,
-                )
+
+                let val0 = self.render_basic_ty_const(inner, &data[0..], curr_scope, indent);
+                let val1 = self.render_basic_ty_const(inner, &data[1..], curr_scope, indent);
+                let val2 = self.render_basic_ty_const(inner, &data[2..], curr_scope, indent);
+
+                format!("vec3<{inner_ty}>({val0}, {val1}, {val2})")
             }
             VecTy::Vec4(inner) => {
                 let inner_ty = self.render_basic_ty(inner);
-                let (val0, off0) = self.render_basic_ty_const(inner, data, offset);
-                let (val1, off1) = self.render_basic_ty_const(inner, data, offset + off0);
-                let (val2, off2) = self.render_basic_ty_const(inner, data, offset + off0 + off1);
-                let (val3, off3) =
-                    self.render_basic_ty_const(inner, data, offset + off0 + off1 + off2);
-                (
-                    format!("vec4<{inner_ty}>({val0}, {val1}, {val2}, {val3})"),
-                    off0 + off1 + off2 + off3,
-                )
+
+                let val0 = self.render_basic_ty_const(inner, &data[0..], curr_scope, indent);
+                let val1 = self.render_basic_ty_const(inner, &data[1..], curr_scope, indent);
+                let val2 = self.render_basic_ty_const(inner, &data[2..], curr_scope, indent);
+                let val3 = self.render_basic_ty_const(inner, &data[3..], curr_scope, indent);
+                format!("vec4<{inner_ty}>({val0}, {val1}, {val2}, {val3})")
             }
             VecTy::Array(_inner) => {
                 unimplemented!("Can be lowered further with for loops and shit so ye")
@@ -513,43 +616,21 @@ impl<'a> LoweredRenderer<'a> {
         }
     }
 
-    fn render_pad_const(&self, bytes: usize, data: &[u8], offset: usize) -> (String, usize) {
-        let val = match bytes {
-            4 => {
-                let b = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
-                let v0 = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-                format!("{}u", v0)
-            }
-            8 => {
-                let b0 = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
-                let b1 = data.get(offset + 4..offset + 8).unwrap_or(&[0; 4]);
-                let v0 = u32::from_le_bytes([b0[0], b0[1], b0[2], b0[3]]);
-                let v1 = u32::from_le_bytes([b1[0], b1[1], b1[2], b1[3]]);
-                format!("vec2<u32>({}u, {}u)", v0, v1)
-            }
-            12 => {
-                let b0 = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
-                let b1 = data.get(offset + 4..offset + 8).unwrap_or(&[0; 4]);
-                let b2 = data.get(offset + 8..offset + 12).unwrap_or(&[0; 4]);
-                let v0 = u32::from_le_bytes([b0[0], b0[1], b0[2], b0[3]]);
-                let v1 = u32::from_le_bytes([b1[0], b1[1], b1[2], b1[3]]);
-                let v2 = u32::from_le_bytes([b2[0], b2[1], b2[2], b2[3]]);
-                format!("vec3<u32>({}u, {}u, {}u)", v0, v1, v2)
-            }
-            16 => {
-                let b0 = data.get(offset..offset + 4).unwrap_or(&[0; 4]);
-                let b1 = data.get(offset + 4..offset + 8).unwrap_or(&[0; 4]);
-                let b2 = data.get(offset + 8..offset + 12).unwrap_or(&[0; 4]);
-                let b3 = data.get(offset + 12..offset + 16).unwrap_or(&[0; 4]);
-                let v0 = u32::from_le_bytes([b0[0], b0[1], b0[2], b0[3]]);
-                let v1 = u32::from_le_bytes([b1[0], b1[1], b1[2], b1[3]]);
-                let v2 = u32::from_le_bytes([b2[0], b2[1], b2[2], b2[3]]);
-                let v3 = u32::from_le_bytes([b3[0], b3[1], b3[2], b3[3]]);
-                format!("vec4<u32>({}u, {}u, {}u, {}u)", v0, v1, v2, v3)
-            }
-            n => panic!("Unsupported padding size: {} bytes", n),
-        };
-        (val, bytes)
+    fn render_pad_const(
+        &self,
+        elements: usize,
+        data: &[LoweredASTOrConst],
+        curr_scope: &Scope,
+        indent: usize,
+    ) -> String {
+        let u32_ty = BasicTy::Integer(IntegerTy::U32);
+        match elements {
+            1 => self.render_basic_ty_const(&u32_ty, data, curr_scope, indent),
+            2 => self.render_vec_const(&VecTy::Vec2(u32_ty.clone()), data, curr_scope, indent),
+            3 => self.render_vec_const(&VecTy::Vec3(u32_ty.clone()), data, curr_scope, indent),
+            4 => self.render_vec_const(&VecTy::Vec4(u32_ty), data, curr_scope, indent),
+            n => panic!("Unsupported padding size: {} elements", n),
+        }
     }
 
     pub fn render_workgroup_vars(&self) -> String {

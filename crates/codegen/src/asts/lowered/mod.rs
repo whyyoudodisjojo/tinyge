@@ -182,12 +182,19 @@ pub enum BinOp {
     Mul,
     Sub,
     Div,
+    Rem,
     BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
     Shr,
     Shl,
     LogicalAnd,
     Eq,
+    Ne,
     Gt,
+    Lt,
+    Ge,
+    Le,
 }
 
 #[derive(Clone, Debug)]
@@ -257,6 +264,12 @@ impl<T, const N: usize> BindedBuffer<T, N> {
 pub struct ScopePtr(pub usize);
 
 #[derive(Clone, Debug)]
+pub enum LoweredASTOrConst {
+    LoweredAST(LoweredAST),
+    Const(Vec<u8>),
+}
+
+#[derive(Clone, Debug)]
 pub enum LoweredAST {
     Store {
         var: VarRefType,
@@ -290,7 +303,7 @@ pub enum LoweredAST {
     },
     Const {
         dt: DType,
-        data: Vec<u8>,
+        data: Vec<LoweredASTOrConst>,
     },
     FunctionCall {
         ident: String,
@@ -325,7 +338,14 @@ impl LoweredAST {
             },
             Self::BinaryOp {
                 lhs: _,
-                op: BinOp::Eq | BinOp::Gt | BinOp::LogicalAnd,
+                op:
+                    BinOp::Eq
+                    | BinOp::Ne
+                    | BinOp::Gt
+                    | BinOp::Lt
+                    | BinOp::Ge
+                    | BinOp::Le
+                    | BinOp::LogicalAnd,
                 ..
             } => DType::Basic(BasicTy::Bool),
             Self::BinaryOp { lhs, .. } => lhs.dt(ir, scope),
@@ -348,7 +368,11 @@ impl LoweredAST {
         }
     }
     pub fn ne(self, rhs: Self) -> Self {
-        !self.eq(rhs)
+        Self::BinaryOp {
+            lhs: Box::new(self),
+            rhs: Box::new(rhs),
+            op: BinOp::Ne,
+        }
     }
     pub fn gt(self, rhs: Self) -> Self {
         Self::BinaryOp {
@@ -358,13 +382,25 @@ impl LoweredAST {
         }
     }
     pub fn lt(self, rhs: Self) -> Self {
-        rhs.gt(self)
+        Self::BinaryOp {
+            lhs: Box::new(self),
+            rhs: Box::new(rhs),
+            op: BinOp::Lt,
+        }
     }
     pub fn ge(self, rhs: Self) -> Self {
-        !self.lt(rhs)
+        Self::BinaryOp {
+            lhs: Box::new(self),
+            rhs: Box::new(rhs),
+            op: BinOp::Ge,
+        }
     }
     pub fn le(self, rhs: Self) -> Self {
-        !self.gt(rhs)
+        Self::BinaryOp {
+            lhs: Box::new(self),
+            rhs: Box::new(rhs),
+            op: BinOp::Le,
+        }
     }
     pub fn logical_and(self, rhs: Self) -> Self {
         Self::BinaryOp {

@@ -1,5 +1,6 @@
-use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope};
+use codegen::asts::IntoWgslStruct;
 use codegen::asts::lowered::scope::*;
+use codegen::asts::lowered::{BindedBuffer, LoweredAST, LoweredASTOrConst, Scope};
 use codegen::{call, group};
 use codegen_macros::{IntoWgslStruct, shader};
 use tinyge_graphics::shaders::ComputeShader;
@@ -25,40 +26,60 @@ fn generate_morton_keys(
 
     let rect = scope.var(in_rects.var_ref().i(local(idx).load()).load());
     let centroid = scope.var(
-        (local(rect).f("min").load() + local(rect).f("max").load()) * f32(0.5),
+        (local(rect).f("min").load() + local(rect).f("max").load())
+            * cast::<f32>(vec![0.5f32.into()]),
     );
-    let sz = scope.var(
-        global_bounds.var_ref().f("max").load() - global_bounds.var_ref().f("min").load(),
+    let sz = scope
+        .var(global_bounds.var_ref().f("max").load() - global_bounds.var_ref().f("min").load());
+
+    let inv_sz = scope.mut_(cast::<[f32; 3]>(vec![
+        0.0f32.into(),
+        0.0f32.into(),
+        0.0f32.into(),
+    ]));
+    let norm = scope.mut_(cast::<[f32; 3]>(vec![
+        0.0f32.into(),
+        0.0f32.into(),
+        0.0f32.into(),
+    ]));
+
+    let quant = scope.mut_(cast::<[f32; 3]>(vec![
+        0.0f32.into(),
+        0.0f32.into(),
+        0.0f32.into(),
+    ]));
+    let mx = scope.mut_(cast::<u32>(vec![0u32.into()]));
+    let my = scope.mut_(cast::<u32>(vec![0u32.into()]));
+    let mz = scope.mut_(cast::<u32>(vec![0u32.into()]));
+
+    let if_x = scope.if_(
+        local(sz).f("x").load().gt(cast::<f32>(vec![0.0f32.into()])),
+        |_| {
+            local(inv_sz)
+                .f("x")
+                .store(cast::<f32>(vec![1.0f32.into()]) / local(sz).f("x").load())
+        },
+    );
+    let if_y = scope.if_(
+        local(sz).f("y").load().gt(cast::<f32>(vec![0.0f32.into()])),
+        |_| {
+            local(inv_sz)
+                .f("y")
+                .store(cast::<f32>(vec![1.0f32.into()]) / local(sz).f("y").load())
+        },
+    );
+    let if_z = scope.if_(
+        local(sz).f("z").load().gt(cast::<f32>(vec![0.0f32.into()])),
+        |_| {
+            local(inv_sz)
+                .f("z")
+                .store(cast::<f32>(vec![1.0f32.into()]) / local(sz).f("z").load())
+        },
     );
 
-    let inv_sz = scope.mut_(vec3(0.0, 0.0, 0.0));
-    let norm = scope.mut_(vec3(0.0, 0.0, 0.0));
-
-    let quant = scope.mut_(vec3(0.0, 0.0, 0.0));
-    let mx = scope.mut_(u32(0));
-    let my = scope.mut_(u32(0));
-    let mz = scope.mut_(u32(0));
-
-    let if_x = scope.if_(local(sz).f("x").load().gt(f32(0.0)), |_| {
-        local(inv_sz)
-            .f("x")
-            .store(f32(1.0) / local(sz).f("x").load())
+    let early_return = scope.if_(local(idx).load().ge(num_rects.var_ref().load()), |_| {
+        LoweredAST::Return
     });
-    let if_y = scope.if_(local(sz).f("y").load().gt(f32(0.0)), |_| {
-        local(inv_sz)
-            .f("y")
-            .store(f32(1.0) / local(sz).f("y").load())
-    });
-    let if_z = scope.if_(local(sz).f("z").load().gt(f32(0.0)), |_| {
-        local(inv_sz)
-            .f("z")
-            .store(f32(1.0) / local(sz).f("z").load())
-    });
-
-    let early_return = scope.if_(
-        local(idx).load().ge(num_rects.var_ref().load()),
-        |_| LoweredAST::Return,
-    );
 
     let body = group!(
         early_return;
@@ -69,29 +90,32 @@ fn generate_morton_keys(
             (local(centroid).load() - global_bounds.var_ref().f("min").load()) * local(inv_sz).load()
         );
         local(quant).store(
-            call!("clamp", local(norm).load(), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))
-                * f32(1023.0)
+            call!("clamp", local(norm).load(), cast::<[f32; 3]>(vec![0.0f32.into(), 0.0f32.into(), 0.0f32.into()]), cast::<[f32; 3]>(vec![1.0f32.into(), 1.0f32.into(), 1.0f32.into()]))
+                * cast::<f32>(vec![1023.0f32.into()])
         );
-        local(mx).store(call!("u32", local(quant).f("x").load()) & u32(1023));
-        local(my).store(call!("u32", local(quant).f("y").load()) & u32(1023));
-        local(mz).store(call!("u32", local(quant).f("z").load()) & u32(1023));
-        local(mx).store((local(mx).load() | (local(mx).load() << u32(16))) & u32(4278190335));
-        local(mx).store((local(mx).load() | (local(mx).load() << u32(8))) & u32(50393103));
-        local(mx).store((local(mx).load() | (local(mx).load() << u32(4))) & u32(51130563));
-        local(mx).store((local(mx).load() | (local(mx).load() << u32(2))) & u32(153391689));
-        local(my).store((local(my).load() | (local(my).load() << u32(16))) & u32(4278190335));
-        local(my).store((local(my).load() | (local(my).load() << u32(8))) & u32(50393103));
-        local(my).store((local(my).load() | (local(my).load() << u32(4))) & u32(51130563));
-        local(my).store((local(my).load() | (local(my).load() << u32(2))) & u32(153391689));
-        local(mz).store((local(mz).load() | (local(mz).load() << u32(16))) & u32(4278190335));
-        local(mz).store((local(mz).load() | (local(mz).load() << u32(8))) & u32(50393103));
-        local(mz).store((local(mz).load() | (local(mz).load() << u32(4))) & u32(51130563));
-        local(mz).store((local(mz).load() | (local(mz).load() << u32(2))) & u32(153391689));
-        out_keys.var_ref().i(local(idx).load()).store(call!("Key",
-            (local(mx).load() | (local(mx).load() >> u32(6))) << u32(2),
-            (local(my).load() | (local(my).load() >> u32(6))) << u32(1),
-            local(mz).load() | (local(mz).load() >> u32(6)),
-        ));
+        local(mx).store(call!("u32", local(quant).f("x").load()) & cast::<u32>(vec![1023u32.into()]));
+        local(my).store(call!("u32", local(quant).f("y").load()) & cast::<u32>(vec![1023u32.into()]));
+        local(mz).store(call!("u32", local(quant).f("z").load()) & cast::<u32>(vec![1023u32.into()]));
+        local(mx).store((local(mx).load() | (local(mx).load() << cast::<u32>(vec![16u32.into()]))) & cast::<u32>(vec![4278190335u32.into()]));
+        local(mx).store((local(mx).load() | (local(mx).load() << cast::<u32>(vec![8u32.into()]))) & cast::<u32>(vec![50393103u32.into()]));
+        local(mx).store((local(mx).load() | (local(mx).load() << cast::<u32>(vec![4u32.into()]))) & cast::<u32>(vec![51130563u32.into()]));
+        local(mx).store((local(mx).load() | (local(mx).load() << cast::<u32>(vec![2u32.into()]))) & cast::<u32>(vec![153391689u32.into()]));
+        local(my).store((local(my).load() | (local(my).load() << cast::<u32>(vec![16u32.into()]))) & cast::<u32>(vec![4278190335u32.into()]));
+        local(my).store((local(my).load() | (local(my).load() << cast::<u32>(vec![8u32.into()]))) & cast::<u32>(vec![50393103u32.into()]));
+        local(my).store((local(my).load() | (local(my).load() << cast::<u32>(vec![4u32.into()]))) & cast::<u32>(vec![51130563u32.into()]));
+        local(my).store((local(my).load() | (local(my).load() << cast::<u32>(vec![2u32.into()]))) & cast::<u32>(vec![153391689u32.into()]));
+        local(mz).store((local(mz).load() | (local(mz).load() << cast::<u32>(vec![16u32.into()]))) & cast::<u32>(vec![4278190335u32.into()]));
+        local(mz).store((local(mz).load() | (local(mz).load() << cast::<u32>(vec![8u32.into()]))) & cast::<u32>(vec![50393103u32.into()]));
+        local(mz).store((local(mz).load() | (local(mz).load() << cast::<u32>(vec![4u32.into()]))) & cast::<u32>(vec![511305637u32.into()]));
+        local(mz).store((local(mz).load() | (local(mz).load() << cast::<u32>(vec![2u32.into()]))) & cast::<u32>(vec![153391689u32.into()]));
+        out_keys.var_ref().i(local(idx).load()).store(Key::into_const(vec![
+            LoweredASTOrConst::LoweredAST(
+                ((local(mx).load() | (local(mx).load() >> cast::<u32>(vec![6u32.into()]))) << cast::<u32>(vec![2u32.into()]))
+                | ((local(my).load() | (local(my).load() >> cast::<u32>(vec![6u32.into()]))) << cast::<u32>(vec![1u32.into()]))
+                | (local(mz).load() | (local(mz).load() >> cast::<u32>(vec![6u32.into()])))
+            ),
+            LoweredASTOrConst::LoweredAST(local(idx).load()),
+        ]));
     );
 
     scope.ast = Some(body);

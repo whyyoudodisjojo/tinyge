@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::asts::lowered::Struct;
+use crate::asts::lowered::{LoweredAST, LoweredASTOrConst, Struct};
 use crate::dt::{BasicTy, DType};
 
 pub mod lowered;
@@ -8,6 +8,13 @@ pub mod primitives;
 
 pub trait IntoWgslStruct {
     fn dt() -> DType;
+
+    fn into_const(data: Vec<LoweredASTOrConst>) -> LoweredAST {
+        LoweredAST::Const {
+            dt: Self::dt(),
+            data,
+        }
+    }
 }
 
 pub fn atomic(dt: DType) -> DType {

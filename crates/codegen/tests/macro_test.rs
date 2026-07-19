@@ -27,7 +27,10 @@ fn shared_shader(
     let mut scope = Scope::new();
     scope.ast = Some(_sdata.var_ref().store(LoweredAST::Const {
         dt: <SharedElem as codegen::asts::IntoWgslStruct>::dt(),
-        data: vec![0u8; 4],
+        data: vec![
+            codegen::asts::lowered::LoweredASTOrConst::Const(0f32.to_le_bytes().to_vec());
+            4
+        ],
     }));
     scope
 }

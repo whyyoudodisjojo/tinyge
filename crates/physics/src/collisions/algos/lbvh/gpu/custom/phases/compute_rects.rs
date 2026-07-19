@@ -37,10 +37,18 @@ fn compute_rects(
     let info = scope.var(model_infos.var_ref().i(local(model_idx).load()).load());
     let model_offset = scope.var(local(info).f("offset").load());
     let model_vertex_count = scope.var(local(info).f("stride").load());
-    let local_min = scope.mut_(vec3(f32::INFINITY, f32::INFINITY, f32::INFINITY));
-    let local_max = scope.mut_(vec3(-f32::INFINITY, -f32::INFINITY, -f32::INFINITY));
+    let local_min = scope.mut_(cast::<[f32; 3]>(vec![
+        f32::INFINITY.into(),
+        f32::INFINITY.into(),
+        f32::INFINITY.into(),
+    ]));
+    let local_max = scope.mut_(cast::<[f32; 3]>(vec![
+        (-f32::INFINITY).into(),
+        (-f32::INFINITY).into(),
+        (-f32::INFINITY).into(),
+    ]));
     let i = scope.mut_(local(lid).load());
-    let offset = scope.mut_(u32(128));
+    let offset = scope.mut_(cast::<u32>(vec![128u32.into()]));
 
     let body = group!(
         scope.while_loop(local(model_vertex_count).load().gt(local(i).load()), |b| {
@@ -54,7 +62,7 @@ fn compute_rects(
             group!(
                 local(local_min).store(call!("min", local(local_min).load(), local(v).load()));
                 local(local_max).store(call!("max", local(local_max).load(), local(v).load()));
-                local(i).store(local(i).load() + u32(256));
+                local(i).store(local(i).load() + cast::<u32>(vec![256u32.into()]));
             )
         },);
         sdata_min
@@ -66,7 +74,7 @@ fn compute_rects(
             .i(local(lid).load())
             .store(local(local_max).load());
         call!("workgroupBarrier");
-        scope.while_loop(local(offset).load().gt(u32(0)), |b| {
+        scope.while_loop(local(offset).load().gt(cast::<u32>(vec![0u32.into()])), |b| {
             let if_ast = b.if_(local(offset).load().gt(local(lid).load()), |_| {
                 group!(
                     sdata_min.var_ref().i(local(lid).load()).store(call!(
@@ -90,21 +98,21 @@ fn compute_rects(
             group!(
                 if_ast;
                 call!("workgroupBarrier");
-                local(offset).store(local(offset).load() >> u32(1));
+                local(offset).store(local(offset).load() >> cast::<u32>(vec![1u32.into()]));
             )
         });
-        scope.if_(local(lid).load().eq(u32(0)), |_| {
+        scope.if_(local(lid).load().eq(cast::<u32>(vec![0u32.into()])), |_| {
             group!(
                 output_rect
                     .var_ref()
                     .i(local(model_idx).load())
                     .f("min")
-                    .store(sdata_min.var_ref().i(u32(0)).load());
+                    .store(sdata_min.var_ref().i(cast::<u32>(vec![0u32.into()])).load());
                 output_rect
                     .var_ref()
                     .i(local(model_idx).load())
                     .f("max")
-                    .store(sdata_max.var_ref().i(u32(0)).load());
+                    .store(sdata_max.var_ref().i(cast::<u32>(vec![0u32.into()])).load());
             )
         },);
     );

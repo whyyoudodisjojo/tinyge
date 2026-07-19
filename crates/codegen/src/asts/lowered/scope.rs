@@ -1,7 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::asts::lowered::{ScopePtr, VarRef, VarRefType};
-use crate::dt::{BasicTy, DType, IntegerTy, VecTy};
+use crate::asts::lowered::{LoweredASTOrConst, ScopePtr, VarRef, VarRefType};
 
 use super::LoweredAST;
 
@@ -130,59 +129,6 @@ impl Scope {
     }
 }
 
-pub fn u32(val: u32) -> LoweredAST {
-    LoweredAST::Const {
-        dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-        data: val.to_le_bytes().to_vec(),
-    }
-}
-
-pub fn i32(val: i32) -> LoweredAST {
-    LoweredAST::Const {
-        dt: DType::Basic(BasicTy::Integer(IntegerTy::I32)),
-        data: val.to_le_bytes().to_vec(),
-    }
-}
-
-pub fn f32(val: f32) -> LoweredAST {
-    LoweredAST::Const {
-        dt: DType::Basic(BasicTy::F32),
-        data: val.to_le_bytes().to_vec(),
-    }
-}
-
-pub fn vec2(x: f32, y: f32) -> LoweredAST {
-    LoweredAST::Const {
-        dt: DType::Vector(VecTy::Vec2(BasicTy::F32)),
-        data: x.to_le_bytes().into_iter().chain(y.to_le_bytes()).collect(),
-    }
-}
-
-pub fn vec3(x: f32, y: f32, z: f32) -> LoweredAST {
-    LoweredAST::Const {
-        dt: DType::Vector(VecTy::Vec3(BasicTy::F32)),
-        data: x
-            .to_le_bytes()
-            .into_iter()
-            .chain(y.to_le_bytes())
-            .chain(z.to_le_bytes())
-            .collect(),
-    }
-}
-
-pub fn vec4(x: f32, y: f32, z: f32, w: f32) -> LoweredAST {
-    LoweredAST::Const {
-        dt: DType::Vector(VecTy::Vec4(BasicTy::F32)),
-        data: x
-            .to_le_bytes()
-            .into_iter()
-            .chain(y.to_le_bytes())
-            .chain(z.to_le_bytes())
-            .chain(w.to_le_bytes())
-            .collect(),
-    }
-}
-
 pub fn local(id: usize) -> VarRefType {
     VarRefType::Local(VarRef { id, by: vec![] })
 }
@@ -225,4 +171,32 @@ macro_rules! group {
     ($($stmt:expr);* $(;)?) => {
         $crate::asts::lowered::scope::group(vec![$($stmt),*])
     };
+}
+
+#[macro_export]
+macro_rules! swizzle {
+    ($base:expr, $($f:ident),+ $(,)?) => {
+        vec![$(
+            $crate::asts::lowered::LoweredASTOrConst::LoweredAST(
+                $base.f(stringify!($f)).load()
+            ),
+        )+]
+    };
+    ($base:expr, $($f:ident),+ ; $($extra:expr),* $(,)?) => {
+        {
+            let mut v = vec![$(
+                $crate::asts::lowered::LoweredASTOrConst::LoweredAST(
+                    $base.f(stringify!($f)).load()
+                ),
+            )+];
+            $(
+                v.push($crate::asts::lowered::LoweredASTOrConst::from($extra));
+            )*
+            v
+        }
+    };
+}
+
+pub fn cast<T: crate::asts::IntoWgslStruct>(data: Vec<LoweredASTOrConst>) -> LoweredAST {
+    T::into_const(data)
 }
