@@ -1,132 +1,129 @@
-use codegen::asts::lowered::Scope;
-use codegen::asts::lowered::scope::*;
-use codegen::asts::lowered::{BindedBuffer, SharedData};
-use codegen::{call, group};
-use codegen_macros::{IntoWgslStruct, shader};
-use tinyge_graphics::shaders::ComputeShader;
+use tinyge_graphics::shaders::{
+    ComputeShader,
+    buffers::ResourceType,
+    descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
+};
+use wgpu::{
+    Buffer, BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor,
+};
 
-#[derive(IntoWgslStruct)]
-pub struct Vertex {
-    pub pos: [f32; 3],
-}
-
-#[derive(IntoWgslStruct)]
+#[repr(C)]
 pub struct ModelInfo {
     pub offset: u32,
     pub stride: u32,
 }
 
-#[derive(IntoWgslStruct)]
-pub struct RectangleBounds {
-    pub min: [f32; 3],
-    pub max: [f32; 3],
+pub struct ComputeRectsArgs {
+    pub model_verts_buffer: Buffer,
+    pub model_infos_buffer: Buffer,
+    pub output_rect_buffer: Buffer,
 }
 
-#[shader(compute(workgroup_sz = 256))]
-fn compute_rects(
-    #[binding(storage(read_only = true))] model_verts: BindedBuffer<Vertex, 0>,
-    #[binding(storage(read_only = true))] model_infos: BindedBuffer<ModelInfo, 1>,
-    #[binding(storage(read_only = false))] output_rect: BindedBuffer<RectangleBounds, 2>,
-    sdata_min: SharedData<[f32; 3]>,
-    sdata_max: SharedData<[f32; 3]>,
-) -> Scope {
-    let mut scope = Scope::new();
+pub struct ComputeRects {
+    num_models: u32,
+    num_verts: u32,
+}
 
-    let lid = scope.var(entrypoint(1).f("x").load());
-    let model_idx = scope.var(entrypoint(0).f("x").load());
-    let info = scope.var(model_infos.var_ref().i(local(model_idx).load()).load());
-    let model_offset = scope.var(local(info).f("offset").load());
-    let model_vertex_count = scope.var(local(info).f("stride").load());
-    let local_min = scope.mut_(cast::<[f32; 3]>(vec![
-        f32::INFINITY.into(),
-        f32::INFINITY.into(),
-        f32::INFINITY.into(),
-    ]));
-    let local_max = scope.mut_(cast::<[f32; 3]>(vec![
-        (-f32::INFINITY).into(),
-        (-f32::INFINITY).into(),
-        (-f32::INFINITY).into(),
-    ]));
-    let i = scope.mut_(local(lid).load());
-    let offset = scope.mut_(cast::<u32>(vec![128u32.into()]));
+impl ComputeRects {
+    pub fn new(num_models: u32, num_verts: u32) -> Self {
+        Self {
+            num_models,
+            num_verts,
+        }
+    }
+}
 
-    let body = group!(
-        scope.while_loop(local(model_vertex_count).load().gt(local(i).load()), |b| {
-            let v = b.var(
-                model_verts
-                    .var_ref()
-                    .i(local(model_offset).load() + local(i).load())
-                    .f("pos")
-                    .load(),
-            );
-            group!(
-                local(local_min).store(call!("min", local(local_min).load(), local(v).load()));
-                local(local_max).store(call!("max", local(local_max).load(), local(v).load()));
-                local(i).store(local(i).load() + cast::<u32>(vec![256u32.into()]));
-            )
-        },);
-        sdata_min
-            .var_ref()
-            .i(local(lid).load())
-            .store(local(local_min).load());
-        sdata_max
-            .var_ref()
-            .i(local(lid).load())
-            .store(local(local_max).load());
-        call!("workgroupBarrier");
-        scope.while_loop(local(offset).load().gt(cast::<u32>(vec![0u32.into()])), |b| {
-            let if_ast = b.if_(local(offset).load().gt(local(lid).load()), |_| {
-                group!(
-                    sdata_min.var_ref().i(local(lid).load()).store(call!(
-                        "min",
-                        sdata_min.var_ref().i(local(lid).load()).load(),
-                        sdata_min
-                            .var_ref()
-                            .i(local(lid).load() + local(offset).load())
-                            .load(),
-                    ));
-                    sdata_max.var_ref().i(local(lid).load()).store(call!(
-                        "max",
-                        sdata_max.var_ref().i(local(lid).load()).load(),
-                        sdata_max
-                            .var_ref()
-                            .i(local(lid).load() + local(offset).load())
-                            .load(),
-                    ));
-                )
+impl<'a> ComputeShader<'a> for ComputeRects {
+    type Args = ComputeRectsArgs;
+    type Ret = ComputeRectsArgs;
+
+    fn resource_buffers_with_bind_group_layouts(
+        &self,
+    ) -> Vec<tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>> {
+        vec![ResourceGroupLayout {
+            entries: vec![
+                ResourceBinding {
+                    binding: 0,
+                    visibility: ShaderStages::COMPUTE,
+                    ty: ResourceBindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                        size: (16 * self.num_verts) as u64,
+                        usages: BufferUsages::STORAGE,
+                        is_input: true,
+                    },
+                    count: None,
+                },
+                ResourceBinding {
+                    binding: 1,
+                    visibility: ShaderStages::COMPUTE,
+                    ty: ResourceBindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                        size: (8 * self.num_models) as u64,
+                        usages: BufferUsages::STORAGE,
+                        is_input: true,
+                    },
+                    count: None,
+                },
+                ResourceBinding {
+                    binding: 2,
+                    visibility: ShaderStages::COMPUTE,
+                    ty: ResourceBindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                        size: (32 * self.num_models) as u64,
+                        usages: BufferUsages::STORAGE,
+                        is_input: false,
+                    },
+                    count: None,
+                },
+            ],
+        }]
+    }
+
+    fn entry_point(&self) -> &'static str {
+        "compute_rects"
+    }
+
+    fn load_source_code(&self) -> String {
+        include_str!("../../../../shaders/lbvh/compute_rects.wgsl").into()
+    }
+
+    fn dispatch(
+        &mut self,
+        args: Self::Args,
+        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<'a>,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Self::Ret {
+        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
+
+        let buffers = vec![
+            ResourceType::Buffer(args.model_verts_buffer.clone()),
+            ResourceType::Buffer(args.model_infos_buffer.clone()),
+            ResourceType::Buffer(args.output_rect_buffer.clone()),
+        ];
+
+        {
+            let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
+                label: None,
+                timestamp_writes: None,
             });
-            group!(
-                if_ast;
-                call!("workgroupBarrier");
-                local(offset).store(local(offset).load() >> cast::<u32>(vec![1u32.into()]));
-            )
-        });
-        scope.if_(local(lid).load().eq(cast::<u32>(vec![0u32.into()])), |_| {
-            group!(
-                output_rect
-                    .var_ref()
-                    .i(local(model_idx).load())
-                    .f("min")
-                    .store(sdata_min.var_ref().i(cast::<u32>(vec![0u32.into()])).load());
-                output_rect
-                    .var_ref()
-                    .i(local(model_idx).load())
-                    .f("max")
-                    .store(sdata_max.var_ref().i(cast::<u32>(vec![0u32.into()])).load());
-            )
-        },);
-    );
-    scope.ast = Some(body);
+            pass.set_bind_group(
+                0,
+                build_data.bind_groups[0].get_or_create_bind_group(&buffers, device),
+                &[],
+            );
+            pass.set_pipeline(&build_data.pipeline);
+            pass.dispatch_workgroups(self.num_models, 1, 1);
+        }
 
-    scope
-}
+        queue.submit(std::iter::once(encoder.finish()));
 
-#[test]
-fn test_compute_rects() {
-    let s = ComputeRects;
-    let wgsl = s.load_source_code();
-    println!("{wgsl}");
-    assert!(wgsl.contains("var<workgroup>"));
-    assert!(wgsl.contains("@compute @workgroup_size(256)"));
-    assert!(wgsl.contains("fn compute_rects"));
+        args
+    }
 }

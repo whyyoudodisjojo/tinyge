@@ -4,12 +4,14 @@ use codegen::dt::{DType, IntegerTy, MaybeAtomic, VecTy};
 use codegen_macros::{IntoWgslStruct, shader};
 use tinyge_graphics::shaders::ComputeShader;
 
-#[derive(IntoWgslStruct)]
+#[repr(C)]
+#[derive(IntoWgslStruct, Clone, Copy)]
 struct MyData {
     val: f32,
 }
 
-#[derive(IntoWgslStruct)]
+#[repr(C)]
+#[derive(IntoWgslStruct, Clone, Copy)]
 struct SharedElem {
     val: f32,
 }
@@ -86,7 +88,8 @@ fn test_vec_atomic_dt() {
     );
 }
 
-#[derive(IntoWgslStruct)]
+#[repr(C)]
+#[derive(IntoWgslStruct, Clone, Copy)]
 struct WithAtomic {
     counter: Atomic<u32>,
 }

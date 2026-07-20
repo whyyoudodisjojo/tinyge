@@ -367,6 +367,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 name = "codegen"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "codegen-macros",
  "darling",
  "inventory",
@@ -2421,6 +2422,7 @@ name = "tinyge-graphics"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "codegen",
  "image",
  "lru",
  "pollster",

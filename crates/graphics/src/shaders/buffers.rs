@@ -1,13 +1,12 @@
 use std::{
-    hash::{DefaultHasher, Hash, Hasher},
-    num::NonZeroUsize,
+    hash::{DefaultHasher, Hash, Hasher}, marker::PhantomData, num::NonZeroUsize,
 };
 
+use bytemuck::{Pod};
+use codegen::asts::IntoWgslStruct;
 use lru::LruCache;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Blas, Buffer,
-    BufferDescriptor, BufferUsages, CommandEncoder, Device, Sampler, Tlas,
-    wgt::TextureViewDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Blas, Buffer, BufferDescriptor, BufferUsages, Device, Sampler, Tlas, wgt::TextureViewDescriptor,
 };
 
 use crate::shaders::{
@@ -111,6 +110,45 @@ pub struct ResourceGroupBuildSpec<'a> {
     pub layout: BindGroupLayout,
 }
 
+pub struct BufferWithType<T>
+    where T: IntoWgslStruct
+{
+    pub inner: Buffer,
+    _p_d: PhantomData<T>,
+}
+
+impl<T> From<Buffer> for BufferWithType<T>
+    where T: IntoWgslStruct
+{
+    fn from(value: Buffer) -> Self {
+        BufferWithType { inner: value, _p_d: PhantomData }
+    }
+}
+pub trait AsByteSlice {
+    fn as_byte_slice(&self) -> &[u8];
+}
+
+impl<T: Pod> AsByteSlice for T {
+    fn as_byte_slice(&self) -> &[u8] {
+        bytemuck::bytes_of(self)
+    }
+}
+
+impl<T: Pod> AsByteSlice for [T] {
+    fn as_byte_slice(&self) -> &[u8] {
+        bytemuck::cast_slice(self)
+    }
+}
+
+impl<T> BufferWithType<T>
+where
+    T: IntoWgslStruct + Pod,
+{
+    pub fn write<Q: AsByteSlice>(&self, queue: &wgpu::Queue, data: &Q) {
+        queue.write_buffer(&self.inner, 0, data.as_byte_slice());
+    }
+}
+
 #[derive(Clone)]
 pub struct Buffers {
     pub vertex_buffers: Vec<Buffer>,
@@ -132,42 +170,6 @@ pub enum ResourceType {
 }
 
 impl Buffers {
-    fn copy_via_encoder(src: &wgpu::Buffer, dst: &wgpu::Buffer, encoder: &mut CommandEncoder) {
-        let copy_size = src.size().min(dst.size());
-        if copy_size > 0 {
-            encoder.copy_buffer_to_buffer(src, 0, dst, 0, copy_size);
-        }
-    }
-
-    pub fn copy_data_into(&self, new_buffers: &Self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-        self.vertex_buffers
-            .iter()
-            .zip(new_buffers.vertex_buffers.iter())
-            .for_each(|(o, n)| Self::copy_via_encoder(o, n, &mut encoder));
-        self.index_buffer
-            .as_ref()
-            .zip(new_buffers.index_buffer.as_ref())
-            .map(|(o, n)| Self::copy_via_encoder(&o, &n, &mut encoder));
-        self.resource_buffers
-            .iter()
-            .zip(new_buffers.resource_buffers.iter())
-            .for_each(|(o, n)| {
-                o.buffers
-                    .iter()
-                    .zip(n.buffers.iter())
-                    .for_each(|(o_buf, n_buf)| {
-                        if let (Some(o), Some(n)) = (o_buf, n_buf) {
-                            Self::copy_via_encoder(o, n, &mut encoder)
-                        }
-                    })
-            });
-
-        queue.submit(std::iter::once(encoder.finish()));
-    }
-
     pub fn build(device: &wgpu::Device, spec: &BufferBuildSpec, build_input_only: bool) -> Self {
         let vertex_buffers = spec
             .vertex_buffer_szs

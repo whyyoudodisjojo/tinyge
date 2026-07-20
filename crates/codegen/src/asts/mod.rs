@@ -17,6 +17,7 @@ pub trait IntoWgslStruct {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Atomic<T>(pub T);
 
 impl<T: IntoWgslStruct> IntoWgslStruct for Atomic<T> {

@@ -252,9 +252,9 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|(n, _, _)| Ident::new(n, ident.span()))
         .collect();
 
-    let arg_struct_f = arg_n_idents.iter().map(|n| {
+    let arg_struct_f = arg_n_idents.iter().zip(arg_inner_types.clone()).map(|(n, ty)| {
         quote! {
-            pub #n : wgpu::Buffer
+            pub #n : tinyge_graphics::shaders::buffers::BufferWithType<#ty>
         }
     });
 
@@ -455,7 +455,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                             &wgpu::CommandEncoderDescriptor { label: None }
                         );
                         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
-                            &[#(tinyge_graphics::shaders::buffers::ResourceType::Buffer(args.#arg_n_idents),)*],
+                            &[#(tinyge_graphics::shaders::buffers::ResourceType::Buffer(args.#arg_n_idents.inner),)*],
                             device,
                         );
                         {
