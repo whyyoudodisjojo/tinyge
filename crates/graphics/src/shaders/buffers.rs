@@ -1,12 +1,15 @@
 use std::{
-    hash::{DefaultHasher, Hash, Hasher}, marker::PhantomData, num::NonZeroUsize,
+    hash::{DefaultHasher, Hash, Hasher},
+    marker::PhantomData,
+    num::NonZeroUsize,
 };
 
-use bytemuck::{Pod};
+use bytemuck::Pod;
 use codegen::asts::IntoWgslStruct;
 use lru::LruCache;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Blas, Buffer, BufferDescriptor, BufferUsages, Device, Sampler, Tlas, wgt::TextureViewDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Blas, Buffer,
+    BufferDescriptor, BufferUsages, Device, Sampler, Tlas, wgt::TextureViewDescriptor,
 };
 
 use crate::shaders::{
@@ -111,17 +114,22 @@ pub struct ResourceGroupBuildSpec<'a> {
 }
 
 pub struct BufferWithType<T>
-    where T: IntoWgslStruct
+where
+    T: IntoWgslStruct,
 {
     pub inner: Buffer,
     _p_d: PhantomData<T>,
 }
 
 impl<T> From<Buffer> for BufferWithType<T>
-    where T: IntoWgslStruct
+where
+    T: IntoWgslStruct,
 {
     fn from(value: Buffer) -> Self {
-        BufferWithType { inner: value, _p_d: PhantomData }
+        BufferWithType {
+            inner: value,
+            _p_d: PhantomData,
+        }
     }
 }
 pub trait AsByteSlice {

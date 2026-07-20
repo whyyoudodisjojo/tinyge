@@ -25,7 +25,7 @@ fn my_shader(#[binding(uniform)] _input: BindedBuffer<MyData, 0>) -> Scope {
 
 #[shader(compute(workgroup_sz = 256))]
 fn shared_shader(
-    #[binding(storage(read_only = true))] _input: BindedBuffer<MyData, 0>,
+    #[binding(storage(read_only = true))] _input: BindedBuffer<Vec<MyData>, 0>,
     _sdata: SharedData<SharedElem>,
 ) -> Scope {
     let mut scope = Scope::new();
@@ -54,7 +54,9 @@ fn test_shader_expands_and_runs() {
 
 #[test]
 fn test_shared_var() {
-    let s = SharedShader;
+    let s = SharedShader {
+        _input_elem_count: 0,
+    };
     let wgsl = s.load_source_code();
     assert!(wgsl.contains("struct SharedElem"));
     println!("{wgsl}");

@@ -6,7 +6,10 @@ use crate::dt::{BasicTy, DType};
 pub mod lowered;
 pub mod primitives;
 
-pub trait IntoWgslStruct {
+pub trait IntoWgslStruct
+where
+    Self: Sized,
+{
     fn dt() -> DType;
 
     fn into_const(data: Vec<LoweredASTOrConst>) -> LoweredAST {

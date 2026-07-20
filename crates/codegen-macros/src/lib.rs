@@ -43,6 +43,9 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
 
             let field_name = f.ident.as_ref().unwrap().to_string();
             let field_ty = &f.ty;
+            if let Type::Path(p) = field_ty && p.path.segments.last().map(|s| s.ident == "Vec").unwrap_or_default() {
+                panic!("Arrays cant be known at comp time")
+            }
 
             Some(quote! {
                 fields.push((#field_name.to_string(), <#field_ty as codegen::asts::IntoWgslStruct>::dt()));
@@ -252,11 +255,14 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|(n, _, _)| Ident::new(n, ident.span()))
         .collect();
 
-    let arg_struct_f = arg_n_idents.iter().zip(arg_inner_types.clone()).map(|(n, ty)| {
-        quote! {
-            pub #n : tinyge_graphics::shaders::buffers::BufferWithType<#ty>
-        }
-    });
+    let arg_struct_f = arg_n_idents
+        .iter()
+        .zip(arg_inner_types.clone())
+        .map(|(n, ty)| {
+            quote! {
+                pub #n : tinyge_graphics::shaders::buffers::BufferWithType<#ty>
+            }
+        });
 
     let extra_arg_tys: Vec<_> = extra_args.iter().map(|(_, ty)| *ty).collect();
     let extra_arg_n_idents: Vec<_> = extra_args
@@ -264,7 +270,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|(n, _)| Ident::new(n, ident.span()))
         .collect();
 
-    let extra_struct_f: Vec<_> = extra_arg_n_idents
+    let mut extra_struct_f: Vec<_> = extra_arg_n_idents
         .iter()
         .zip(extra_arg_tys.iter())
         .map(|(n, ty)| {
@@ -305,12 +311,6 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let struct_def = if extra_args.is_empty() {
-        quote! { pub struct #struct_ident; }
-    } else {
-        quote! { pub struct #struct_ident { #(#extra_struct_f,)* } }
-    };
-
     let arg_binding_tys: Vec<_> = args.iter().map(|(_, b, _)| {
         match b {
             CustomBufferBindingType::Uniform => {
@@ -325,7 +325,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
     let arg_group_layout: Vec<_> = args
         .iter()
         .enumerate()
-        .map(|(i, (_n, b, _ty))| {
+        .map(|(i, (n, b, ty))| {
             let binding_ty = match b {
                 CustomBufferBindingType::Uniform => {
                     quote! { wgpu::BufferBindingType::Uniform }
@@ -343,6 +343,33 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             };
             let i_u32 = i as u32;
+
+            let sz = if let Type::Path(p) = ty.as_ref() {
+                let seg = p.path.segments.last().unwrap();
+                let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                    panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+                };
+                let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else {
+                    panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+                };
+                if let Type::Path(inner_p) = inner
+                    && inner_p
+                        .path
+                        .segments
+                        .last()
+                        .map(|s| s.ident == "Vec")
+                        .unwrap_or_default()
+                {
+                    let size_f_name = format_ident!("{n}_elem_count");
+                    extra_struct_f.push(quote! { pub #size_f_name: u64 });
+                    quote! { self.#size_f_name * std::mem::size_of::<#inner>() as u64 }
+                } else {
+                    quote! { std::mem::size_of::<#ty>() as u64 }
+                }
+            } else {
+                quote! { std::mem::size_of::<#ty>() as u64 }
+            };
+
             quote! {
                 tinyge_graphics::shaders::descriptors::ResourceBinding {
                     binding: #i_u32,
@@ -351,7 +378,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                         ty: #binding_ty,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                        size: 0,
+                        size: #sz,
                         usages: #buffer_usages,
                         is_input: true,
                     },
@@ -360,7 +387,11 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         })
         .collect::<Vec<_>>();
-
+    let struct_def = if extra_struct_f.is_empty() {
+        quote! { pub struct #struct_ident; }
+    } else {
+        quote! { pub struct #struct_ident { #(#extra_struct_f,)* } }
+    };
     match ty {
         EntrypointData::Shader => todo!("vertex/fragment shader not yet supported"),
         EntrypointData::Compute { workgroup_sz } => {
