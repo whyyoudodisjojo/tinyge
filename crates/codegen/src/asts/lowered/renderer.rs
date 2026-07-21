@@ -23,7 +23,10 @@ impl<'a> LoweredRenderer<'a> {
             DType::Atomic(int_ty) => format!("atomic<{}>", self.render_integer_ty(int_ty)),
             DType::Basic(b) => self.render_basic_ty(b),
             DType::Vector(v) => match v {
-                VecTy::Array(inner) => format!("array<{}>", self.render_array_inner(inner)),
+                VecTy::Array(inner, Some(size)) => {
+                    format!("array<{}, {}>", self.render_array_inner(inner), size)
+                }
+                VecTy::Array(inner, None) => format!("array<{}>", self.render_array_inner(inner)),
                 VecTy::Vec2(b) => format!("vec2<{}>", self.render_basic_ty(b)),
                 VecTy::Vec3(b) => format!("vec3<{}>", self.render_basic_ty(b)),
                 VecTy::Vec4(b) => format!("vec4<{}>", self.render_basic_ty(b)),
@@ -84,14 +87,15 @@ impl<'a> LoweredRenderer<'a> {
                 let var_str = match &b.ty {
                     CustomBufferBindingType::Storage { read_only } => {
                         let rw = if *read_only { "read" } else { "read_write" };
-                        format!("var<{rw}>")
+                        format!("var<storage, {rw}>")
                     }
                     CustomBufferBindingType::Uniform => "var<uniform>".to_string(),
                 };
 
                 format!(
                     "@group(0) @binding({i}) {var_str} {}: {};\n",
-                    b.ident, b.struct_name
+                    b.ident,
+                    self.render_dtype(&b.dtype)
                 )
             })
             .collect::<Vec<_>>()
@@ -130,7 +134,25 @@ impl<'a> LoweredRenderer<'a> {
                         .collect::<Vec<_>>()
                         .join(", ")
                 } else {
-                    "".to_string()
+                    self.ir
+                        .entrypoint_globals
+                        .iter()
+                        .map(|g| {
+                            let builtin = match g {
+                                crate::asts::lowered::EntrypointGlobals::GlobalInvocationId => {
+                                    "global_invocation_id"
+                                }
+                                crate::asts::lowered::EntrypointGlobals::LocalInvocationId => {
+                                    "local_invocation_id"
+                                }
+                            };
+                            format!(
+                                "@builtin({builtin}) {}: vec3<u32>",
+                                g
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 };
 
                 let body_str = self.render_scope(&f.body, 1);
@@ -186,7 +208,7 @@ impl<'a> LoweredRenderer<'a> {
                 };
 
                 format!(
-                    "{} {} {}",
+                    "({} {} {})",
                     self.render_ast(curr_scope, lhs, 0),
                     sign,
                     self.render_ast(curr_scope, rhs, 0)
@@ -610,7 +632,7 @@ impl<'a> LoweredRenderer<'a> {
                 let val3 = self.render_basic_ty_const(inner, &data[3..], curr_scope, indent);
                 format!("vec4<{inner_ty}>({val0}, {val1}, {val2}, {val3})")
             }
-            VecTy::Array(_inner) => {
+            VecTy::Array(_inner, _) => {
                 unimplemented!("Can be lowered further with for loops and shit so ye")
             }
         }
@@ -631,6 +653,15 @@ impl<'a> LoweredRenderer<'a> {
             4 => self.render_vec_const(&VecTy::Vec4(u32_ty), data, curr_scope, indent),
             n => panic!("Unsupported padding size: {} elements", n),
         }
+    }
+
+    pub fn render_private_vars(&self) -> String {
+        self.ir
+            .private_vars
+            .iter()
+            .map(|(name, dt)| format!("var<private> {}: {};\n", name, self.render_dtype(dt)))
+            .collect::<Vec<_>>()
+            .join("")
     }
 
     pub fn render_workgroup_vars(&self) -> String {
@@ -666,10 +697,11 @@ impl<'a> LoweredRenderer<'a> {
     pub fn translate(&self) -> String {
         let structs_str = self.render_structs();
         let bindings_str = self.render_binded_buffers();
+        let private_str = self.render_private_vars();
         let workgroup_str = self.render_workgroup_vars();
 
         let funcs_str = self.render_funcs();
 
-        [structs_str, bindings_str, workgroup_str, funcs_str].join("\n\n\n\n")
+        [structs_str, bindings_str, private_str, workgroup_str, funcs_str].join("\n\n\n\n")
     }
 }

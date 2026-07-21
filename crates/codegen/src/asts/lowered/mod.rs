@@ -6,7 +6,7 @@ use std::{collections::HashMap, fmt::Display};
 
 pub use scope::Scope;
 
-use crate::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, VecTy};
+use crate::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
 
 #[derive(Clone, Debug, darling::FromMeta)]
 pub enum CustomBufferBindingType {
@@ -18,7 +18,7 @@ pub enum CustomBufferBindingType {
 pub struct BindingMeta {
     pub ident: String,
     pub ty: CustomBufferBindingType,
-    pub struct_name: String,
+    pub dtype: DType,
 }
 
 use std::marker::PhantomData;
@@ -96,7 +96,22 @@ impl Struct {
             DType::Vector(VecTy::Vec2(_)) => (8, 8),
             DType::Vector(VecTy::Vec3(_)) => (12, 16),
             DType::Vector(VecTy::Vec4(_)) => (16, 16),
-            DType::Vector(VecTy::Array(_)) => (0, 0),
+            DType::Vector(VecTy::Array(_, None)) => (0, 0),
+            DType::Vector(VecTy::Array(inner, Some(count))) => {
+                let (elem_sz, elem_al) = Self::wgsl_size_align(
+                    struct_store,
+                    &match inner {
+                        MaybeAtomic::Atomic(a) => DType::Atomic(a.clone()),
+                        MaybeAtomic::Naked(n) => match n {
+                            BasicTyOrStructRef::BasicTy(b) => DType::Basic(b.clone()),
+                            BasicTyOrStructRef::StructRef { ident } => {
+                                DType::StructRef { ident: ident.clone() }
+                            }
+                        },
+                    },
+                );
+                ((elem_sz * *count as usize).max(16), elem_al)
+            }
             DType::StructRef { ident } => {
                 let s = struct_store.get(ident).expect("struct not found in store");
                 let mut offset = 0;
@@ -120,23 +135,16 @@ impl Struct {
 
     pub fn required_padding(
         struct_store: &HashMap<String, Self>,
-        prev_field: &DType,
+        current_offset: usize,
         next_field: &DType,
     ) -> usize {
-        let (prev_size, prev_align) = Self::wgsl_size_align(struct_store, prev_field);
         let (_, next_align) = Self::wgsl_size_align(struct_store, next_field);
 
-        if prev_align == 0 || next_align == 0 {
+        if next_align == 0 {
             return 0;
         }
 
-        let prev_effective_size = if prev_size % prev_align == 0 {
-            prev_size
-        } else {
-            prev_size + (prev_align - prev_size % prev_align)
-        };
-
-        let misalignment = prev_effective_size % next_align;
+        let misalignment = current_offset % next_align;
         if misalignment == 0 {
             0
         } else {
@@ -146,19 +154,22 @@ impl Struct {
 
     pub(crate) fn with_padding(self, struct_store: &HashMap<String, Self>) -> Self {
         let mut result = Vec::new();
-        let mut prev_dtype: Option<DType> = None;
+        let mut current_offset = 0usize;
         let mut pad_counter = 0usize;
 
         for (name, dtype) in &self.inner {
-            if let Some(ref prev) = prev_dtype {
-                let padding_needed = Self::required_padding(struct_store, prev, dtype);
-                if padding_needed > 0 {
-                    result.push((format!("__pad_{}", pad_counter), DType::Pad(padding_needed)));
-                    pad_counter += 1;
-                }
+            let padding_needed = Self::required_padding(struct_store, current_offset, dtype);
+            if padding_needed > 0 {
+                result.push((format!("_pad_{}", pad_counter), DType::Pad(padding_needed)));
+                pad_counter += 1;
+                current_offset += padding_needed;
             }
             result.push((name.clone(), dtype.clone()));
-            prev_dtype = Some(dtype.clone());
+            let (field_sz, field_al) = Self::wgsl_size_align(struct_store, dtype);
+            if field_al > 0 && current_offset % field_al != 0 {
+                current_offset += field_al - current_offset % field_al;
+            }
+            current_offset += field_sz;
         }
 
         Self {
@@ -172,6 +183,7 @@ pub struct ShaderIR {
     pub structs: HashMap<String, Struct>,
     pub binded: Vec<BindingMeta>,
     pub shared_vars: Vec<(String, DType)>,
+    pub private_vars: Vec<(String, DType)>,
     pub entrypoint_globals: Vec<EntrypointGlobals>,
     pub functions: Vec<Functions>,
 }
@@ -331,10 +343,10 @@ impl LoweredAST {
                     .1
                     .clone()
                     .apply_accessor(&s.by, ir, scope),
-                VarRefType::Global(g) => DType::StructRef {
-                    ident: ir.binded[g.id].struct_name.clone(),
-                }
-                .apply_accessor(&g.by, ir, scope),
+                VarRefType::Global(g) => ir.binded[g.id]
+                    .dtype
+                    .clone()
+                    .apply_accessor(&g.by, ir, scope),
             },
             Self::BinaryOp {
                 lhs: _,
@@ -356,6 +368,7 @@ impl LoweredAST {
             } => DType::Basic(BasicTy::Bool),
             Self::UnaryOp { operand, .. } => operand.dt(ir, scope),
             Self::Const { dt, .. } => dt.clone(),
+            Self::FunctionCall { args, .. } => args.first().expect("function call with no args").dt(ir, scope),
             _ => panic!("cannot infer type from {:?}", self),
         }
     }

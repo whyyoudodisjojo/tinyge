@@ -370,6 +370,7 @@ dependencies = [
  "bytemuck",
  "codegen-macros",
  "darling",
+ "glam",
  "inventory",
  "tinyge-graphics",
  "wgpu",

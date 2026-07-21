@@ -1,8 +1,5 @@
-use std::sync::mpsc;
-
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3A;
-use wgpu::{BufferDescriptor, BufferUsages, MapMode};
 
 pub mod cpu;
 pub mod gpu;
@@ -15,51 +12,6 @@ pub struct Key {
 }
 
 impl Key {
-    pub fn read_buffer(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        buffer: &wgpu::Buffer,
-    ) -> Vec<Key> {
-        let size = buffer.size();
-
-        let staging_buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size,
-            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Read Buffer"),
-        });
-        encoder.copy_buffer_to_buffer(buffer, 0, &staging_buffer, 0, size);
-        queue.submit(std::iter::once(encoder.finish()));
-
-        let buffer_slice = staging_buffer.slice(..);
-        let (tx, rx) = mpsc::channel();
-
-        buffer_slice.map_async(MapMode::Read, move |result| {
-            tx.send(result).unwrap();
-        });
-
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .unwrap();
-
-        if let Ok(Ok(())) = rx.recv() {
-            let data = buffer_slice.get_mapped_range();
-            let result: Vec<Key> = bytemuck::cast_slice(&data).to_vec();
-            drop(data);
-            staging_buffer.unmap();
-            result
-        } else {
-            panic!("Failed to read data back from buffer!");
-        }
-    }
-
     pub fn mortonize(mut x: u32) -> u32 {
         x &= 0x000003ff;
         x = (x | (x << 16)) & 0xff0000ff;

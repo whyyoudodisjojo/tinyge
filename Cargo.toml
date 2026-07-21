@@ -11,3 +11,4 @@ winit = "0.30.13"
 image = "0.25.10"
 rand = "0.8"
 inventory = "0.3"
+glam = { version = "0.33.1", features = ["bytemuck"] }

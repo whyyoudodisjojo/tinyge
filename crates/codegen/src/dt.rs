@@ -30,7 +30,7 @@ pub enum VecTy {
     Vec4(BasicTy),
     Vec3(BasicTy),
     Vec2(BasicTy),
-    Array(MaybeAtomic<IntegerTy, BasicTyOrStructRef>),
+    Array(MaybeAtomic<IntegerTy, BasicTyOrStructRef>, Option<u32>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -61,7 +61,7 @@ impl DType {
         }
         match self {
             Self::Vector(ref v) => match v {
-                VecTy::Array(inner) => {
+                VecTy::Array(inner, _) => {
                     let elem = match inner {
                         MaybeAtomic::Atomic(a) => DType::Atomic(a.clone()),
                         MaybeAtomic::Naked(n) => match n {

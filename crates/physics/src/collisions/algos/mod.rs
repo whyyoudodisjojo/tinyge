@@ -1,11 +1,14 @@
 use std::ops::Add;
 
 use bytemuck::{Pod, Zeroable};
+use codegen_macros::IntoWgslStruct;
 use glam::{Vec3A, Vec4};
 
 pub mod gpu_accelerated;
 pub mod lbvh;
 pub mod sah;
+#[cfg(test)]
+pub mod test_utils;
 pub mod traversal;
 
 #[repr(C)]
@@ -20,7 +23,7 @@ pub struct GpuRay {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, IntoWgslStruct)]
 pub struct RayResult {
     pub hit_node_idx: i32,
     pub t_near: f32,
@@ -72,7 +75,7 @@ impl Add for RectangleBounds {
 }
 
 #[repr(C)]
-#[derive(Pod, Zeroable, Clone, Copy, Debug)]
+#[derive(Pod, Zeroable, Clone, Copy, Debug, IntoWgslStruct)]
 pub struct FlattenedBVHNode {
     pub min: Vec4,
     pub max: Vec4,
@@ -85,54 +88,6 @@ pub struct FlattenedBVHNode {
 impl FlattenedBVHNode {
     pub const fn size_in_bytes() -> usize {
         48
-    }
-
-    pub fn read_buffer(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        buffer: &wgpu::Buffer,
-    ) -> Vec<FlattenedBVHNode> {
-        use std::sync::mpsc;
-        use wgpu::{BufferDescriptor, BufferUsages, MapMode};
-
-        let size = buffer.size();
-
-        let staging_buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size,
-            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Read FlattenedBVHNodes"),
-        });
-        encoder.copy_buffer_to_buffer(buffer, 0, &staging_buffer, 0, size);
-        queue.submit(std::iter::once(encoder.finish()));
-
-        let buffer_slice = staging_buffer.slice(..);
-        let (tx, rx) = mpsc::channel();
-
-        buffer_slice.map_async(MapMode::Read, move |result| {
-            tx.send(result).unwrap();
-        });
-
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .unwrap();
-
-        if let Ok(Ok(())) = rx.recv() {
-            let data = buffer_slice.get_mapped_range();
-            let result: Vec<FlattenedBVHNode> = bytemuck::cast_slice(&data).to_vec();
-            drop(data);
-            staging_buffer.unmap();
-            result
-        } else {
-            panic!("Failed to read FlattenedBVHNodes back from buffer!");
-        }
     }
 }
 
@@ -167,6 +122,8 @@ impl Default for BVHNode {
     }
 }
 
+#[repr(C)]
+#[derive(Pod, Zeroable, IntoWgslStruct, Clone, Copy)]
 pub struct Ray {
     pub origin: Vec3A,
     pub dir: Vec3A,

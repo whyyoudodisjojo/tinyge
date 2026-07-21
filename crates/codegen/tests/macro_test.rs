@@ -82,11 +82,11 @@ fn test_atomic_dt() {
 fn test_vec_atomic_dt() {
     assert_eq!(
         <Vec<Atomic<u32>> as IntoWgslStruct>::dt(),
-        DType::Vector(VecTy::Array(MaybeAtomic::Atomic(IntegerTy::U32))),
+        DType::Vector(VecTy::Array(MaybeAtomic::Atomic(IntegerTy::U32), None)),
     );
     assert_eq!(
         <Vec<Atomic<i32>> as IntoWgslStruct>::dt(),
-        DType::Vector(VecTy::Array(MaybeAtomic::Atomic(IntegerTy::I32))),
+        DType::Vector(VecTy::Array(MaybeAtomic::Atomic(IntegerTy::I32), None)),
     );
 }
 

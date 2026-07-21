@@ -1,5 +1,7 @@
+use glam::{Vec2, Vec3, Vec3A, Vec4};
+
 use crate::asts::IntoWgslStruct;
-use crate::asts::lowered::LoweredASTOrConst;
+use crate::asts::lowered::{LoweredASTOrConst, LoweredAST};
 use crate::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
 
 macro_rules! impl_primitive {
@@ -19,6 +21,12 @@ macro_rules! impl_const_primitives {
                 $dt
             }
         }
+
+        impl From<$ty> for LoweredAST{
+            fn from(val: $ty) -> Self{
+                <$ty as IntoWgslStruct>::into_const(vec![val.into()])
+            }
+        }
     };
 }
 
@@ -32,50 +40,25 @@ impl_primitive!(bool, DType::Basic(BasicTy::Bool));
 impl_primitive!(u32, DType::Basic(BasicTy::Integer(IntegerTy::U32)));
 impl_primitive!(i32, DType::Basic(BasicTy::Integer(IntegerTy::I32)));
 
-impl IntoWgslStruct for [f32; 2] {
+impl<T: IntoWgslStruct, const N: usize> IntoWgslStruct for [T; N] {
     fn dt() -> DType {
-        DType::Vector(VecTy::Vec2(BasicTy::F32))
-    }
-}
-impl IntoWgslStruct for [f32; 3] {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Vec3(BasicTy::F32))
-    }
-}
-impl IntoWgslStruct for [u32; 2] {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Vec2(BasicTy::Integer(IntegerTy::U32)))
-    }
-}
-impl IntoWgslStruct for [u32; 3] {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Vec3(BasicTy::Integer(IntegerTy::U32)))
-    }
-}
-impl IntoWgslStruct for [i32; 2] {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Vec2(BasicTy::Integer(IntegerTy::I32)))
-    }
-}
-impl IntoWgslStruct for [i32; 3] {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Vec3(BasicTy::Integer(IntegerTy::I32)))
-    }
-}
-
-impl IntoWgslStruct for [f32; 4] {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Vec4(BasicTy::F32))
-    }
-}
-impl IntoWgslStruct for [u32; 4] {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Vec4(BasicTy::Integer(IntegerTy::U32)))
-    }
-}
-impl IntoWgslStruct for [i32; 4] {
-    fn dt() -> DType {
-        DType::Vector(VecTy::Vec4(BasicTy::Integer(IntegerTy::I32)))
+        match (T::dt(), N) {
+            (DType::Basic(b), 2) => DType::Vector(VecTy::Vec2(b)),
+            (DType::Basic(b), 3) => DType::Vector(VecTy::Vec3(b)),
+            (DType::Basic(b), 4) => DType::Vector(VecTy::Vec4(b)),
+            (inner_dt, _) => {
+                let inner = match inner_dt {
+                    DType::Basic(BasicTy::Integer(i)) => MaybeAtomic::Atomic(i),
+                    DType::Atomic(i) => MaybeAtomic::Atomic(i),
+                    DType::Basic(b) => MaybeAtomic::Naked(BasicTyOrStructRef::BasicTy(b)),
+                    DType::StructRef { ident } => {
+                        MaybeAtomic::Naked(BasicTyOrStructRef::StructRef { ident })
+                    }
+                    _ => panic!("unsupported array element type: {:?}", inner_dt),
+                };
+                DType::Vector(VecTy::Array(inner, Some(N as u32)))
+            }
+        }
     }
 }
 
@@ -96,6 +79,25 @@ where
             _ => panic!("Cant get this brothr"),
         };
 
-        DType::Vector(VecTy::Array(inner))
+        DType::Vector(VecTy::Array(inner, None))
     }
 }
+
+macro_rules! copy_impl_from {
+    ($ty1:ty, $ty2:ty) => {
+        impl IntoWgslStruct for $ty1 {
+            fn dt() -> DType {
+                <$ty2>::dt()
+            }
+
+            fn into_const(data: Vec<LoweredASTOrConst>) -> super::lowered::LoweredAST {
+                <$ty2>::into_const(data)
+            }
+        }
+    };
+}
+
+copy_impl_from!(Vec3A, [f32; 3]);
+copy_impl_from!(Vec4, [f32; 4]);
+copy_impl_from!(Vec2, [f32; 2]);
+copy_impl_from!(Vec3, [f32; 3]);

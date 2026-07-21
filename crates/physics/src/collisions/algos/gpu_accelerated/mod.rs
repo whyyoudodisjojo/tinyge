@@ -220,49 +220,10 @@ mod tests {
         (device, queue)
     }
 
-    fn read_buffer<T: bytemuck::Pod>(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        buffer: &wgpu::Buffer,
-    ) -> Vec<T> {
-        use std::sync::mpsc;
-
-        let size = buffer.size();
-        let staging = device.create_buffer(&wgpu::BufferDescriptor {
-            label: None,
-            size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
-        queue.submit(std::iter::once(encoder.finish()));
-
-        let slice = staging.slice(..);
-        let (tx, rx) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| {
-            tx.send(r).unwrap();
-        });
-
-        device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .unwrap();
-
-        rx.recv().unwrap().unwrap();
-        let data = slice.get_mapped_range();
-        let result: Vec<T> = bytemuck::cast_slice(&data).to_vec();
-        drop(data);
-        staging.unmap();
-        result
-    }
-
     #[test]
     fn test_gpu_acceleration_dispatch() {
+        use crate::collisions::algos::test_utils::read_buffer;
+
         pollster::block_on(async {
             let (device, queue) = setup_wgpu().await;
 

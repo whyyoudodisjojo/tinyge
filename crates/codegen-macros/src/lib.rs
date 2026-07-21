@@ -44,7 +44,7 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
             let field_name = f.ident.as_ref().unwrap().to_string();
             let field_ty = &f.ty;
             if let Type::Path(p) = field_ty && p.path.segments.last().map(|s| s.ident == "Vec").unwrap_or_default() {
-                panic!("Arrays cant be known at comp time")
+                panic!("runtime-sized Vec<T> not supported in struct; use fixed-size arrays")
             }
 
             Some(quote! {
@@ -180,7 +180,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
             } else {
                 panic!("expected named argument");
             };
-            if pat.attrs.iter().any(|a| a.path().is_ident("binding")) {
+            if pat.attrs.iter().any(|a| a.path().is_ident("binding") || a.path().is_ident("private")) {
                 return None;
             }
             if let Type::Path(p) = &*pat.ty {
@@ -193,6 +193,31 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
             Some((name, &pat.ty))
         })
         .collect();
+
+    let private_args: Vec<_> = func
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|input| {
+            let FnArg::Typed(pat) = input else {
+                return None;
+            };
+            let name = if let syn::Pat::Ident(ident) = &*pat.pat {
+                ident.ident.to_string()
+            } else {
+                return None;
+            };
+            if !pat.attrs.iter().any(|a| a.path().is_ident("private")) {
+                return None;
+            }
+            Some((name, &pat.ty))
+        })
+        .collect();
+
+    let (private_arg_names, private_arg_tys): (Vec<_>, Vec<_>) = private_args
+        .iter()
+        .map(|(n, ty)| (n.clone(), ty.as_ref().clone()))
+        .unzip();
 
     let (shared_arg_names, shared_arg_inner_types): (Vec<_>, Vec<_>) = shared_args
         .iter()
@@ -270,6 +295,11 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|(n, _)| Ident::new(n, ident.span()))
         .collect();
 
+    let private_arg_n_idents: Vec<_> = private_args
+        .iter()
+        .map(|(n, _)| Ident::new(n, ident.span()))
+        .collect();
+
     let mut extra_struct_f: Vec<_> = extra_arg_n_idents
         .iter()
         .zip(extra_arg_tys.iter())
@@ -287,7 +317,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into_iter()
         .map(|input| match input {
             FnArg::Typed(mut pat) => {
-                pat.attrs.retain(|a| !a.path().is_ident("binding"));
+                pat.attrs.retain(|a| !a.path().is_ident("binding") && !a.path().is_ident("private"));
                 FnArg::Typed(pat)
             }
             other => other,
@@ -310,6 +340,11 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
             quote! { self.#n }
         })
         .collect();
+
+    for (n, ty) in &private_args {
+        let field_name = format_ident!("{}", n);
+        extra_struct_f.push(quote! { pub #field_name: #ty });
+    }
 
     let arg_binding_tys: Vec<_> = args.iter().map(|(_, b, _)| {
         match b {
@@ -420,6 +455,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                             structs,
                             binded: vec![],
                             shared_vars: vec![],
+                            private_vars: vec![],
                             entrypoint_globals: vec![],
                             functions: vec![],
                         };
@@ -428,10 +464,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                             #(codegen::asts::lowered::BindingMeta {
                                 ident: #arg_names.to_string(),
                                 ty: #arg_binding_tys,
-                                struct_name: {
-                                    let r = codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir };
-                                    r.render_dtype(&<#arg_inner_types as codegen::asts::IntoWgslStruct>::dt())
-                                },
+                                dtype: <#arg_inner_types as codegen::asts::IntoWgslStruct>::dt(),
                             },)*
                         ];
 
@@ -442,12 +475,19 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                             ),)*
                         ];
 
+                        ir.private_vars = vec![
+                            #((
+                                #private_arg_names.to_string(),
+                                <#private_arg_tys as codegen::asts::IntoWgslStruct>::dt(),
+                            ),)*
+                        ];
+
                         ir.entrypoint_globals = vec![
                             codegen::asts::lowered::EntrypointGlobals::GlobalInvocationId,
                             codegen::asts::lowered::EntrypointGlobals::LocalInvocationId,
                         ];
 
-                        let scope = #ident(#(#arg_markers,)* #(#shared_arg_markers,)* #(#extra_arg_self_refs,)*);
+                        let scope = #ident(#(#arg_markers,)* #(#shared_arg_markers,)* #(#extra_arg_self_refs,)* #(self.#private_arg_n_idents),*);
 
                         ir.functions.push(
                             codegen::asts::lowered::Functions {
