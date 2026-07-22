@@ -9,7 +9,6 @@ use crate::collisions::algos::{
     BVHNode, BVHTree, CpuBVHTraversal, CpuStorage, FlattenedBVHNode, GpuBVHTraversal, GpuStorage,
     Ray, RayResult, TraversalFlow,
 };
-use tinyge_graphics::shaders::ComputeShaderWrapper;
 
 fn default_leaf_hit(
     s: &mut Scope,

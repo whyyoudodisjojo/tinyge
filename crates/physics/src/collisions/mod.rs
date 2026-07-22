@@ -2,9 +2,7 @@ use codegen_macros::IntoWgslStruct;
 use tinyge_graphics::shaders::buffers::BufferWithType;
 use wgpu::{Device, Queue};
 
-use crate::collisions::algos::{
-    BVHTree, GpuBVHTraversal, GpuCollisionAlgorithm, GpuStorage, Ray, RayResult,
-};
+use crate::collisions::algos::{GpuBVHTraversal, GpuCollisionAlgorithm, Ray, RayResult};
 
 pub mod algos;
 
@@ -16,8 +14,8 @@ pub struct ModelVertex {
 
 #[derive(IntoWgslStruct, Clone)]
 pub struct ModelInfo {
-    offset: u32,
-    stride: u32,
+    pub offset: u32,
+    pub stride: u32,
 }
 
 pub struct Collisions<Algo, Probe> {
