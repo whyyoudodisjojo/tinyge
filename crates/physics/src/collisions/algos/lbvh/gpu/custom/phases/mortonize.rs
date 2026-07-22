@@ -1,15 +1,15 @@
 use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
-    buffers::ResourceType,
+    buffers::{BufferWithType, ResourceType},
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
 use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
 pub struct MortonizeArgs {
-    pub rects_buffer: wgpu::Buffer,
-    pub keys_buffer: wgpu::Buffer,
-    pub global_bounds_buffer: wgpu::Buffer,
-    pub num_rects_buffer: wgpu::Buffer,
+    pub rects_buffer: BufferWithType<Vec<glam::Vec4>>,
+    pub keys_buffer: BufferWithType<Vec<u32>>,
+    pub global_bounds_buffer: BufferWithType<glam::Vec4>,
+    pub num_rects_buffer: BufferWithType<u32>,
 }
 
 pub struct Mortonize {
@@ -107,10 +107,10 @@ impl<'a> ComputeShader<'a> for Mortonize {
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
             &[
-                ResourceType::Buffer(args.rects_buffer),
-                ResourceType::Buffer(args.keys_buffer),
-                ResourceType::Buffer(args.global_bounds_buffer),
-                ResourceType::Buffer(args.num_rects_buffer),
+                ResourceType::Buffer(args.rects_buffer.inner),
+                ResourceType::Buffer(args.keys_buffer.inner),
+                ResourceType::Buffer(args.global_bounds_buffer.inner),
+                ResourceType::Buffer(args.num_rects_buffer.inner),
             ],
             device,
         );

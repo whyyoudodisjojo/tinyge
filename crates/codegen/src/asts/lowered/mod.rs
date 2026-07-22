@@ -104,9 +104,9 @@ impl Struct {
                         MaybeAtomic::Atomic(a) => DType::Atomic(a.clone()),
                         MaybeAtomic::Naked(n) => match n {
                             BasicTyOrStructRef::BasicTy(b) => DType::Basic(b.clone()),
-                            BasicTyOrStructRef::StructRef { ident } => {
-                                DType::StructRef { ident: ident.clone() }
-                            }
+                            BasicTyOrStructRef::StructRef { ident } => DType::StructRef {
+                                ident: ident.clone(),
+                            },
                         },
                     },
                 );
@@ -129,52 +129,6 @@ impl Struct {
                 }
                 (offset, max_align)
             }
-            DType::Pad(bytes) => (*bytes, *bytes),
-        }
-    }
-
-    pub fn required_padding(
-        struct_store: &HashMap<String, Self>,
-        current_offset: usize,
-        next_field: &DType,
-    ) -> usize {
-        let (_, next_align) = Self::wgsl_size_align(struct_store, next_field);
-
-        if next_align == 0 {
-            return 0;
-        }
-
-        let misalignment = current_offset % next_align;
-        if misalignment == 0 {
-            0
-        } else {
-            next_align - misalignment
-        }
-    }
-
-    pub(crate) fn with_padding(self, struct_store: &HashMap<String, Self>) -> Self {
-        let mut result = Vec::new();
-        let mut current_offset = 0usize;
-        let mut pad_counter = 0usize;
-
-        for (name, dtype) in &self.inner {
-            let padding_needed = Self::required_padding(struct_store, current_offset, dtype);
-            if padding_needed > 0 {
-                result.push((format!("_pad_{}", pad_counter), DType::Pad(padding_needed)));
-                pad_counter += 1;
-                current_offset += padding_needed;
-            }
-            result.push((name.clone(), dtype.clone()));
-            let (field_sz, field_al) = Self::wgsl_size_align(struct_store, dtype);
-            if field_al > 0 && current_offset % field_al != 0 {
-                current_offset += field_al - current_offset % field_al;
-            }
-            current_offset += field_sz;
-        }
-
-        Self {
-            name: self.name,
-            inner: result,
         }
     }
 }
@@ -368,7 +322,10 @@ impl LoweredAST {
             } => DType::Basic(BasicTy::Bool),
             Self::UnaryOp { operand, .. } => operand.dt(ir, scope),
             Self::Const { dt, .. } => dt.clone(),
-            Self::FunctionCall { args, .. } => args.first().expect("function call with no args").dt(ir, scope),
+            Self::FunctionCall { args, .. } => args
+                .first()
+                .expect("function call with no args")
+                .dt(ir, scope),
             _ => panic!("cannot infer type from {:?}", self),
         }
     }

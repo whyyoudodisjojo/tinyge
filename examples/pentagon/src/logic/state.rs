@@ -8,7 +8,7 @@ use tinyge_graphics::{
         RenderAble,
         single::{SinglePass, StateRenderSinglePass},
     },
-    shaders::buffers::{Buffers, ResourceType},
+    shaders::buffers::{BufferWithType, Buffers, ResourceType},
     state::{StateRender, StateUpdates},
 };
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
@@ -22,6 +22,7 @@ use crate::{
 
 pub struct State {
     pub buffers: Option<Buffers>,
+    pub time_buffer: Option<BufferWithType<f32>>,
     pub sz: PhysicalSize<u32>,
     pub start_time: SystemTime,
 }
@@ -30,6 +31,7 @@ impl State {
     pub fn new() -> Self {
         Self {
             buffers: None,
+            time_buffer: None,
             sz: PhysicalSize {
                 width: 1920,
                 height: 1080,
@@ -72,14 +74,16 @@ impl StateUpdates for State {
             0,
             bytemuck::cast_slice(INDICES),
         );
-        queue.write_buffer(
-            new_buffer.resource_buffers[0].buffers[0].as_ref().unwrap(),
-            0,
-            bytemuck::cast_slice(&[SystemTime::now()
+        let time_buf =
+            BufferWithType::<f32>::from(new_buffer.resource_buffers[0].buffers[0].clone().unwrap());
+        time_buf.write(
+            queue,
+            &[SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_secs() as u32]),
+                .as_secs() as f32],
         );
+        self.time_buffer = Some(time_buf);
         self.buffers = Some(new_buffer);
     }
 
@@ -87,16 +91,12 @@ impl StateUpdates for State {
         match update_event {
             UpdateEvents::Resize(sz) => self.sz = sz,
             UpdateEvents::TimeUpdate => {
-                self.buffers.as_ref().zip(queue).map(|(b, q)| {
+                self.time_buffer.as_ref().zip(queue).map(|(t, q)| {
                     let time_val = SystemTime::now()
                         .duration_since(self.start_time)
                         .unwrap()
                         .as_secs_f32();
-                    q.write_buffer(
-                        b.resource_buffers[0].buffers[0].as_ref().unwrap(),
-                        0,
-                        bytemuck::cast_slice(&[time_val]),
-                    )
+                    t.write(q, &[time_val])
                 });
             }
         }
@@ -164,11 +164,9 @@ impl RenderAble<ShaderId> for State {
         );
 
         // Create bind group resources
-        let resources: Vec<ResourceType> = buffers.resource_buffers[0]
-            .buffers
-            .iter()
-            .filter_map(|b| b.as_ref().map(|buf| ResourceType::Buffer(buf.clone())))
-            .collect();
+        let resources: Vec<ResourceType> = vec![ResourceType::Buffer(
+            self.time_buffer.as_ref().unwrap().inner.clone(),
+        )];
 
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);
         render_pass.set_bind_group(0, bind_group, &[]);

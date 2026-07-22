@@ -1,5 +1,5 @@
 use tinyge_graphics::shaders::{
-    buffers::ResourceType,
+    buffers::{BufferWithType, ResourceType},
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
 use wgpu::{BufferUsages, ShaderStages};
@@ -12,13 +12,25 @@ pub struct AccelerationShader {
     gpu_ray_size: u64,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, codegen_macros::IntoWgslStruct)]
+pub struct RawCandidate {
+    pub ray_idx: u32,
+    pub instance_index: u32,
+    pub primitive_index: u32,
+    pub geometry_index: u32,
+    pub barycentrics: [f32; 2],
+    pub t: f32,
+    pub _pad: u32,
+}
+
 pub struct AccelerationArgs {
     pub tlas: wgpu::Tlas,
-    pub rays_buffer: wgpu::Buffer,
-    pub candidates_buffer: wgpu::Buffer,
-    pub counter_buffer: wgpu::Buffer,
-    pub num_rays_buffer: wgpu::Buffer,
-    pub max_candidates_buffer: wgpu::Buffer,
+    pub rays_buffer: BufferWithType<Vec<crate::collisions::algos::GpuRay>>,
+    pub candidates_buffer: BufferWithType<Vec<RawCandidate>>,
+    pub counter_buffer: BufferWithType<u32>,
+    pub num_rays_buffer: BufferWithType<u32>,
+    pub max_candidates_buffer: BufferWithType<u32>,
 }
 
 impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
@@ -146,11 +158,11 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
 
         let bind_group_resources = vec![
             ResourceType::AccelerationStructure(args.tlas),
-            ResourceType::Buffer(args.rays_buffer),
-            ResourceType::Buffer(args.candidates_buffer),
-            ResourceType::Buffer(args.counter_buffer),
-            ResourceType::Buffer(args.num_rays_buffer),
-            ResourceType::Buffer(args.max_candidates_buffer),
+            ResourceType::Buffer(args.rays_buffer.inner),
+            ResourceType::Buffer(args.candidates_buffer.inner),
+            ResourceType::Buffer(args.counter_buffer.inner),
+            ResourceType::Buffer(args.num_rays_buffer.inner),
+            ResourceType::Buffer(args.max_candidates_buffer.inner),
         ];
 
         let mut encoder =
@@ -179,18 +191,6 @@ mod tests {
     use wgpu::util::DeviceExt;
 
     use super::*;
-
-    #[repr(C)]
-    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-    struct RawCandidate {
-        ray_idx: u32,
-        instance_index: u32,
-        primitive_index: u32,
-        geometry_index: u32,
-        barycentrics: [f32; 2],
-        t: f32,
-        _pad: u32,
-    }
 
     async fn setup_wgpu() -> (wgpu::Device, wgpu::Queue) {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -253,68 +253,44 @@ mod tests {
 
             let rays: Vec<crate::collisions::algos::GpuRay> = vec![
                 crate::collisions::algos::GpuRay {
-                    origin: [0.0, 0.0, 1.0],
-                    _pad1: 0.0,
-                    dir: [0.0, 0.0, -1.0],
-                    _pad2: 0.0,
-                    inv_dir: [0.0, 0.0, -1.0],
-                    _pad3: 0.0,
+                    origin: [0.0, 0.0, 1.0, 0.0],
+                    dir: [0.0, 0.0, -1.0, 0.0],
+                    inv_dir: [0.0, 0.0, -1.0, 0.0],
                 },
                 crate::collisions::algos::GpuRay {
-                    origin: [10.0, 10.0, 0.0],
-                    _pad1: 0.0,
-                    dir: [1.0, 0.0, 0.0],
-                    _pad2: 0.0,
-                    inv_dir: [1.0, 0.0, 0.0],
-                    _pad3: 0.0,
+                    origin: [10.0, 10.0, 0.0, 0.0],
+                    dir: [1.0, 0.0, 0.0, 0.0],
+                    inv_dir: [1.0, 0.0, 0.0, 0.0],
                 },
                 crate::collisions::algos::GpuRay {
-                    origin: [0.8, -0.8, 1.0],
-                    _pad1: 0.0,
-                    dir: [0.0, 0.0, -1.0],
-                    _pad2: 0.0,
-                    inv_dir: [0.0, 0.0, -1.0],
-                    _pad3: 0.0,
+                    origin: [0.8, -0.8, 1.0, 0.0],
+                    dir: [0.0, 0.0, -1.0, 0.0],
+                    inv_dir: [0.0, 0.0, -1.0, 0.0],
                 },
                 crate::collisions::algos::GpuRay {
-                    origin: [0.0, 0.0, 1.0],
-                    _pad1: 0.0,
-                    dir: [0.0, 0.0, 1.0],
-                    _pad2: 0.0,
-                    inv_dir: [0.0, 0.0, 1.0],
-                    _pad3: 0.0,
+                    origin: [0.0, 0.0, 1.0, 0.0],
+                    dir: [0.0, 0.0, 1.0, 0.0],
+                    inv_dir: [0.0, 0.0, 1.0, 0.0],
                 },
                 crate::collisions::algos::GpuRay {
-                    origin: [0.0, 0.0, 2.0],
-                    _pad1: 0.0,
-                    dir: [0.0, 0.0, -1.0],
-                    _pad2: 0.0,
-                    inv_dir: [0.0, 0.0, -1.0],
-                    _pad3: 0.0,
+                    origin: [0.0, 0.0, 2.0, 0.0],
+                    dir: [0.0, 0.0, -1.0, 0.0],
+                    inv_dir: [0.0, 0.0, -1.0, 0.0],
                 },
                 crate::collisions::algos::GpuRay {
-                    origin: [0.0, 0.0, -1.0],
-                    _pad1: 0.0,
-                    dir: [0.0, 0.0, -1.0],
-                    _pad2: 0.0,
-                    inv_dir: [0.0, 0.0, -1.0],
-                    _pad3: 0.0,
+                    origin: [0.0, 0.0, -1.0, 0.0],
+                    dir: [0.0, 0.0, -1.0, 0.0],
+                    inv_dir: [0.0, 0.0, -1.0, 0.0],
                 },
                 crate::collisions::algos::GpuRay {
-                    origin: [0.0, -0.5, 1.0],
-                    _pad1: 0.0,
-                    dir: [0.0, 0.0, -1.0],
-                    _pad2: 0.0,
-                    inv_dir: [0.0, 0.0, -1.0],
-                    _pad3: 0.0,
+                    origin: [0.0, -0.5, 1.0, 0.0],
+                    dir: [0.0, 0.0, -1.0, 0.0],
+                    inv_dir: [0.0, 0.0, -1.0, 0.0],
                 },
                 crate::collisions::algos::GpuRay {
-                    origin: [5.0, 5.0, 1.0],
-                    _pad1: 0.0,
-                    dir: [0.0, 0.0, -1.0],
-                    _pad2: 0.0,
-                    inv_dir: [0.0, 0.0, -1.0],
-                    _pad3: 0.0,
+                    origin: [5.0, 5.0, 1.0, 0.0],
+                    dir: [0.0, 0.0, -1.0, 0.0],
+                    inv_dir: [0.0, 0.0, -1.0, 0.0],
                 },
             ];
             queue.write_buffer(&rays_buffer, 0, bytemuck::cast_slice(&rays));
@@ -392,11 +368,11 @@ mod tests {
             shader.dispatch(
                 AccelerationArgs {
                     tlas,
-                    rays_buffer,
-                    candidates_buffer: candidates_buffer.clone(),
-                    counter_buffer: counter_buffer.clone(),
-                    num_rays_buffer,
-                    max_candidates_buffer,
+                    rays_buffer: rays_buffer.into(),
+                    candidates_buffer: candidates_buffer.clone().into(),
+                    counter_buffer: BufferWithType::<u32>::from(counter_buffer.clone()),
+                    num_rays_buffer: BufferWithType::<u32>::from(num_rays_buffer),
+                    max_candidates_buffer: BufferWithType::<u32>::from(max_candidates_buffer),
                 },
                 &device,
                 &queue,

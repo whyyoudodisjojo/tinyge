@@ -40,28 +40,9 @@ pub struct WgslStructFactory {
 inventory::collect!(WgslStructFactory);
 
 pub fn build_struct_map() -> HashMap<String, Struct> {
-    let raw: Vec<Struct> = inventory::iter::<WgslStructFactory>
+    inventory::iter::<WgslStructFactory>
         .into_iter()
         .map(|f| (f.make)())
-        .collect();
-
-    let map: HashMap<String, Struct> = raw
-        .iter()
-        .map(|s| {
-            (
-                s.name.clone(),
-                Struct {
-                    name: s.name.clone(),
-                    inner: s.inner.clone(),
-                },
-            )
-        })
-        .collect();
-
-    raw.into_iter()
-        .map(|s| {
-            let padded = s.with_padding(&map);
-            (padded.name.clone(), padded)
-        })
+        .map(|s| (s.name.clone(), s))
         .collect()
 }

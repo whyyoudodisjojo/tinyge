@@ -1,22 +1,14 @@
 use tinyge_graphics::shaders::{
     ComputeShader,
-    buffers::ResourceType,
+    buffers::{BufferWithType, ResourceType},
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
-use wgpu::{
-    Buffer, BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor,
-};
-
-#[repr(C)]
-pub struct ModelInfo {
-    pub offset: u32,
-    pub stride: u32,
-}
+use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
 pub struct ComputeRectsArgs {
-    pub model_verts_buffer: Buffer,
-    pub model_infos_buffer: Buffer,
-    pub output_rect_buffer: Buffer,
+    pub model_verts_buffer: BufferWithType<Vec<[f32; 4]>>,
+    pub model_infos_buffer: BufferWithType<Vec<[u32; 2]>>,
+    pub output_rect_buffer: BufferWithType<Vec<glam::Vec4>>,
 }
 
 pub struct ComputeRects {
@@ -103,9 +95,9 @@ impl<'a> ComputeShader<'a> for ComputeRects {
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
         let buffers = vec![
-            ResourceType::Buffer(args.model_verts_buffer.clone()),
-            ResourceType::Buffer(args.model_infos_buffer.clone()),
-            ResourceType::Buffer(args.output_rect_buffer.clone()),
+            ResourceType::Buffer(args.model_verts_buffer.inner.clone()),
+            ResourceType::Buffer(args.model_infos_buffer.inner.clone()),
+            ResourceType::Buffer(args.output_rect_buffer.inner.clone()),
         ];
 
         {

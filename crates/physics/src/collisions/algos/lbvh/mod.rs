@@ -1,11 +1,12 @@
 use bytemuck::{Pod, Zeroable};
+use codegen_macros::IntoWgslStruct;
 use glam::Vec3A;
 
 pub mod cpu;
 pub mod gpu;
 
 #[repr(C)]
-#[derive(Hash, Pod, Zeroable, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Hash, Pod, Zeroable, Clone, Copy, PartialEq, Eq, Debug, IntoWgslStruct)]
 pub struct Key {
     pub code: u32,
     pub idx: u32,

@@ -26,7 +26,8 @@ pub fn read_buffer<T: bytemuck::Pod>(
         usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    let mut encoder =
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
     queue.submit(std::iter::once(encoder.finish()));
     let slice = staging.slice(..);

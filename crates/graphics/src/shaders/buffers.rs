@@ -113,6 +113,7 @@ pub struct ResourceGroupBuildSpec<'a> {
     pub layout: BindGroupLayout,
 }
 
+#[derive(Clone)]
 pub struct BufferWithType<T>
 where
     T: IntoWgslStruct,

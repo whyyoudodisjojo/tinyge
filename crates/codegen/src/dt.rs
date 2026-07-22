@@ -51,7 +51,6 @@ pub enum DType {
     Atomic(IntegerTy),
     Basic(BasicTy),
     StructRef { ident: String },
-    Pad(usize),
 }
 
 impl DType {
@@ -100,7 +99,7 @@ impl DType {
                     Accessor::Index(_) => self,
                 }
             }
-            Self::Basic(_) | Self::Atomic(_) | Self::Pad(_) => self,
+            Self::Basic(_) | Self::Atomic(_) => self,
         }
     }
 

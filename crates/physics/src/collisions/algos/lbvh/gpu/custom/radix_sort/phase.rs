@@ -134,11 +134,11 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
             &[
-                ResourceType::Buffer(args.param_buffer),
-                ResourceType::Buffer(args.input_arr_buffer),
-                ResourceType::Buffer(args.count_arr_buffer),
-                ResourceType::Buffer(args.output_arr_buffer),
-                ResourceType::Buffer(args.global_offsets_buffer),
+                ResourceType::Buffer(args.param_buffer.inner),
+                ResourceType::Buffer(args.input_arr_buffer.inner),
+                ResourceType::Buffer(args.count_arr_buffer.inner),
+                ResourceType::Buffer(args.output_arr_buffer.inner),
+                ResourceType::Buffer(args.global_offsets_buffer.inner),
             ],
             device,
         );

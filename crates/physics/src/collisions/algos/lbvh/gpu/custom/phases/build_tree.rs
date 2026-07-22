@@ -1,16 +1,18 @@
 use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
-    buffers::ResourceType,
+    buffers::{BufferWithType, ResourceType},
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
 use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
+use crate::collisions::algos::FlattenedBVHNode;
+
 pub struct BuildTreeArgs {
-    pub keys_buffer: wgpu::Buffer,
-    pub rects_buffer: wgpu::Buffer,
-    pub nodes_buffer: wgpu::Buffer,
-    pub counts_buffer: wgpu::Buffer,
-    pub params_buffer: wgpu::Buffer,
+    pub keys_buffer: BufferWithType<Vec<u32>>,
+    pub rects_buffer: BufferWithType<Vec<glam::Vec4>>,
+    pub nodes_buffer: BufferWithType<Vec<FlattenedBVHNode>>,
+    pub counts_buffer: BufferWithType<Vec<u32>>,
+    pub params_buffer: BufferWithType<u32>,
 }
 
 pub enum BuildTreeStage {
@@ -136,11 +138,11 @@ impl<'a> ComputeShader<'a> for BuildTree {
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(
             &[
-                ResourceType::Buffer(args.keys_buffer),
-                ResourceType::Buffer(args.rects_buffer),
-                ResourceType::Buffer(args.nodes_buffer),
-                ResourceType::Buffer(args.counts_buffer),
-                ResourceType::Buffer(args.params_buffer),
+                ResourceType::Buffer(args.keys_buffer.inner),
+                ResourceType::Buffer(args.rects_buffer.inner),
+                ResourceType::Buffer(args.nodes_buffer.inner),
+                ResourceType::Buffer(args.counts_buffer.inner),
+                ResourceType::Buffer(args.params_buffer.inner),
             ],
             device,
         );

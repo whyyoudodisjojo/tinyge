@@ -16,7 +16,6 @@ struct ComputeArgs {
 struct Field {
     ident: Option<Ident>,
     ty: Type,
-    pad: Option<usize>,
 }
 
 #[derive(FromDeriveInput)]
@@ -36,20 +35,16 @@ pub fn derive_into_wgsl_struct(item: TokenStream) -> TokenStream {
 
     let field_insertions: Vec<_> = fields
         .iter()
-        .filter_map(|f| {
-            if f.pad.is_some() {
-                return None;
-            }
-
+        .map(|f| {
             let field_name = f.ident.as_ref().unwrap().to_string();
             let field_ty = &f.ty;
             if let Type::Path(p) = field_ty && p.path.segments.last().map(|s| s.ident == "Vec").unwrap_or_default() {
                 panic!("runtime-sized Vec<T> not supported in struct; use fixed-size arrays")
             }
 
-            Some(quote! {
+            quote! {
                 fields.push((#field_name.to_string(), <#field_ty as codegen::asts::IntoWgslStruct>::dt()));
-            })
+            }
         })
         .collect();
 
@@ -180,7 +175,11 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
             } else {
                 panic!("expected named argument");
             };
-            if pat.attrs.iter().any(|a| a.path().is_ident("binding") || a.path().is_ident("private")) {
+            if pat
+                .attrs
+                .iter()
+                .any(|a| a.path().is_ident("binding") || a.path().is_ident("private"))
+            {
                 return None;
             }
             if let Type::Path(p) = &*pat.ty {
@@ -317,7 +316,8 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into_iter()
         .map(|input| match input {
             FnArg::Typed(mut pat) => {
-                pat.attrs.retain(|a| !a.path().is_ident("binding") && !a.path().is_ident("private"));
+                pat.attrs
+                    .retain(|a| !a.path().is_ident("binding") && !a.path().is_ident("private"));
                 FnArg::Typed(pat)
             }
             other => other,

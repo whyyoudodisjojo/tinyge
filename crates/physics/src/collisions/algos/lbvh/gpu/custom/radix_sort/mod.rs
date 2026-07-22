@@ -1,5 +1,9 @@
-use tinyge_graphics::shaders::{ComputeShaderWrapper, buffers::Buffers};
-use wgpu::{Buffer, Device};
+use codegen_macros::IntoWgslStruct;
+use tinyge_graphics::shaders::{
+    ComputeShaderWrapper,
+    buffers::{BufferWithType, Buffers},
+};
+use wgpu::Device;
 
 use crate::collisions::algos::lbvh::{
     Key,
@@ -9,7 +13,7 @@ use crate::collisions::algos::lbvh::{
 pub mod phase;
 
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, IntoWgslStruct)]
 pub struct Params {
     pub shift: u32,
     pub num_elems: u32,
@@ -17,18 +21,18 @@ pub struct Params {
 
 #[derive(Clone)]
 pub struct RadixSortPhaseArgs {
-    pub param_buffer: Buffer,
-    pub input_arr_buffer: Buffer,
-    pub count_arr_buffer: Buffer,
-    pub output_arr_buffer: Buffer,
-    pub global_offsets_buffer: Buffer,
+    pub param_buffer: BufferWithType<Params>,
+    pub input_arr_buffer: BufferWithType<Vec<Key>>,
+    pub count_arr_buffer: BufferWithType<[u32; 16]>,
+    pub output_arr_buffer: BufferWithType<Vec<Key>>,
+    pub global_offsets_buffer: BufferWithType<[u32; 16]>,
 }
 #[derive(Clone)]
 pub struct RadixSortInternalBuffers {
-    pub param_buffer: Buffer,
-    pub count_arr_buffer: Buffer,
-    pub output_arr_buffer: Buffer,
-    pub global_offsets_buffer: Buffer,
+    pub param_buffer: BufferWithType<Params>,
+    pub count_arr_buffer: BufferWithType<[u32; 16]>,
+    pub output_arr_buffer: BufferWithType<Vec<Key>>,
+    pub global_offsets_buffer: BufferWithType<[u32; 16]>,
 }
 
 pub struct RadixSort {
@@ -57,10 +61,18 @@ impl RadixSort {
         let buffers = Buffers::build(device, &count.buffer_build_spec.buffer_build_spec, false);
 
         let buffers = RadixSortInternalBuffers {
-            param_buffer: buffers.resource_buffers[0].buffers[0].clone().unwrap(),
-            count_arr_buffer: buffers.resource_buffers[0].buffers[2].clone().unwrap(),
-            output_arr_buffer: buffers.resource_buffers[0].buffers[3].clone().unwrap(),
-            global_offsets_buffer: buffers.resource_buffers[0].buffers[4].clone().unwrap(),
+            param_buffer: BufferWithType::<Params>::from(
+                buffers.resource_buffers[0].buffers[0].clone().unwrap(),
+            ),
+            count_arr_buffer: BufferWithType::<[u32; 16]>::from(
+                buffers.resource_buffers[0].buffers[2].clone().unwrap(),
+            ),
+            output_arr_buffer: BufferWithType::<Vec<Key>>::from(
+                buffers.resource_buffers[0].buffers[3].clone().unwrap(),
+            ),
+            global_offsets_buffer: BufferWithType::<[u32; 16]>::from(
+                buffers.resource_buffers[0].buffers[4].clone().unwrap(),
+            ),
         };
 
         Self {
@@ -72,8 +84,13 @@ impl RadixSort {
         }
     }
 
-    pub fn sort(&mut self, input_buffer: Buffer, device: &Device, queue: &wgpu::Queue) {
-        let ping_buffer = input_buffer;
+    pub fn sort(
+        &mut self,
+        input_buffer: BufferWithType<Vec<Key>>,
+        device: &Device,
+        queue: &wgpu::Queue,
+    ) {
+        let ping_buffer = input_buffer.inner;
         let pong_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: self.num_elems as u64 * std::mem::size_of::<Key>() as u64,
@@ -91,13 +108,17 @@ impl RadixSort {
                 shift: shift * 4,
                 num_elems: self.num_elems,
             };
-            queue.write_buffer(&self.buffers.param_buffer, 0, bytemuck::bytes_of(&params));
+            queue.write_buffer(
+                &self.buffers.param_buffer.inner,
+                0,
+                bytemuck::bytes_of(&params),
+            );
 
             let args = RadixSortPhaseArgs {
                 param_buffer: self.buffers.param_buffer.clone(),
-                input_arr_buffer: current_input.clone(),
+                input_arr_buffer: BufferWithType::<Vec<Key>>::from(current_input.clone()),
                 count_arr_buffer: self.buffers.count_arr_buffer.clone(),
-                output_arr_buffer: current_output.clone(),
+                output_arr_buffer: BufferWithType::<Vec<Key>>::from(current_output.clone()),
                 global_offsets_buffer: self.buffers.global_offsets_buffer.clone(),
             };
 
@@ -112,7 +133,7 @@ impl RadixSort {
         encoder.copy_buffer_to_buffer(
             &current_input,
             0,
-            &self.buffers.output_arr_buffer,
+            &self.buffers.output_arr_buffer.inner,
             0,
             self.num_elems as u64 * std::mem::size_of::<Key>() as u64,
         );

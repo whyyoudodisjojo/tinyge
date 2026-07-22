@@ -32,20 +32,6 @@ impl<'a> LoweredRenderer<'a> {
                 VecTy::Vec4(b) => format!("vec4<{}>", self.render_basic_ty(b)),
             },
             DType::StructRef { ident } => ident.clone(),
-            DType::Pad(bytes) => self.render_pad_type(*bytes),
-        }
-    }
-
-    fn render_pad_type(&self, bytes: usize) -> String {
-        match bytes {
-            4 => "u32".to_string(),
-            8 => "vec2<u32>".to_string(),
-            12 => "vec3<u32>".to_string(),
-            16 => "vec4<u32>".to_string(),
-            n => panic!(
-                "Unsupported padding size: {} bytes. Use 4, 8, 12, or 16.",
-                n
-            ),
         }
     }
 
@@ -146,10 +132,7 @@ impl<'a> LoweredRenderer<'a> {
                                     "local_invocation_id"
                                 }
                             };
-                            format!(
-                                "@builtin({builtin}) {}: vec3<u32>",
-                                g
-                            )
+                            format!("@builtin({builtin}) {}: vec3<u32>", g)
                         })
                         .collect::<Vec<_>>()
                         .join(", ")
@@ -397,7 +380,6 @@ impl<'a> LoweredRenderer<'a> {
                     let s = self.ir.structs.get(ident).unwrap();
                     self.render_struct_const(ident, s, data, curr_scope, indent)
                 }
-                DType::Pad(bytes) => self.render_pad_const(*bytes, data, curr_scope, indent),
             },
             LoweredAST::FunctionCall { ident, args } => format!(
                 "{}({})",
@@ -569,15 +551,12 @@ impl<'a> LoweredRenderer<'a> {
                                     consumed,
                                 )
                             }
-                            DType::Pad(elements) => (String::new(), *elements),
                             DType::StructRef { .. } => {
                                 unimplemented!("Deeply nested structs not yet implemented")
                             }
                         };
 
-                        if !matches!(n_ty, DType::Pad(_)) {
-                            nested_inits.push(format!("{n_name}: {n_val}"));
-                        }
+                        nested_inits.push(format!("{n_name}: {n_val}"));
                         nested_offset += n_consumed;
                     }
 
@@ -585,13 +564,9 @@ impl<'a> LoweredRenderer<'a> {
                     let consumed_by_nested = nested_offset - current_offset;
                     (nested_str, consumed_by_nested)
                 }
-                DType::Pad(elements) => (String::new(), *elements),
             };
 
-            if !matches!(field_ty, DType::Pad(_)) {
-                field_inits.push(format!("{field_name}: {field_val}"));
-            }
-
+            field_inits.push(format!("{field_name}: {field_val}"));
             current_offset += consumed;
         }
 
@@ -635,23 +610,6 @@ impl<'a> LoweredRenderer<'a> {
             VecTy::Array(_inner, _) => {
                 unimplemented!("Can be lowered further with for loops and shit so ye")
             }
-        }
-    }
-
-    fn render_pad_const(
-        &self,
-        elements: usize,
-        data: &[LoweredASTOrConst],
-        curr_scope: &Scope,
-        indent: usize,
-    ) -> String {
-        let u32_ty = BasicTy::Integer(IntegerTy::U32);
-        match elements {
-            1 => self.render_basic_ty_const(&u32_ty, data, curr_scope, indent),
-            2 => self.render_vec_const(&VecTy::Vec2(u32_ty.clone()), data, curr_scope, indent),
-            3 => self.render_vec_const(&VecTy::Vec3(u32_ty.clone()), data, curr_scope, indent),
-            4 => self.render_vec_const(&VecTy::Vec4(u32_ty), data, curr_scope, indent),
-            n => panic!("Unsupported padding size: {} elements", n),
         }
     }
 
@@ -702,6 +660,13 @@ impl<'a> LoweredRenderer<'a> {
 
         let funcs_str = self.render_funcs();
 
-        [structs_str, bindings_str, private_str, workgroup_str, funcs_str].join("\n\n\n\n")
+        [
+            structs_str,
+            bindings_str,
+            private_str,
+            workgroup_str,
+            funcs_str,
+        ]
+        .join("\n\n\n\n")
     }
 }

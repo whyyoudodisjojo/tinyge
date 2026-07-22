@@ -1,7 +1,7 @@
 use glam::{Vec2, Vec3, Vec3A, Vec4};
 
 use crate::asts::IntoWgslStruct;
-use crate::asts::lowered::{LoweredASTOrConst, LoweredAST};
+use crate::asts::lowered::{LoweredAST, LoweredASTOrConst};
 use crate::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
 
 macro_rules! impl_primitive {
@@ -22,8 +22,8 @@ macro_rules! impl_const_primitives {
             }
         }
 
-        impl From<$ty> for LoweredAST{
-            fn from(val: $ty) -> Self{
+        impl From<$ty> for LoweredAST {
+            fn from(val: $ty) -> Self {
                 <$ty as IntoWgslStruct>::into_const(vec![val.into()])
             }
         }

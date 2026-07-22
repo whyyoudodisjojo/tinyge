@@ -7,6 +7,7 @@ struct RawCandidate {
     geometry_index: u32,
     barycentrics: vec2<f32>,
     t: f32,
+    _pad_0: f32,
 };
 
 struct GpuRay {
@@ -58,6 +59,7 @@ fn traverse(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 hit.geometry_index,
                 hit.barycentrics,
                 hit.t,
+                0.0,
             );
         }
     }

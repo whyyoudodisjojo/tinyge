@@ -1,17 +1,15 @@
-use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope};
 use codegen::asts::lowered::scope::*;
+use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope};
 
 use codegen::{call, group};
 use codegen_macros::shader;
-use tinyge_graphics::shaders::{
-    ComputeShader,
-    buffers::{DynamicBindGroup, ResourceType},
-};
+use tinyge_graphics::shaders::{ComputeShader, buffers::BufferWithType};
 
 use crate::collisions::algos::{
     BVHNode, BVHTree, CpuBVHTraversal, CpuStorage, FlattenedBVHNode, GpuBVHTraversal, GpuStorage,
     Ray, RayResult, TraversalFlow,
 };
+use tinyge_graphics::shaders::ComputeShaderWrapper;
 
 fn default_leaf_hit(
     s: &mut Scope,
@@ -21,38 +19,74 @@ fn default_leaf_hit(
     hit_t: usize,
     node_idx: usize,
 ) -> LoweredAST {
-    group!(s.if_(local(t_near).load().lt(local(t_max_var).load()), |_s| {
-        group!(
-            local(t_max_var).store(local(t_near).load());
-            local(hit_idx).store(local(node_idx).load());
-            local(hit_t).store(local(t_near).load());
-        )
-    }))
+    group!(
+        s.if_(local(t_near).load().lt(local(t_max_var).load()), |_s| {
+            group!(
+                local(t_max_var).store(local(t_near).load());
+                local(hit_idx).store(local(node_idx).load());
+                local(hit_t).store(local(t_near).load());
+            )
+        })
+    )
 }
 
-fn ray_intersects(s: &mut Scope, ray: usize, box_min: LoweredAST, box_max: LoweredAST, t_max: LoweredAST) -> (usize, LoweredAST) {
+fn ray_intersects(
+    s: &mut Scope,
+    ray: usize,
+    box_min: LoweredAST,
+    box_max: LoweredAST,
+    t_max: LoweredAST,
+) -> (usize, LoweredAST) {
     let bmin = s.var(box_min);
     let bmax = s.var(box_max);
-    let tx1 = s.var((local(bmin).f("x").load() - local(ray).f("origin").f("x").load()) * local(ray).f("inv_dir").f("x").load());
-    let tx2 = s.var((local(bmax).f("x").load() - local(ray).f("origin").f("x").load()) * local(ray).f("inv_dir").f("x").load());
+    let tx1 = s.var(
+        (local(bmin).f("x").load() - local(ray).f("origin").f("x").load())
+            * local(ray).f("inv_dir").f("x").load(),
+    );
+    let tx2 = s.var(
+        (local(bmax).f("x").load() - local(ray).f("origin").f("x").load())
+            * local(ray).f("inv_dir").f("x").load(),
+    );
     let t_min_x = s.var(call!("min", local(tx1).load(), local(tx2).load()));
     let t_max_x = s.var(call!("max", local(tx1).load(), local(tx2).load()));
-    let ty1 = s.var((local(bmin).f("y").load() - local(ray).f("origin").f("y").load()) * local(ray).f("inv_dir").f("y").load());
-    let ty2 = s.var((local(bmax).f("y").load() - local(ray).f("origin").f("y").load()) * local(ray).f("inv_dir").f("y").load());
+    let ty1 = s.var(
+        (local(bmin).f("y").load() - local(ray).f("origin").f("y").load())
+            * local(ray).f("inv_dir").f("y").load(),
+    );
+    let ty2 = s.var(
+        (local(bmax).f("y").load() - local(ray).f("origin").f("y").load())
+            * local(ray).f("inv_dir").f("y").load(),
+    );
     let t_min_y = s.var(call!("min", local(ty1).load(), local(ty2).load()));
     let t_max_y = s.var(call!("max", local(ty1).load(), local(ty2).load()));
-    let tz1 = s.var((local(bmin).f("z").load() - local(ray).f("origin").f("z").load()) * local(ray).f("inv_dir").f("z").load());
-    let tz2 = s.var((local(bmax).f("z").load() - local(ray).f("origin").f("z").load()) * local(ray).f("inv_dir").f("z").load());
+    let tz1 = s.var(
+        (local(bmin).f("z").load() - local(ray).f("origin").f("z").load())
+            * local(ray).f("inv_dir").f("z").load(),
+    );
+    let tz2 = s.var(
+        (local(bmax).f("z").load() - local(ray).f("origin").f("z").load())
+            * local(ray).f("inv_dir").f("z").load(),
+    );
     let t_min_z = s.var(call!("min", local(tz1).load(), local(tz2).load()));
     let t_max_z = s.var(call!("max", local(tz1).load(), local(tz2).load()));
-    let t_min = s.var(call!("max", call!("max", local(t_min_x).load(), local(t_min_y).load()), local(t_min_z).load()));
-    let t_far = s.var(call!("min", call!("min", local(t_max_x).load(), local(t_max_y).load()), local(t_max_z).load()));
+    let t_min = s.var(call!(
+        "max",
+        call!("max", local(t_min_x).load(), local(t_min_y).load()),
+        local(t_min_z).load()
+    ));
+    let t_far = s.var(call!(
+        "min",
+        call!("min", local(t_max_x).load(), local(t_max_y).load()),
+        local(t_max_z).load()
+    ));
     let result = s.mut_((-1.0f32).into());
     let cond = s.if_(
-        local(t_min).load().le(local(t_far).load())
+        local(t_min)
+            .load()
+            .le(local(t_far).load())
             .logical_and(local(t_far).load().ge(0.0f32.into()))
             .logical_and(local(t_min).load().lt(t_max)),
-        |_| local(result).store(call!("max", local(t_min).load(), 0.0f32.into()))
+        |_| local(result).store(call!("max", local(t_min).load(), 0.0f32.into())),
     );
     (result, cond)
 }
@@ -229,12 +263,12 @@ fn traverse(
 impl GpuBVHTraversal for BVHTree<GpuStorage> {
     fn traverse_gpu(
         &self,
-        rays_buffer: &wgpu::Buffer,
+        rays_buffer: &BufferWithType<Vec<Ray>>,
         num_rays: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> wgpu::Buffer {
-        use wgpu::*;
+    ) -> BufferWithType<RayResult> {
+        use wgpu::{BufferDescriptor, BufferUsages};
 
         let shader = Traverse {
             leaf_hit: default_leaf_hit,
@@ -244,91 +278,47 @@ impl GpuBVHTraversal for BVHTree<GpuStorage> {
             results_elem_count: num_rays as u64,
         };
 
-        let source = shader.load_source_code();
-        let resource_layouts = shader.resource_buffers_with_bind_group_layouts();
-
-        let bind_group_layouts: Vec<_> = resource_layouts
-            .iter()
-            .map(|l| {
-                device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: None,
-                    entries: &l.entries.iter().map(Into::into).collect::<Vec<_>>(),
-                })
-            })
-            .collect();
-
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &bind_group_layouts.iter().map(Some).collect::<Vec<_>>(),
-            immediate_size: 0,
-        });
-
-        let shader_module = device.create_shader_module(ShaderModuleDescriptor {
-            label: None,
-            source: ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
-        });
-
-        let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
-            label: None,
-            layout: Some(&pipeline_layout),
-            module: &shader_module,
-            entry_point: Some("traverse"),
-            compilation_options: Default::default(),
-            cache: None,
-        });
-
-        let mut bind_groups: Vec<DynamicBindGroup> = bind_group_layouts
-            .into_iter()
-            .map(|l| DynamicBindGroup::new(l))
-            .collect();
-
-        let results_buffer = device.create_buffer(&BufferDescriptor {
+        let results_buffer: wgpu::Buffer = device.create_buffer(&BufferDescriptor {
             label: None,
             size: (num_rays as u64 * std::mem::size_of::<RayResult>() as u64).max(4),
             usage: BufferUsages::STORAGE | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let num_rays_buffer = device.create_buffer(&BufferDescriptor {
+
+        let num_rays_buf: wgpu::Buffer = device.create_buffer(&BufferDescriptor {
             label: None,
             size: 4,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let root_idx_buffer = device.create_buffer(&BufferDescriptor {
+
+        let root_idx_buf: wgpu::Buffer = device.create_buffer(&BufferDescriptor {
             label: None,
             size: 4,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
-        queue.write_buffer(&num_rays_buffer, 0, bytemuck::bytes_of(&num_rays));
-        queue.write_buffer(&root_idx_buffer, 0, bytemuck::bytes_of(&(self.storage.root_idx as u32)));
+        BufferWithType::<u32>::from(num_rays_buf.clone()).write(queue, &num_rays);
+        BufferWithType::<u32>::from(root_idx_buf.clone())
+            .write(queue, &(self.storage.root_idx as u32));
 
-        let bind_group_resources = vec![
-            ResourceType::Buffer(rays_buffer.clone()),
-            ResourceType::Buffer(self.storage.nodes_buffer.clone()),
-            ResourceType::Buffer(results_buffer.clone()),
-            ResourceType::Buffer(num_rays_buffer),
-            ResourceType::Buffer(root_idx_buffer),
-        ];
+        let mut built_data = shader.build(device);
+        let mut shader = shader;
+        shader.dispatch(
+            TraverseArgs {
+                rays: rays_buffer.inner.clone().into(),
+                nodes: self.storage.nodes_buffer.inner.clone().into(),
+                results: results_buffer.clone().into(),
+                num_rays: num_rays_buf.into(),
+                root_idx: root_idx_buf.into(),
+            },
+            &mut built_data,
+            device,
+            queue,
+        );
 
-        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
-        {
-            let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
-                label: None,
-                timestamp_writes: None,
-            });
-            pass.set_bind_group(
-                0,
-                bind_groups[0].get_or_create_bind_group(&bind_group_resources, device),
-                &[],
-            );
-            pass.set_pipeline(&pipeline);
-            pass.dispatch_workgroups((num_rays + 255) / 256, 1, 1);
-        }
-        queue.submit(std::iter::once(encoder.finish()));
-
-        results_buffer
+        BufferWithType::<RayResult>::from(results_buffer)
     }
 }
 
@@ -368,50 +358,47 @@ fn test_lbvh_traverse_gpu() {
             [0.0, 1.0, 0.0, 0.0],
         ];
 
-        let model_verts_buffer =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(&verts),
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            });
+        let model_verts_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&verts),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
 
         let model_infos: Vec<[u32; 2]> = vec![[0, 3]];
 
-        let model_infos_buffer =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: None,
-                contents: bytemuck::cast_slice(&model_infos),
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            });
+        let model_infos_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&model_infos),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
 
         let mut builder = crate::collisions::algos::lbvh::gpu::custom::LBVHBuilder::new(
-            num_models,
-            num_verts,
-            &device,
+            num_models, num_verts, &device,
         );
-        let bvh_tree: BVHTree<GpuStorage> =
-            crate::collisions::algos::GpuCollisionAlgorithm::build(
-                &mut builder,
-                model_verts_buffer,
-                model_infos_buffer,
-                &device,
-                &queue,
-            );
+        let bvh_tree: BVHTree<GpuStorage> = crate::collisions::algos::GpuCollisionAlgorithm::build(
+            &mut builder,
+            model_verts_buffer.into(),
+            model_infos_buffer.into(),
+            &device,
+            &queue,
+        );
 
         let rays: Vec<Ray> = vec![Ray::new(
             glam::Vec3A::new(0.0, 0.0, 1.0),
             glam::Vec3A::new(0.0, 0.0, -1.0),
         )];
 
-        let rays_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: bytemuck::cast_slice(&rays),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
+        let rays_buffer: BufferWithType<Vec<Ray>> = device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: bytemuck::cast_slice(&rays),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            })
+            .into();
 
         let results_buffer = bvh_tree.traverse_gpu(&rays_buffer, 1, &device, &queue);
 
-        let results: Vec<RayResult> = read_buffer(&device, &queue, &results_buffer);
+        let results: Vec<RayResult> = read_buffer(&device, &queue, &results_buffer.inner);
 
         println!(
             "Ray 0: hit_node_idx={}, t_near={}",
