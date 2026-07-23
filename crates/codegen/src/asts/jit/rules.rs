@@ -15,37 +15,10 @@ use crate::{
 
 use super::pattern::{PatJitAST, RewriteRule};
 
-fn scalar_identity_bytes(dt: &DType, op: ReduceOp) -> Vec<u8> {
-    match (dt, op) {
-        (DType::Basic(BasicTy::F32), ReduceOp::Sum) => 0u32.to_le_bytes().to_vec(),
-        (DType::Basic(BasicTy::F32), ReduceOp::Prod) => 1.0f32.to_le_bytes().to_vec(),
-        (DType::Basic(BasicTy::F32), ReduceOp::Max) => f32::MIN.to_le_bytes().to_vec(),
-        (DType::Basic(BasicTy::Integer(IntegerTy::U32)), ReduceOp::Sum) => {
-            0u32.to_le_bytes().to_vec()
-        }
-        (DType::Basic(BasicTy::Integer(IntegerTy::U32)), ReduceOp::Prod) => {
-            1u32.to_le_bytes().to_vec()
-        }
-        (DType::Basic(BasicTy::Integer(IntegerTy::U32)), ReduceOp::Max) => {
-            0u32.to_le_bytes().to_vec()
-        }
-        (DType::Basic(BasicTy::Integer(IntegerTy::I32)), ReduceOp::Sum) => {
-            0i32.to_le_bytes().to_vec()
-        }
-        (DType::Basic(BasicTy::Integer(IntegerTy::I32)), ReduceOp::Prod) => {
-            1i32.to_le_bytes().to_vec()
-        }
-        (DType::Basic(BasicTy::Integer(IntegerTy::I32)), ReduceOp::Max) => {
-            i32::MIN.to_le_bytes().to_vec()
-        }
-        _ => panic!("no identity for ({:?}, {:?})", dt, op),
-    }
-}
-
 fn identity(operand: &JitAST, op: ReduceOp) -> LoweredAST {
     let result_dt = operand.dt().peel_array();
     let scalar_dt = result_dt.peel_all();
-    let elem_bytes = scalar_identity_bytes(&scalar_dt, op);
+    let elem_bytes = crate::asts::jit::scalar_identity_bytes(&scalar_dt, op);
     let count = result_dt.element_count();
     LoweredAST::Const(AstConst {
         dt: result_dt,

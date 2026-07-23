@@ -220,18 +220,6 @@ impl JitAST {
         }
     }
 
-    pub fn identity(&self, op: ReduceOp) -> LoweredAST {
-        let result_dt = self.dt().peel_array();
-        let scalar_dt = result_dt.peel_all();
-        let elem_bytes = scalar_identity_bytes(&scalar_dt, op);
-        let count = result_dt.element_count();
-        LoweredAST::Const(AstConst {
-            dt: result_dt,
-            data: (0..count)
-                .map(|_| ASTOrConst::Const(elem_bytes.clone()))
-                .collect(),
-        })
-    }
     pub fn dt(&self) -> DType {
         match self {
             JitAST::Var { dtype, .. } => dtype.peel_array(),
