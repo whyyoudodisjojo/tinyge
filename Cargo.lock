@@ -372,6 +372,8 @@ dependencies = [
  "darling",
  "glam",
  "inventory",
+ "memory",
+ "pollster",
  "tinyge-graphics",
  "wgpu",
 ]
@@ -1210,6 +1212,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "memory"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "image",
+ "lru",
+ "pollster",
+ "rayon",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1721,6 +1736,7 @@ name = "pentagon"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "memory",
  "tinyge-graphics",
  "wgpu",
  "winit",
@@ -2423,9 +2439,9 @@ name = "tinyge-graphics"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "codegen",
  "image",
  "lru",
+ "memory",
  "pollster",
  "rayon",
  "wgpu",

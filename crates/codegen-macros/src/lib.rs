@@ -491,11 +491,9 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                         ir.functions.push(
                             codegen::asts::lowered::Functions {
-                                args: {
-                                    let mut m = std::collections::HashMap::new();
-                                    #(m.insert(#arg_names.to_string(), <#arg_inner_types as codegen::asts::IntoWgslStruct>::dt());)*
-                                    m
-                                },
+                                args: vec![
+                                    #((#arg_names.to_string(), <#arg_inner_types as codegen::asts::IntoWgslStruct>::dt()),)*
+                                ],
                                 ret: None,
                                 ident: stringify!(#ident).to_string(),
                                 entrypoint_ty: Some(codegen::asts::lowered::EntrypointData::Compute { workgroup_sz: #workgroup_sz }),
@@ -546,4 +544,23 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         },
     }.into()
+}
+
+#[test]
+fn test_any_shit() {
+    #[repr(C)]
+    struct Test<T> {
+        x: u32,
+        _p: std::marker::PhantomData<T>,
+    }
+
+    let t: Test<u32> = Test {
+        x: 10,
+        _p: std::marker::PhantomData,
+    };
+
+    let ptr = &t as *const Test<u32> as *const Test<f32>;
+    let new: &Test<f32> = unsafe { &*ptr };
+
+    println!("{}", new.x);
 }

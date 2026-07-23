@@ -8,8 +8,11 @@ wgpu ={ workspace = true}
 inventory = { workspace = true }
 darling = "0.23.0"
 glam ={workspace = true}
+tinyge-graphics = {path = "../graphics"}
+bytemuck = { workspace = true }
 
 [dev-dependencies]
 codegen-macros = {path = "../codegen-macros"}
-tinyge-graphics = {path = "../graphics"}
 bytemuck ={workspace = true}
+memory = {path = "../memory"}
+pollster = {workspace = true}

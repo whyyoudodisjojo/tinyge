@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::asts::lowered::{LoweredASTOrConst, ScopePtr, VarRef, VarRefType};
+use crate::asts::lowered::{ASTOrConst, ScopePtr, VarRef, VarRefType};
 
 use super::LoweredAST;
 
@@ -197,6 +197,6 @@ macro_rules! swizzle {
     };
 }
 
-pub fn cast<T: crate::asts::IntoWgslStruct>(data: Vec<LoweredASTOrConst>) -> LoweredAST {
-    T::into_const(data)
+pub fn cast<T: crate::asts::IntoWgslStruct>(data: Vec<ASTOrConst<LoweredAST>>) -> LoweredAST {
+    LoweredAST::Const(T::into_const(data))
 }

@@ -1,11 +1,13 @@
 [package]
-name = "pentagon"
+name = "memory"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+pollster = {workspace = true}
+rayon = {workspace = true}
 bytemuck = {workspace = true}
-tinyge-graphics = {path = "../../crates/graphics"}
 wgpu = {workspace = true}
 winit = {workspace = true}
-memory = {path = "../../crates/memory"}
+image = {workspace = true}
+lru = "0.18.0"

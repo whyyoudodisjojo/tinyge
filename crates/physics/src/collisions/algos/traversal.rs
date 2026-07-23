@@ -159,10 +159,10 @@ fn traverse(
     scope.add_local(
         "stack".into(),
         true,
-        LoweredAST::Const {
+        LoweredAST::Const(codegen::asts::AstConst {
             dt: <[i32; 64] as codegen::asts::IntoWgslStruct>::dt(),
             data: vec![],
-        },
+        }),
     );
     scope.num_inherited_locals = 1;
 

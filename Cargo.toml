@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/codegen", "crates/codegen-macros","crates/graphics", "crates/physics", "examples/pentagon"]
+members = ["crates/codegen", "crates/codegen-macros","crates/graphics", "crates/memory", "crates/physics", "examples/pentagon"]
 version = "0.1.0"
 
 [workspace.dependencies]

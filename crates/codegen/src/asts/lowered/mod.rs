@@ -49,7 +49,7 @@ impl<T> SharedData<T> {
 }
 
 pub struct Functions {
-    pub args: HashMap<String, DType>,
+    pub args: Vec<(String, DType)>,
     pub ret: Option<BasicTyOrStructRef>,
     pub ident: String,
     pub entrypoint_ty: Option<EntrypointData>,
@@ -142,7 +142,7 @@ pub struct ShaderIR {
     pub functions: Vec<Functions>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinOp {
     Add,
     Mul,
@@ -163,7 +163,7 @@ pub enum BinOp {
     Le,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     BitwiseNot,
     LogicalNot,
@@ -230,9 +230,9 @@ impl<T, const N: usize> BindedBuffer<T, N> {
 pub struct ScopePtr(pub usize);
 
 #[derive(Clone, Debug)]
-pub enum LoweredASTOrConst {
-    LoweredAST(LoweredAST),
-    Const(Vec<u8>),
+pub enum ASTOrConst<T, C = Vec<u8>> {
+    AST(T),
+    Const(C),
 }
 
 #[derive(Clone, Debug)]
@@ -267,10 +267,7 @@ pub enum LoweredAST {
         cond: Box<Self>,
         body: ScopePtr,
     },
-    Const {
-        dt: DType,
-        data: Vec<LoweredASTOrConst>,
-    },
+    Const(crate::asts::AstConst<Self>),
     FunctionCall {
         ident: String,
         args: Vec<Box<Self>>,
@@ -321,7 +318,7 @@ impl LoweredAST {
                 ..
             } => DType::Basic(BasicTy::Bool),
             Self::UnaryOp { operand, .. } => operand.dt(ir, scope),
-            Self::Const { dt, .. } => dt.clone(),
+            Self::Const(c) => c.dt.clone(),
             Self::FunctionCall { args, .. } => args
                 .first()
                 .expect("function call with no args")

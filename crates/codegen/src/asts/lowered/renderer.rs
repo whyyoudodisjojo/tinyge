@@ -1,8 +1,8 @@
 use crate::{
     asts::lowered::{
-        Accessor, BinOp, CustomBufferBindingType, EntrypointData,
+        ASTOrConst, Accessor, BinOp, CustomBufferBindingType, EntrypointData,
         LoweredAST::{self},
-        LoweredASTOrConst, ShaderIR, Struct, UnaryOp, VarRefType,
+        ShaderIR, Struct, UnaryOp, VarRefType,
         scope::Scope,
     },
     dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy},
@@ -142,8 +142,14 @@ impl<'a> LoweredRenderer<'a> {
                 let ret_str = f
                     .ret
                     .as_ref()
-                    .map(|r| format!("->{}", self.render_basic_ty_or_struct_ref(r)))
+                    .map(|r| format!(" -> {}", self.render_basic_ty_or_struct_ref(r)))
                     .unwrap_or_default();
+                let body_str = if f.ret.is_some() {
+                    let tab = "\t".repeat(1);
+                    format!("{tab}return {};", body_str.trim())
+                } else {
+                    body_str
+                };
 
                 let entrypoint_headers_str = f
                     .entrypoint_ty
@@ -372,13 +378,31 @@ impl<'a> LoweredRenderer<'a> {
                     self.render_ast(curr_scope, val, 0)
                 )
             }
-            LoweredAST::Const { dt, data } => match dt {
+            LoweredAST::Const(c) => match &c.dt {
                 DType::Atomic(_) => panic!("Cannot have atomic constants"),
-                DType::Basic(b) => self.render_basic_ty_const(b, data, curr_scope, indent),
-                DType::Vector(v) => self.render_vec_const(v, data, curr_scope, indent),
+                DType::Basic(b) => match c.data.as_slice() {
+                    [ASTOrConst::AST(expr)] => {
+                        let target = self.render_basic_ty(b);
+                        format!(
+                            "bitcast<{target}>({})",
+                            self.render_ast(curr_scope, expr, 0)
+                        )
+                    }
+                    _ => self.render_basic_ty_const(b, &c.data, curr_scope, indent),
+                },
+                DType::Vector(v) => match c.data.as_slice() {
+                    [ASTOrConst::AST(expr)] => {
+                        let target = self.render_dtype(&c.dt);
+                        format!(
+                            "bitcast<{target}>({})",
+                            self.render_ast(curr_scope, expr, 0)
+                        )
+                    }
+                    _ => self.render_vec_const(v, &c.data, curr_scope, indent),
+                },
                 DType::StructRef { ident } => {
                     let s = self.ir.structs.get(ident).unwrap();
-                    self.render_struct_const(ident, s, data, curr_scope, indent)
+                    self.render_struct_const(ident, s, &c.data, curr_scope, indent)
                 }
             },
             LoweredAST::FunctionCall { ident, args } => format!(
@@ -412,7 +436,7 @@ impl<'a> LoweredRenderer<'a> {
     fn render_basic_ty_const(
         &self,
         b: &BasicTy,
-        data: &[LoweredASTOrConst],
+        data: &[ASTOrConst<LoweredAST>],
         curr_scope: &Scope,
         indent: usize,
     ) -> String {
@@ -420,7 +444,7 @@ impl<'a> LoweredRenderer<'a> {
             BasicTy::F32 => data
                 .iter()
                 .map(|d| match d {
-                    LoweredASTOrConst::Const(c) => {
+                    ASTOrConst::Const(c) => {
                         let val = f32::from_le_bytes([c[0], c[1], c[2], c[3]]);
                         if val.is_infinite() {
                             if val.is_sign_negative() {
@@ -432,14 +456,14 @@ impl<'a> LoweredRenderer<'a> {
                             format!("{}f", val)
                         }
                     }
-                    LoweredASTOrConst::LoweredAST(l) => self.render_ast(curr_scope, l, indent),
+                    ASTOrConst::AST(l) => self.render_ast(curr_scope, l, indent),
                 })
                 .next()
                 .unwrap(),
             BasicTy::Bool => data
                 .iter()
                 .map(|d| match d {
-                    LoweredASTOrConst::Const(c) => {
+                    ASTOrConst::Const(c) => {
                         let val = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
                         if val != 0 {
                             "true".to_string()
@@ -447,7 +471,7 @@ impl<'a> LoweredRenderer<'a> {
                             "false".to_string()
                         }
                     }
-                    LoweredASTOrConst::LoweredAST(l) => self.render_ast(curr_scope, l, indent),
+                    ASTOrConst::AST(l) => self.render_ast(curr_scope, l, indent),
                 })
                 .next()
                 .unwrap(),
@@ -455,22 +479,22 @@ impl<'a> LoweredRenderer<'a> {
                 IntegerTy::I32 => data
                     .iter()
                     .map(|d| match d {
-                        LoweredASTOrConst::Const(c) => {
+                        ASTOrConst::Const(c) => {
                             let val = i32::from_le_bytes([c[0], c[1], c[2], c[3]]);
                             format!("{}i", val)
                         }
-                        LoweredASTOrConst::LoweredAST(l) => self.render_ast(curr_scope, l, indent),
+                        ASTOrConst::AST(l) => self.render_ast(curr_scope, l, indent),
                     })
                     .next()
                     .unwrap(),
                 IntegerTy::U32 => data
                     .iter()
                     .map(|d| match d {
-                        LoweredASTOrConst::Const(c) => {
+                        ASTOrConst::Const(c) => {
                             let val = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
                             format!("{}u", val)
                         }
-                        LoweredASTOrConst::LoweredAST(l) => self.render_ast(curr_scope, l, indent),
+                        ASTOrConst::AST(l) => self.render_ast(curr_scope, l, indent),
                     })
                     .next()
                     .unwrap(),
@@ -482,7 +506,7 @@ impl<'a> LoweredRenderer<'a> {
         &self,
         ident: &str,
         s: &Struct,
-        data: &[LoweredASTOrConst],
+        data: &[ASTOrConst<LoweredAST>],
         curr_scope: &Scope,
         indent: usize,
     ) -> String {
@@ -576,7 +600,7 @@ impl<'a> LoweredRenderer<'a> {
     fn render_vec_const(
         &self,
         v: &VecTy,
-        data: &[LoweredASTOrConst],
+        data: &[ASTOrConst<LoweredAST>],
         curr_scope: &Scope,
         indent: usize,
     ) -> String {
@@ -639,13 +663,20 @@ impl<'a> LoweredRenderer<'a> {
             .skip(scope.num_inherited_locals)
             .map(|v| {
                 let kw = if v.mut_ { "var" } else { "let" };
-                format!(
-                    "{tab}{} {}: {} = {};\n",
-                    kw,
-                    v.name,
-                    self.render_dtype(&v.ast.dt(&self.ir, scope)),
-                    self.render_ast(scope, &v.ast, 0),
-                )
+                let dt = self.render_dtype(&v.ast.dt(&self.ir, scope));
+                let is_array_mut = v.mut_
+                    && matches!(v.ast.dt(&self.ir, scope), DType::Vector(VecTy::Array(_, _)));
+                if is_array_mut {
+                    format!("{tab}{} {}: {};\n", kw, v.name, dt)
+                } else {
+                    format!(
+                        "{tab}{} {}: {} = {};\n",
+                        kw,
+                        v.name,
+                        dt,
+                        self.render_ast(scope, &v.ast, 0),
+                    )
+                }
             })
             .collect();
         let body = self.render_ast(scope, scope.ast.as_ref().unwrap(), indent);

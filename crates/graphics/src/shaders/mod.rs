@@ -1,18 +1,16 @@
 pub mod buffers;
 pub mod descriptors;
 pub mod manager;
-pub mod texture;
 
 use std::sync::Arc;
 
-use wgpu::*;
-
-use crate::shaders::{
+use memory::{
     buffers::{BufferBuildSpec, DynamicBindGroup, ResourceGroupBuildSpec},
     descriptors::{
         MeshBufferSpecs, ResourceGroupLayout, ShaderPipelineDescriptor, VertexBufferSpec,
     },
 };
+use wgpu::*;
 
 pub struct ShaderBuiltData<'a> {
     pub pipeline: RenderPipeline,

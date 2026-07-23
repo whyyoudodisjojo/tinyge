@@ -1,18 +1,15 @@
 use std::num::NonZeroU64;
 
-use tinyge_graphics::shaders::{
-    Shader,
-    descriptors::{
-        ColorTarget, MeshBufferSpecs, ResourceBinding, ResourceGroupLayout,
-        ShaderPipelineDescriptor, VertexBufferSpec,
-    },
+use crate::shader::Vertex;
+use memory::descriptors::{
+    ColorTarget, MeshBufferSpecs, ResourceBinding, ResourceGroupLayout, ShaderPipelineDescriptor,
+    VertexBufferSpec,
 };
+use tinyge_graphics::shaders::Shader;
 use wgpu::{
     BlendComponent, BlendState, BufferUsages, ColorWrites, MultisampleState, PrimitiveState,
     ShaderStages, VertexAttribute, VertexBufferLayout, VertexFormat,
 };
-
-use crate::shader::Vertex;
 
 pub const VERTICES: &[Vertex] = &[
     Vertex {
@@ -82,7 +79,7 @@ impl<'a> Shader<'a> for Pentagon {
             entries: vec![ResourceBinding {
                 binding: 0,
                 visibility: ShaderStages::all(),
-                ty: tinyge_graphics::shaders::descriptors::ResourceBindingType::Buffer {
+                ty: memory::descriptors::ResourceBindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
                     min_binding_size: NonZeroU64::new(4),

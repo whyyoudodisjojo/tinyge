@@ -29,13 +29,17 @@ fn shared_shader(
     _sdata: SharedData<SharedElem>,
 ) -> Scope {
     let mut scope = Scope::new();
-    scope.ast = Some(_sdata.var_ref().store(LoweredAST::Const {
-        dt: <SharedElem as codegen::asts::IntoWgslStruct>::dt(),
-        data: vec![
-            codegen::asts::lowered::LoweredASTOrConst::Const(0f32.to_le_bytes().to_vec());
-            4
-        ],
-    }));
+    scope.ast = Some(
+        _sdata
+            .var_ref()
+            .store(LoweredAST::Const(codegen::asts::AstConst {
+                dt: <SharedElem as codegen::asts::IntoWgslStruct>::dt(),
+                data: vec![
+                    codegen::asts::lowered::ASTOrConst::Const(0f32.to_le_bytes().to_vec());
+                    4
+                ],
+            })),
+    );
     scope
 }
 
@@ -88,12 +92,6 @@ fn test_vec_atomic_dt() {
         <Vec<Atomic<i32>> as IntoWgslStruct>::dt(),
         DType::Vector(VecTy::Array(MaybeAtomic::Atomic(IntegerTy::I32), None)),
     );
-}
-
-#[repr(C)]
-#[derive(IntoWgslStruct, Clone, Copy)]
-struct WithAtomic {
-    counter: Atomic<u32>,
 }
 
 fn my_inject() -> LoweredAST {

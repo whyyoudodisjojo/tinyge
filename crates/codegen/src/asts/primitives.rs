@@ -1,7 +1,7 @@
 use glam::{Vec2, Vec3, Vec3A, Vec4};
 
 use crate::asts::IntoWgslStruct;
-use crate::asts::lowered::{LoweredAST, LoweredASTOrConst};
+use crate::asts::lowered::{ASTOrConst, LoweredAST};
 use crate::dt::{BasicTy, BasicTyOrStructRef, DType, IntegerTy, MaybeAtomic, VecTy};
 
 macro_rules! impl_primitive {
@@ -16,7 +16,7 @@ macro_rules! impl_primitive {
 
 macro_rules! impl_const_primitives {
     ($ty:ty, $val:ident => $dt:expr) => {
-        impl From<$ty> for LoweredASTOrConst {
+        impl From<$ty> for ASTOrConst<LoweredAST> {
             fn from($val: $ty) -> Self {
                 $dt
             }
@@ -24,16 +24,16 @@ macro_rules! impl_const_primitives {
 
         impl From<$ty> for LoweredAST {
             fn from(val: $ty) -> Self {
-                <$ty as IntoWgslStruct>::into_const(vec![val.into()])
+                LoweredAST::Const(<$ty as IntoWgslStruct>::into_const(vec![val.into()]))
             }
         }
     };
 }
 
-impl_const_primitives!(f32, val => LoweredASTOrConst::Const(val.to_le_bytes().to_vec()));
-impl_const_primitives!(i32, val => LoweredASTOrConst::Const(val.to_le_bytes().to_vec()));
-impl_const_primitives!(u32, val => LoweredASTOrConst::Const(val.to_le_bytes().to_vec()));
-impl_const_primitives!(bool, val => LoweredASTOrConst::Const(vec![if val { 1 } else { 0 }]));
+impl_const_primitives!(f32, val => ASTOrConst::Const(val.to_le_bytes().to_vec()));
+impl_const_primitives!(i32, val => ASTOrConst::Const(val.to_le_bytes().to_vec()));
+impl_const_primitives!(u32, val => ASTOrConst::Const(val.to_le_bytes().to_vec()));
+impl_const_primitives!(bool, val => ASTOrConst::Const(vec![if val { 1 } else { 0 }]));
 
 impl_primitive!(f32, DType::Basic(BasicTy::F32));
 impl_primitive!(bool, DType::Basic(BasicTy::Bool));
@@ -90,7 +90,7 @@ macro_rules! copy_impl_from {
                 <$ty2>::dt()
             }
 
-            fn into_const(data: Vec<LoweredASTOrConst>) -> super::lowered::LoweredAST {
+            fn into_const(data: Vec<ASTOrConst<LoweredAST>>) -> super::AstConst<LoweredAST> {
                 <$ty2>::into_const(data)
             }
         }

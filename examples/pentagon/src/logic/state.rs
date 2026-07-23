@@ -8,9 +8,10 @@ use tinyge_graphics::{
         RenderAble,
         single::{SinglePass, StateRenderSinglePass},
     },
-    shaders::buffers::{BufferWithType, Buffers, ResourceType},
     state::{StateRender, StateUpdates},
 };
+
+use memory::buffers::{BufferWithType, Buffers, ResourceType};
 use wgpu::{Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor};
 use winit::dpi::PhysicalSize;
 
