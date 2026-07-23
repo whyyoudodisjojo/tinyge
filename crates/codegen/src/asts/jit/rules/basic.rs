@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     asts::{
         ASTOrConst, AstConst,
-        jit::{JitAST, JitBinOp, JitUnaryOp, MovOp, ReduceOp, TernaryOp},
+        jit::{JitAST, JitBinOp, JitUnaryOp, ReduceOp},
         lowered::{
             BinOp, LoweredAST,
             scope::{Scope, local},
@@ -13,7 +13,9 @@ use crate::{
     dt::{BasicTy, DType, IntegerTy, VecTy},
 };
 
-use super::pattern::{PatJitAST, RewriteRule};
+use super::super::pattern::RewriteRule;
+
+use super::simplify;
 
 fn identity(operand: &JitAST, op: ReduceOp) -> LoweredAST {
     let result_dt = operand.dt().peel_array();
@@ -92,175 +94,7 @@ fn lower_where_array(
     LoweredAST::Group(vec![for_loop, LoweredAST::Load(local(result_id))])
 }
 
-fn lower_movement_flip(lowered: LoweredAST, dt: DType, n: u32, scope: &mut Scope) -> LoweredAST {
-    let result = scope.mut_(LoweredAST::Const(AstConst {
-        dt: dt.clone(),
-        data: vec![],
-    }));
-    let i = scope.var(LoweredAST::Const(AstConst {
-        dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-        data: vec![ASTOrConst::Const(0u32.to_le_bytes().to_vec())],
-    }));
-    let for_loop = scope.for_loop(
-        Some(local(i).store(LoweredAST::Const(AstConst {
-            dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-            data: vec![ASTOrConst::Const(0u32.to_le_bytes().to_vec())],
-        }))),
-        Some(local(i).load().lt(LoweredAST::Const(AstConst {
-            dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-            data: vec![ASTOrConst::Const(n.to_le_bytes().to_vec())],
-        }))),
-        Some(local(i).store(
-            local(i).load()
-                + LoweredAST::Const(AstConst {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: vec![ASTOrConst::Const(1u32.to_le_bytes().to_vec())],
-                }),
-        )),
-        |body| {
-            let src = LoweredAST::Const(AstConst {
-                dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                data: vec![ASTOrConst::Const((n - 1).to_le_bytes().to_vec())],
-            }) - local(i).load();
-            let val = match &lowered {
-                LoweredAST::Load(var) => LoweredAST::Load(var.clone().i(src)),
-                _ => panic!("cannot index into non-Load node"),
-            };
-            body.ast = Some(local(result).i(local(i).load()).store(val));
-        },
-    );
-    LoweredAST::Group(vec![for_loop, LoweredAST::Load(local(result))])
-}
-
-fn lower_movement_pad(
-    lowered: LoweredAST,
-    dt: DType,
-    amounts: &[(usize, usize)],
-    scope: &mut Scope,
-) -> LoweredAST {
-    let DType::Vector(VecTy::Array(_, Some(n))) = &dt else {
-        panic!("pad on non-array")
-    };
-    let n = *n;
-    let total_lo = amounts.iter().map(|(lo, _)| *lo).sum::<usize>() as u32;
-    let total_hi = amounts.iter().map(|(_, hi)| hi).sum::<usize>() as u32;
-    let out_n = n + total_lo + total_hi;
-    let result = scope.mut_(LoweredAST::Const(AstConst {
-        dt: dt.clone(),
-        data: vec![],
-    }));
-    let i = scope.var(LoweredAST::Const(AstConst {
-        dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-        data: vec![ASTOrConst::Const(0u32.to_le_bytes().to_vec())],
-    }));
-    let for_loop = scope.for_loop(
-        Some(local(i).store(LoweredAST::Const(AstConst {
-            dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-            data: vec![ASTOrConst::Const(0u32.to_le_bytes().to_vec())],
-        }))),
-        Some(local(i).load().lt(LoweredAST::Const(AstConst {
-            dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-            data: vec![ASTOrConst::Const(out_n.to_le_bytes().to_vec())],
-        }))),
-        Some(local(i).store(
-            local(i).load()
-                + LoweredAST::Const(AstConst {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: vec![ASTOrConst::Const(1u32.to_le_bytes().to_vec())],
-                }),
-        )),
-        |body| {
-            let ii = local(i).load();
-            let in_bounds = ii
-                .clone()
-                .ge(LoweredAST::Const(AstConst {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: vec![ASTOrConst::Const(total_lo.to_le_bytes().to_vec())],
-                }))
-                .logical_and(ii.clone().lt(LoweredAST::Const(AstConst {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: vec![ASTOrConst::Const((n + total_lo).to_le_bytes().to_vec())],
-                })));
-            let src_idx = ii.clone()
-                - LoweredAST::Const(AstConst {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: vec![ASTOrConst::Const(total_lo.to_le_bytes().to_vec())],
-                });
-            let val = match &lowered {
-                LoweredAST::Load(var) => LoweredAST::Load(var.clone().i(src_idx)),
-                _ => panic!("cannot index into non-Load node"),
-            };
-            let selected = LoweredAST::FunctionCall {
-                ident: "select".to_string(),
-                args: vec![
-                    Box::new(LoweredAST::Const(AstConst {
-                        dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                        data: vec![ASTOrConst::Const(0u32.to_le_bytes().to_vec())],
-                    })),
-                    Box::new(val),
-                    Box::new(in_bounds),
-                ],
-            };
-            body.ast = Some(local(result).i(ii).store(selected));
-        },
-    );
-    LoweredAST::Group(vec![for_loop, LoweredAST::Load(local(result))])
-}
-
-fn lower_movement_shrink(
-    lowered: LoweredAST,
-    dt: DType,
-    amounts: &[(usize, usize)],
-    scope: &mut Scope,
-) -> LoweredAST {
-    let DType::Vector(VecTy::Array(_, Some(n))) = &dt else {
-        panic!("shrink on non-array")
-    };
-    let n = *n;
-    let total_lo = amounts.iter().map(|(lo, _)| *lo).sum::<usize>() as u32;
-    let total_rem = amounts.iter().map(|(lo, hi)| lo + hi).sum::<usize>() as u32;
-    let out_n = n - total_rem;
-    let result = scope.mut_(LoweredAST::Const(AstConst {
-        dt: dt.clone(),
-        data: vec![],
-    }));
-    let i = scope.var(LoweredAST::Const(AstConst {
-        dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-        data: vec![ASTOrConst::Const(0u32.to_le_bytes().to_vec())],
-    }));
-    let for_loop = scope.for_loop(
-        Some(local(i).store(LoweredAST::Const(AstConst {
-            dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-            data: vec![ASTOrConst::Const(0u32.to_le_bytes().to_vec())],
-        }))),
-        Some(local(i).load().lt(LoweredAST::Const(AstConst {
-            dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-            data: vec![ASTOrConst::Const(out_n.to_le_bytes().to_vec())],
-        }))),
-        Some(local(i).store(
-            local(i).load()
-                + LoweredAST::Const(AstConst {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: vec![ASTOrConst::Const(1u32.to_le_bytes().to_vec())],
-                }),
-        )),
-        |body| {
-            let src = local(i).load()
-                + LoweredAST::Const(AstConst {
-                    dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
-                    data: vec![ASTOrConst::Const(total_lo.to_le_bytes().to_vec())],
-                });
-            let val = match &lowered {
-                LoweredAST::Load(var) => LoweredAST::Load(var.clone().i(src)),
-                _ => panic!("cannot index into non-Load node"),
-            };
-            body.ast = Some(local(result).i(local(i).load()).store(val));
-        },
-    );
-    LoweredAST::Group(vec![for_loop, LoweredAST::Load(local(result))])
-}
-
-fn lower_reduce(
+pub fn lower_reduce(
     operand: Box<JitAST>,
     op: ReduceOp,
     scope: &mut Scope,
@@ -623,101 +457,6 @@ pub fn ternary_mulacc(
     }
 }
 
-pub fn movement(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
-    scope: &mut Scope,
-    var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule],
-) -> LoweredAST {
-    let JitAST::Movement { operand, op } = matched else {
-        unreachable!()
-    };
-    let dt = operand.dt();
-    let lowered = JitAST::graph_rewrite(*operand, scope, rules, var_producer);
-    match (op, dt.clone()) {
-        (MovOp::Flip(_), DType::Vector(VecTy::Array(_, Some(n)))) => {
-            lower_movement_flip(lowered, dt, n, scope)
-        }
-        (MovOp::Flip(_), DType::Vector(VecTy::Vec2(_))) => {
-            let fields = ["x", "y"];
-            let args: Vec<_> = fields
-                .iter()
-                .rev()
-                .map(|f| {
-                    Box::new(match &lowered {
-                        LoweredAST::Load(var) => LoweredAST::Load(var.clone().f(f)),
-                        _ => panic!("cannot swizzle non-Load node"),
-                    })
-                })
-                .collect();
-            LoweredAST::FunctionCall {
-                ident: "vec2".into(),
-                args,
-            }
-        }
-        (MovOp::Flip(_), DType::Vector(VecTy::Vec3(_))) => {
-            let fields = ["x", "y", "z"];
-            let args: Vec<_> = fields
-                .iter()
-                .rev()
-                .map(|f| {
-                    Box::new(match &lowered {
-                        LoweredAST::Load(var) => LoweredAST::Load(var.clone().f(f)),
-                        _ => panic!("cannot swizzle non-Load node"),
-                    })
-                })
-                .collect();
-            LoweredAST::FunctionCall {
-                ident: "vec3".into(),
-                args,
-            }
-        }
-        (MovOp::Flip(_), DType::Vector(VecTy::Vec4(_))) => {
-            let fields = ["x", "y", "z", "w"];
-            let args: Vec<_> = fields
-                .iter()
-                .rev()
-                .map(|f| {
-                    Box::new(match &lowered {
-                        LoweredAST::Load(var) => LoweredAST::Load(var.clone().f(f)),
-                        _ => panic!("cannot swizzle non-Load node"),
-                    })
-                })
-                .collect();
-            LoweredAST::FunctionCall {
-                ident: "vec4".into(),
-                args,
-            }
-        }
-        (MovOp::Pad(amounts), DType::Vector(VecTy::Array(_, _))) => {
-            lower_movement_pad(lowered, dt, &amounts, scope)
-        }
-        (MovOp::Shrink(amounts), DType::Vector(VecTy::Array(_, _))) => {
-            lower_movement_shrink(lowered, dt, &amounts, scope)
-        }
-        _ => lowered,
-    }
-}
-
-pub fn reduce(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
-    scope: &mut Scope,
-    var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule],
-) -> LoweredAST {
-    let JitAST::Reduce {
-        ref operand,
-        axis: _,
-        op,
-    } = matched
-    else {
-        unreachable!()
-    };
-    lower_reduce(operand.clone(), op, scope, var_producer, rules)
-}
-
 pub fn unaryop_basic(
     matched: JitAST,
     _captured: HashMap<String, JitAST>,
@@ -750,8 +489,15 @@ pub fn binop_basic(
         JitAST::BinOp { lhs, rhs, op } => (lhs, rhs, op),
         _ => unreachable!(),
     };
-    let l = JitAST::graph_rewrite(*lhs, scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(*rhs, scope, rules, var_producer);
+
+    let lhs_simple = simplify::simplify_node(*lhs);
+    let rhs_simple = simplify::simplify_node(*rhs);
+    if let Some(simple) = simplify::simplify_binop(lhs_simple.clone(), rhs_simple.clone(), op) {
+        return JitAST::graph_rewrite(simple, scope, rules, var_producer);
+    }
+
+    let l = JitAST::graph_rewrite(lhs_simple, scope, rules, var_producer);
+    let r = JitAST::graph_rewrite(rhs_simple, scope, rules, var_producer);
     match op {
         JitBinOp::Basic(basic) => LoweredAST::BinaryOp {
             lhs: Box::new(l),
@@ -760,6 +506,24 @@ pub fn binop_basic(
         },
         _ => panic!("binop_basic called on non-basic BinOp"),
     }
+}
+
+pub fn reduce(
+    matched: JitAST,
+    _captured: HashMap<String, JitAST>,
+    scope: &mut Scope,
+    var_producer: &mut dyn FnMut() -> LoweredAST,
+    rules: &[&RewriteRule],
+) -> LoweredAST {
+    let JitAST::Reduce {
+        ref operand,
+        axis: _,
+        op,
+    } = matched
+    else {
+        unreachable!()
+    };
+    lower_reduce(operand.clone(), op, scope, var_producer, rules)
 }
 
 pub fn all_reduce(
@@ -773,185 +537,4 @@ pub fn all_reduce(
         unreachable!()
     };
     lower_reduce(operand.clone(), op, scope, var_producer, rules)
-}
-
-pub fn builtin_rules() -> Vec<RewriteRule> {
-    use PatJitAST::*;
-    vec![
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: Some(JitBinOp::Cdiv),
-            },
-            transform: cdiv,
-        },
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: Some(JitBinOp::Max),
-            },
-            transform: binop_max,
-        },
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: Some(JitBinOp::Cmod),
-            },
-            transform: cmod,
-        },
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: Some(JitBinOp::Fdiv),
-            },
-            transform: fdiv,
-        },
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: Some(JitBinOp::Pow),
-            },
-            transform: pow,
-        },
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: Some(JitBinOp::Floordiv),
-            },
-            transform: floordiv,
-        },
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: Some(JitBinOp::Floormod),
-            },
-            transform: floormod,
-        },
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: Some(JitBinOp::Threefry),
-            },
-            transform: threefry,
-        },
-        RewriteRule {
-            pat: UnaryOp {
-                operand: Box::new(Var("x".into())),
-                op: Some(JitUnaryOp::Exp2),
-            },
-            transform: exp2,
-        },
-        RewriteRule {
-            pat: UnaryOp {
-                operand: Box::new(Var("x".into())),
-                op: Some(JitUnaryOp::Log2),
-            },
-            transform: log2,
-        },
-        RewriteRule {
-            pat: UnaryOp {
-                operand: Box::new(Var("x".into())),
-                op: Some(JitUnaryOp::Sin),
-            },
-            transform: sin,
-        },
-        RewriteRule {
-            pat: UnaryOp {
-                operand: Box::new(Var("x".into())),
-                op: Some(JitUnaryOp::Sqrt),
-            },
-            transform: sqrt,
-        },
-        RewriteRule {
-            pat: UnaryOp {
-                operand: Box::new(Var("x".into())),
-                op: Some(JitUnaryOp::Reciprocal),
-            },
-            transform: reciprocal,
-        },
-        RewriteRule {
-            pat: UnaryOp {
-                operand: Box::new(Var("x".into())),
-                op: Some(JitUnaryOp::Trunc),
-            },
-            transform: trunc,
-        },
-        RewriteRule {
-            pat: UnaryOp {
-                operand: Box::new(Var("x".into())),
-                op: Some(JitUnaryOp::Bitcast),
-            },
-            transform: bitcast,
-        },
-        RewriteRule {
-            pat: Cast {
-                operand: Box::new(Var("x".into())),
-                dt: None,
-            },
-            transform: cast,
-        },
-        RewriteRule {
-            pat: Ternary {
-                a: Box::new(Var("a".into())),
-                b: Box::new(Var("b".into())),
-                c: Box::new(Var("c".into())),
-                op: Some(TernaryOp::Where),
-            },
-            transform: ternary_where,
-        },
-        RewriteRule {
-            pat: Ternary {
-                a: Box::new(Var("a".into())),
-                b: Box::new(Var("b".into())),
-                c: Box::new(Var("c".into())),
-                op: Some(TernaryOp::Mulacc),
-            },
-            transform: ternary_mulacc,
-        },
-        RewriteRule {
-            pat: Movement {
-                operand: Box::new(Var("x".into())),
-                op: None,
-            },
-            transform: movement,
-        },
-        RewriteRule {
-            pat: BinOp {
-                lhs: Box::new(Var("lhs".into())),
-                rhs: Box::new(Var("rhs".into())),
-                op: None,
-            },
-            transform: binop_basic,
-        },
-        RewriteRule {
-            pat: UnaryOp {
-                operand: Box::new(Var("x".into())),
-                op: None,
-            },
-            transform: unaryop_basic,
-        },
-        RewriteRule {
-            pat: Reduce {
-                operand: Box::new(Var("x".into())),
-                axis: 0,
-                op: None,
-            },
-            transform: reduce,
-        },
-        RewriteRule {
-            pat: AllReduce {
-                operand: Box::new(Var("x".into())),
-                op: None,
-            },
-            transform: all_reduce,
-        },
-    ]
 }

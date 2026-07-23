@@ -173,30 +173,6 @@ macro_rules! group {
     };
 }
 
-#[macro_export]
-macro_rules! swizzle {
-    ($base:expr, $($f:ident),+ $(,)?) => {
-        vec![$(
-            $crate::asts::lowered::LoweredASTOrConst::LoweredAST(
-                $base.f(stringify!($f)).load()
-            ),
-        )+]
-    };
-    ($base:expr, $($f:ident),+ ; $($extra:expr),* $(,)?) => {
-        {
-            let mut v = vec![$(
-                $crate::asts::lowered::LoweredASTOrConst::LoweredAST(
-                    $base.f(stringify!($f)).load()
-                ),
-            )+];
-            $(
-                v.push($crate::asts::lowered::LoweredASTOrConst::from($extra));
-            )*
-            v
-        }
-    };
-}
-
 pub fn cast<T: crate::asts::IntoWgslStruct>(data: Vec<ASTOrConst<LoweredAST>>) -> LoweredAST {
     LoweredAST::Const(T::into_const(data))
 }

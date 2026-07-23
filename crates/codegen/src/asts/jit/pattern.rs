@@ -40,7 +40,7 @@ pub enum PatJitAST {
     },
     Reduce {
         operand: Box<Self>,
-        axis: usize,
+        axis: Option<usize>,
         op: Option<ReduceOp>,
     },
     AllReduce {
@@ -175,8 +175,10 @@ impl PatJitAST {
                     op: a_op,
                 },
             ) => {
-                if p_axis != a_axis {
-                    return false;
+                if let Some(required_axis) = p_axis {
+                    if required_axis != a_axis {
+                        return false;
+                    }
                 }
                 if let Some(required_op) = p_op {
                     if required_op != a_op {
@@ -218,6 +220,21 @@ pub struct RewriteRule {
     ) -> LoweredAST,
 }
 
+impl RewriteRule {
+    pub fn new(
+        pat: PatJitAST,
+        transform: fn(
+            JitAST,
+            HashMap<String, JitAST>,
+            &mut Scope,
+            &mut dyn FnMut() -> LoweredAST,
+            &[&RewriteRule],
+        ) -> LoweredAST,
+    ) -> Self {
+        Self { pat, transform }
+    }
+}
+
 impl JitAST {
     pub fn graph_rewrite(
         ast: Self,
@@ -246,7 +263,7 @@ impl JitAST {
                             ASTOrConst::Const(c) => ASTOrConst::Const(c),
                         })
                         .collect(),
-                })
+                });
             }
             _ => panic!(
                 "node must be handled by a rewrite rule: {:?}",

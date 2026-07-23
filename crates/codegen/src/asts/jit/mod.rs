@@ -6,7 +6,7 @@ pub mod runner;
 use wgpu::Buffer;
 
 use crate::asts::AstConst;
-use crate::asts::lowered::{ASTOrConst, BinOp, LoweredAST, UnaryOp, scope::Scope};
+use crate::asts::lowered::{BinOp, LoweredAST, UnaryOp, scope::Scope};
 use crate::dt::{BasicTy, DType, IntegerTy, VecTy};
 
 use self::pattern::RewriteRule;
@@ -256,6 +256,16 @@ impl JitAST {
             JitAST::Reduce { operand, .. } => operand.dt().peel_all(),
             JitAST::AllReduce { operand, .. } => operand.dt().peel_all(),
         }
+    }
+
+    pub fn inner_movement_chain(&self) -> (&JitAST, Vec<&MovOp>) {
+        let mut ops = vec![];
+        let mut current = self;
+        while let JitAST::Movement { operand, op } = current {
+            ops.push(op);
+            current = operand.as_ref();
+        }
+        (current, ops)
     }
 
     pub fn lower_with_rewrite<F>(
