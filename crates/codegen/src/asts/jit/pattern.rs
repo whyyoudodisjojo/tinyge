@@ -232,41 +232,21 @@ impl JitAST {
             }
         }
         match ast {
-            JitAST::Var { .. } => on_var(),
-            JitAST::Const(c) => LoweredAST::Const(AstConst {
-                dt: c.dt,
-                data: c
-                    .data
-                    .into_iter()
-                    .map(|d| match d {
-                        ASTOrConst::AST(a) => {
-                            ASTOrConst::AST(Self::graph_rewrite(a, scope, rules, on_var))
-                        }
-                        ASTOrConst::Const(c) => ASTOrConst::Const(c),
-                    })
-                    .collect(),
-            }),
-            JitAST::BinOp { lhs, rhs, op } => {
-                let l = Self::graph_rewrite(*lhs, scope, rules, on_var);
-                let r = Self::graph_rewrite(*rhs, scope, rules, on_var);
-                match op {
-                    JitBinOp::Basic(basic) => LoweredAST::BinaryOp {
-                        lhs: Box::new(l),
-                        rhs: Box::new(r),
-                        op: basic,
-                    },
-                    _ => panic!("non-basic JitBinOp must be handled by a rewrite rule"),
-                }
-            }
-            JitAST::UnaryOp { operand, op } => {
-                let o = Self::graph_rewrite(*operand, scope, rules, on_var);
-                match op {
-                    JitUnaryOp::Basic(basic) => LoweredAST::UnaryOp {
-                        operand: Box::new(o),
-                        op: basic,
-                    },
-                    _ => panic!("non-basic JitUnaryOp must be handled by a rewrite rule"),
-                }
+            JitAST::Var { .. } => return on_var(),
+            JitAST::Const(c) => {
+                return LoweredAST::Const(AstConst {
+                    dt: c.dt,
+                    data: c
+                        .data
+                        .into_iter()
+                        .map(|d| match d {
+                            ASTOrConst::AST(a) => {
+                                ASTOrConst::AST(Self::graph_rewrite(a, scope, rules, on_var))
+                            }
+                            ASTOrConst::Const(c) => ASTOrConst::Const(c),
+                        })
+                        .collect(),
+                })
             }
             _ => panic!(
                 "node must be handled by a rewrite rule: {:?}",

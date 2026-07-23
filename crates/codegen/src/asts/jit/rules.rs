@@ -718,6 +718,50 @@ pub fn reduce(
     lower_reduce(operand.clone(), op, scope, var_producer, rules)
 }
 
+pub fn unaryop_basic(
+    matched: JitAST,
+    _captured: HashMap<String, JitAST>,
+    scope: &mut Scope,
+    var_producer: &mut dyn FnMut() -> LoweredAST,
+    rules: &[&RewriteRule],
+) -> LoweredAST {
+    let (operand, op) = match matched {
+        JitAST::UnaryOp { operand, op } => (operand, op),
+        _ => unreachable!(),
+    };
+    let o = JitAST::graph_rewrite(*operand, scope, rules, var_producer);
+    match op {
+        JitUnaryOp::Basic(basic) => LoweredAST::UnaryOp {
+            operand: Box::new(o),
+            op: basic,
+        },
+        _ => panic!("unaryop_basic called on non-basic UnaryOp"),
+    }
+}
+
+pub fn binop_basic(
+    matched: JitAST,
+    _captured: HashMap<String, JitAST>,
+    scope: &mut Scope,
+    var_producer: &mut dyn FnMut() -> LoweredAST,
+    rules: &[&RewriteRule],
+) -> LoweredAST {
+    let (lhs, rhs, op) = match matched {
+        JitAST::BinOp { lhs, rhs, op } => (lhs, rhs, op),
+        _ => unreachable!(),
+    };
+    let l = JitAST::graph_rewrite(*lhs, scope, rules, var_producer);
+    let r = JitAST::graph_rewrite(*rhs, scope, rules, var_producer);
+    match op {
+        JitBinOp::Basic(basic) => LoweredAST::BinaryOp {
+            lhs: Box::new(l),
+            rhs: Box::new(r),
+            op: basic,
+        },
+        _ => panic!("binop_basic called on non-basic BinOp"),
+    }
+}
+
 pub fn all_reduce(
     matched: JitAST,
     _captured: HashMap<String, JitAST>,
@@ -878,6 +922,21 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
                 op: None,
             },
             transform: movement,
+        },
+        RewriteRule {
+            pat: BinOp {
+                lhs: Box::new(Var("lhs".into())),
+                rhs: Box::new(Var("rhs".into())),
+                op: None,
+            },
+            transform: binop_basic,
+        },
+        RewriteRule {
+            pat: UnaryOp {
+                operand: Box::new(Var("x".into())),
+                op: None,
+            },
+            transform: unaryop_basic,
         },
         RewriteRule {
             pat: Reduce {
