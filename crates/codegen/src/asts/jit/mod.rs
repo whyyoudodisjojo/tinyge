@@ -3,12 +3,17 @@ pub mod pattern;
 pub mod rules;
 pub mod runner;
 
+pub use self::ops::{Flatten2D, Flatten3D, Flatten4D};
+
 use memory::buffers::BufferWithType;
-use wgpu::Buffer;
 
 use crate::asts::lowered::{BinOp, LoweredAST, UnaryOp, scope::Scope};
 use crate::asts::{AstConst, IntoWgslStruct};
 use crate::dt::{BasicTy, DType, IntegerTy, VecTy};
+
+pub trait ReduceTarget {}
+impl<T: IntoWgslStruct, const N: usize> ReduceTarget for [T; N] {}
+impl<T: IntoWgslStruct> ReduceTarget for Vec<T> {}
 
 use self::pattern::RewriteRule;
 
@@ -61,44 +66,44 @@ pub enum TernaryOp {
 }
 
 #[derive(Clone)]
-pub enum JitAST {
+pub enum JitAST<T>{
     Var {
-        buffer: Buffer,
+        buffer: BufferWithType<T>,
         dtype: DType,
     },
 
-    Const(AstConst<JitAST>),
+    Const(AstConst<Self>),
 
     BinOp {
-        lhs: Box<JitAST>,
-        rhs: Box<JitAST>,
+        lhs: Box<Self>,
+        rhs: Box<Self>,
         op: JitBinOp,
     },
     UnaryOp {
-        operand: Box<JitAST>,
+        operand: Box<Self>,
         op: JitUnaryOp,
     },
     Cast {
-        operand: Box<JitAST>,
+        operand: Box<Self>,
         dt: DType,
     },
     Ternary {
-        a: Box<JitAST>,
-        b: Box<JitAST>,
-        c: Box<JitAST>,
+        a: Box<Self>,
+        b: Box<Self>,
+        c: Box<Self>,
         op: TernaryOp,
     },
     Movement {
-        operand: Box<JitAST>,
+        operand: Box<Self>,
         op: MovOp,
     },
     Reduce {
-        operand: Box<JitAST>,
+        operand: Box<Self>,
         axis: usize,
         op: ReduceOp,
     },
     AllReduce {
-        operand: Box<JitAST>,
+        operand: Box<Self>,
         op: ReduceOp,
     },
 }
@@ -130,8 +135,10 @@ pub(crate) fn scalar_identity_bytes(dt: &DType, op: ReduceOp) -> Vec<u8> {
     }
 }
 
-impl JitAST {
-    pub fn new<T>(buf: Buffer) -> Self
+impl<T> JitAST<T> 
+    where T: Clone
+{
+    pub fn new(buf: BufferWithType<T>) -> Self
     where
         T: IntoWgslStruct,
     {
@@ -141,7 +148,7 @@ impl JitAST {
         }
     }
 
-    pub fn collect_var_buffers<'a>(&'a self, out: &mut Vec<&'a Buffer>) {
+    pub fn collect_var_buffers<'a>(&'a self, out: &mut Vec<&'a BufferWithType<T>>) {
         match self {
             JitAST::Var { buffer, .. } => out.push(buffer),
             JitAST::Const(_) => {}
@@ -269,7 +276,7 @@ impl JitAST {
         }
     }
 
-    pub fn inner_movement_chain(&self) -> (&JitAST, Vec<&MovOp>) {
+    pub fn inner_movement_chain(&self) -> (&JitAST<T>, Vec<&MovOp>) {
         let mut ops = vec![];
         let mut current = self;
         while let JitAST::Movement { operand, op } = current {
@@ -283,25 +290,13 @@ impl JitAST {
         ast: Self,
         scope: &mut Scope,
         var_producer: &mut F,
-        user_rules: &[RewriteRule],
+        user_rules: &[RewriteRule<T>],
     ) -> LoweredAST
     where
         F: FnMut() -> LoweredAST,
     {
-        let builtins = rules::builtin_rules();
+        let builtins = rules::builtin_rules::<T>();
         let all_rules: Vec<_> = builtins.iter().chain(user_rules.iter()).collect();
         Self::graph_rewrite(ast, scope, &all_rules, var_producer)
-    }
-}
-
-impl<T> From<BufferWithType<T>> for JitAST
-where
-    T: IntoWgslStruct,
-{
-    fn from(value: BufferWithType<T>) -> Self {
-        JitAST::Var {
-            buffer: value.inner,
-            dtype: T::dt(),
-        }
     }
 }

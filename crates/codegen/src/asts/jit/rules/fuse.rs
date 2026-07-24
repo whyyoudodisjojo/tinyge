@@ -17,13 +17,15 @@ use super::super::{
     rules::{basic, movement},
 };
 
-pub fn fuse_reduce(
-    matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn fuse_reduce<T>(
+    matched: JitAST<T>,
+    captured: HashMap<String, JitAST<T>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule],
-) -> LoweredAST {
+    rules: &[&RewriteRule<T>],
+) -> LoweredAST 
+    where T: Clone
+{
     let x = captured.get("x").unwrap().clone();
 
     let outer_op = match &matched {
@@ -66,7 +68,7 @@ pub fn fuse_reduce(
     };
 
     let (base, chain) = x.inner_movement_chain();
-    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&x as &JitAST), |node| {
+    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&x as &JitAST<T>), |node| {
         if let JitAST::Movement { operand, .. } = node {
             Some(operand.as_ref())
         } else {
@@ -204,13 +206,15 @@ pub fn fuse_reduce(
     LoweredAST::Group(vec![outer_loop, LoweredAST::Load(local(outer_acc))])
 }
 
-pub fn fuse_cast_cast(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn fuse_cast_cast<T>(
+    matched: JitAST<T>,
+    _captured: HashMap<String, JitAST<T>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule],
-) -> LoweredAST {
+    rules: &[&RewriteRule<T>],
+) -> LoweredAST 
+    where T: Clone
+{
     let JitAST::Cast {
         operand,
         dt: outer_dt,

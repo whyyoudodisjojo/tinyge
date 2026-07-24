@@ -7,7 +7,7 @@ use crate::{
     dt::{BasicTy, DType},
 };
 
-pub fn simplify_binop(lhs: JitAST, rhs: JitAST, op: JitBinOp) -> Option<JitAST> {
+pub fn simplify_binop<T: Clone>(lhs: JitAST<T>, rhs: JitAST<T>, op: JitBinOp) -> Option<JitAST<T>> {
     let basic = match op {
         JitBinOp::Basic(b) => b,
         _ => return None,
@@ -50,7 +50,7 @@ pub fn simplify_binop(lhs: JitAST, rhs: JitAST, op: JitBinOp) -> Option<JitAST> 
     }
 }
 
-pub fn simplify_node(ast: JitAST) -> JitAST {
+pub fn simplify_node<T: Clone>(ast: JitAST<T>) -> JitAST<T> {
     match ast {
         JitAST::BinOp { lhs, rhs, op } => {
             let l = simplify_node(*lhs);

@@ -29,13 +29,13 @@ macro_rules! impl_const_primitives {
             }
         }
 
-        impl From<$ty> for ASTOrConst<JitAST> {
+        impl<T> From<$ty> for ASTOrConst<JitAST<T>> {
             fn from($val: $ty) -> Self {
                 $dt
             }
         }
 
-        impl From<$ty> for JitAST {
+        impl<T> From<$ty> for JitAST<T> {
             fn from(val: $ty) -> Self {
                 JitAST::Const(AstConst {
                     dt: <$ty as IntoWgslStruct>::dt(),

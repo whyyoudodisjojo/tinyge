@@ -50,7 +50,9 @@ pub enum PatJitAST {
 }
 
 impl PatJitAST {
-    pub fn matches(&self, ast: &JitAST, ctx: &mut HashMap<String, JitAST>) -> bool {
+    pub fn matches<T>(&self, ast: &JitAST<T>, ctx: &mut HashMap<String, JitAST<T>>) -> bool 
+        where T: Clone
+    {
         match (self, ast) {
             (PatJitAST::Var(n), _) => {
                 ctx.insert(n.clone(), ast.clone());
@@ -209,37 +211,39 @@ impl PatJitAST {
     }
 }
 
-pub struct RewriteRule {
+pub struct RewriteRule<T>{
     pub pat: PatJitAST,
     pub transform: fn(
-        JitAST,
-        HashMap<String, JitAST>,
+        JitAST<T>,
+        HashMap<String, JitAST<T>>,
         &mut Scope,
         &mut dyn FnMut() -> LoweredAST,
-        &[&RewriteRule],
+        &[&RewriteRule<T>],
     ) -> LoweredAST,
 }
 
-impl RewriteRule {
+impl<T> RewriteRule<T> {
     pub fn new(
         pat: PatJitAST,
         transform: fn(
-            JitAST,
-            HashMap<String, JitAST>,
+            JitAST<T>,
+            HashMap<String, JitAST<T>>,
             &mut Scope,
             &mut dyn FnMut() -> LoweredAST,
-            &[&RewriteRule],
+            &[&RewriteRule<T>],
         ) -> LoweredAST,
     ) -> Self {
         Self { pat, transform }
     }
 }
 
-impl JitAST {
+impl<T> JitAST<T> 
+    where T: Clone
+{
     pub fn graph_rewrite(
         ast: Self,
         scope: &mut Scope,
-        rules: &[&RewriteRule],
+        rules: &[&RewriteRule<T>],
         on_var: &mut dyn FnMut() -> LoweredAST,
     ) -> LoweredAST {
         for rule in rules {

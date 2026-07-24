@@ -7,7 +7,9 @@ use crate::asts::jit::{JitBinOp, JitUnaryOp, TernaryOp};
 
 use super::pattern::{PatJitAST, RewriteRule};
 
-pub fn builtin_rules() -> Vec<RewriteRule> {
+pub fn builtin_rules<T>() -> Vec<RewriteRule<T>> 
+    where T: Clone
+{
     use PatJitAST::*;
     vec![
         RewriteRule::new(

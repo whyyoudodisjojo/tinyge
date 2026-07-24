@@ -27,11 +27,11 @@ pub fn make_input_buffer(device: &wgpu::Device, queue: &wgpu::Queue, data: &[f32
     b
 }
 
-pub fn run_ast(ast: JitAST, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Vec<f32> {
+pub fn run_ast<T: Clone>(ast: JitAST<T>, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Vec<f32> {
     let JitAST::Var { buffer, .. } = ast.realize(device, queue, n) else {
         panic!("expected Var");
     };
-    read_buffer(device, queue, &buffer)
+    read_buffer(device, queue, &buffer.inner)
 }
 
 pub fn read_buffer(device: &wgpu::Device, queue: &wgpu::Queue, buffer: &wgpu::Buffer) -> Vec<f32> {

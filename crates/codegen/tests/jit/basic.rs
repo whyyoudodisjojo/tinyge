@@ -1,5 +1,6 @@
 use super::helpers::*;
 use codegen::asts::jit::JitAST;
+use memory::buffers::BufferWithType;
 
 #[test]
 fn elementwise_add() {
@@ -10,7 +11,7 @@ fn elementwise_add() {
     let a_buf = make_input_buffer(&device, &queue, &a_data);
     let b_buf = make_input_buffer(&device, &queue, &b_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf) + JitAST::new::<[f32; 64]>(b_buf);
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)) + JitAST::new(BufferWithType::<[f32; 64]>::from(b_buf));
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -27,7 +28,7 @@ fn elementwise_sub() {
     let a_buf = make_input_buffer(&device, &queue, &a_data);
     let b_buf = make_input_buffer(&device, &queue, &b_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf) - JitAST::new::<[f32; 64]>(b_buf);
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)) - JitAST::new(BufferWithType::<[f32; 64]>::from(b_buf));
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -44,7 +45,7 @@ fn elementwise_mul() {
     let a_buf = make_input_buffer(&device, &queue, &a_data);
     let b_buf = make_input_buffer(&device, &queue, &b_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf) * JitAST::new::<[f32; 64]>(b_buf);
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)) * JitAST::new(BufferWithType::<[f32; 64]>::from(b_buf));
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -61,7 +62,7 @@ fn elementwise_div() {
     let a_buf = make_input_buffer(&device, &queue, &a_data);
     let b_buf = make_input_buffer(&device, &queue, &b_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf) / JitAST::new::<[f32; 64]>(b_buf);
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)) / JitAST::new(BufferWithType::<[f32; 64]>::from(b_buf));
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -78,7 +79,7 @@ fn max() {
     let a_buf = make_input_buffer(&device, &queue, &a_data);
     let b_buf = make_input_buffer(&device, &queue, &b_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf).max(JitAST::new::<[f32; 64]>(b_buf));
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)).max(JitAST::new(BufferWithType::<[f32; 64]>::from(b_buf)));
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -95,7 +96,7 @@ fn pow() {
     let a_buf = make_input_buffer(&device, &queue, &a_data);
     let b_buf = make_input_buffer(&device, &queue, &b_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf).pow(JitAST::new::<[f32; 64]>(b_buf));
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)).pow(JitAST::new(BufferWithType::<[f32; 64]>::from(b_buf)));
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -110,7 +111,7 @@ fn exp2() {
     let a_data: Vec<f32> = (0..n).map(|i| ((i as i32 % 10) - 5) as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf).exp2();
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)).exp2();
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -127,7 +128,7 @@ fn sin() {
         .collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf).sin();
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)).sin();
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -142,7 +143,7 @@ fn sqrt() {
     let a_data: Vec<f32> = (0..n).map(|i| (i + 1) as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf).sqrt();
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)).sqrt();
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -157,7 +158,7 @@ fn reciprocal() {
     let a_data: Vec<f32> = (0..n).map(|i| (i + 1) as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf).reciprocal();
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)).reciprocal();
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -172,7 +173,7 @@ fn neg() {
     let a_data: Vec<f32> = (0..n).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = -JitAST::new::<[f32; 64]>(a_buf);
+    let ast = -JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf));
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {
@@ -192,9 +193,9 @@ fn where_() {
     let c_buf = make_input_buffer(&device, &queue, &c_data);
 
     let ast = JitAST::where_(
-        JitAST::new::<[f32; 64]>(a_buf).eq(0.0f32.into()),
-        JitAST::new::<[f32; 64]>(b_buf),
-        JitAST::new::<[f32; 64]>(c_buf),
+        JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)).eq(0.0f32.into()),
+        JitAST::new(BufferWithType::<[f32; 64]>::from(b_buf)),
+        JitAST::new(BufferWithType::<[f32; 64]>::from(c_buf)),
     );
     let result = run_ast(ast, &device, &queue, n);
 
@@ -216,9 +217,9 @@ fn mulacc() {
     let c_buf = make_input_buffer(&device, &queue, &c_data);
 
     let ast = JitAST::mulacc(
-        JitAST::new::<[f32; 64]>(a_buf),
-        JitAST::new::<[f32; 64]>(b_buf),
-        JitAST::new::<[f32; 64]>(c_buf),
+        JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)),
+        JitAST::new(BufferWithType::<[f32; 64]>::from(b_buf)),
+        JitAST::new(BufferWithType::<[f32; 64]>::from(c_buf)),
     );
     let result = run_ast(ast, &device, &queue, n);
 
@@ -234,7 +235,7 @@ fn add_with_const() {
     let a_data: Vec<f32> = (0..n).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::new::<[f32; 64]>(a_buf) + 10.0f32.into();
+    let ast = JitAST::new(BufferWithType::<[f32; 64]>::from(a_buf)) + 10.0f32.into();
     let result = run_ast(ast, &device, &queue, n);
 
     for i in 0..n as usize {

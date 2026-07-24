@@ -184,13 +184,15 @@ fn pad_bounds_check(
     result
 }
 
-pub fn movement(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn movement<T>(
+    matched: JitAST<T>,
+    _captured: HashMap<String, JitAST<T>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule],
-) -> LoweredAST {
+    rules: &[&RewriteRule<T>],
+) -> LoweredAST 
+    where T: Clone
+{
     let (base, chain) = matched.inner_movement_chain();
     if chain.is_empty() {
         return JitAST::graph_rewrite(base.clone(), scope, rules, var_producer);
@@ -200,7 +202,7 @@ pub fn movement(
 
     let base_loaded = JitAST::graph_rewrite(base.clone(), scope, rules, var_producer);
 
-    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&matched as &JitAST), |node| {
+    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&matched as &JitAST<T>), |node| {
         if let JitAST::Movement { operand, .. } = node {
             Some(operand.as_ref())
         } else {

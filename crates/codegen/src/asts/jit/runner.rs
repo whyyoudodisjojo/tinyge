@@ -1,3 +1,4 @@
+use memory::buffers::BufferWithType;
 use wgpu::{
     Buffer, BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
     ComputePassDescriptor, Device, Queue, ShaderStages,
@@ -18,8 +19,8 @@ use crate::asts::lowered::{
 };
 use crate::dt::DType;
 
-pub struct JitRunner<'ast> {
-    ast: &'ast JitAST,
+pub struct JitRunner<'ast, T> {
+    ast: &'ast JitAST<T>,
     element_count: u32,
     num_vars: usize,
     input_dt: DType,
@@ -27,8 +28,10 @@ pub struct JitRunner<'ast> {
     output_size: u64,
 }
 
-impl<'ast> JitRunner<'ast> {
-    pub fn new(ast: &'ast JitAST, element_count: u32) -> Self {
+impl<'ast, T> JitRunner<'ast, T> 
+    where T: Clone
+{
+    pub fn new(ast: &'ast JitAST<T>, element_count: u32) -> Self {
         let (num_vars, input_dt) = ast.collect_var_info();
         let input_dt = input_dt.expect("JitAST must have at least one Var");
         let output_dt = ast.dt();
@@ -44,7 +47,7 @@ impl<'ast> JitRunner<'ast> {
     }
 
     fn build_shader_ir(
-        ast: &JitAST,
+        ast: &JitAST<T>,
         num_vars: usize,
         input_dt: &DType,
         output_dt: &DType,
@@ -124,7 +127,9 @@ impl<'ast> JitRunner<'ast> {
     }
 }
 
-impl<'a> ComputeShader<'a> for JitRunner<'_> {
+impl<'a, T> ComputeShader<'a> for JitRunner<'_, T> 
+    where T: Clone
+{
     type Args = Vec<Buffer>;
     type Ret = Buffer;
 
@@ -209,11 +214,13 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
     }
 }
 
-impl JitAST {
-    pub fn realize(&self, device: &Device, queue: &Queue, element_count: u32) -> JitAST {
+impl<T> JitAST<T> 
+    where T: Clone
+{
+    pub fn realize(&self, device: &Device, queue: &Queue, element_count: u32) -> JitAST<T> {
         let mut bufs = vec![];
         self.collect_var_buffers(&mut bufs);
-        let input_bufs: Vec<Buffer> = bufs.into_iter().cloned().collect();
+        let input_bufs: Vec<Buffer> = bufs.into_iter().map(|b| b.inner.clone()).collect();
 
         let mut runner = JitRunner::new(self, element_count);
         let mut built_data = runner.build(device);
@@ -222,7 +229,7 @@ impl JitAST {
         println!("{}", runner.load_source_code());
 
         JitAST::Var {
-            buffer: output,
+            buffer: BufferWithType::from(output),
             dtype: self.dt(),
         }
     }
