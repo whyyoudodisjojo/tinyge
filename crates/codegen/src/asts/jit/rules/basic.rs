@@ -5,8 +5,8 @@ use crate::{
         ASTOrConst, AstConst,
         jit::{JitAST, JitBinOp, JitUnaryOp, ReduceOp},
         lowered::{
-            BinOp, LoweredAST,
-            scope::{Scope, local},
+            Accessor, BinOp, LoweredAST, VarRef, VarRefType,
+            scope::{Scope, entrypoint, local},
         },
     },
     call,
@@ -15,20 +15,8 @@ use crate::{
 
 use super::super::pattern::RewriteRule;
 
+use super::movement;
 use super::simplify;
-
-fn identity(operand: &JitAST, op: ReduceOp) -> LoweredAST {
-    let result_dt = operand.dt().peel_array();
-    let scalar_dt = result_dt.peel_all();
-    let elem_bytes = crate::asts::jit::scalar_identity_bytes(&scalar_dt, op);
-    let count = result_dt.element_count();
-    LoweredAST::Const(AstConst {
-        dt: result_dt,
-        data: (0..count)
-            .map(|_| ASTOrConst::Const(elem_bytes.clone()))
-            .collect(),
-    })
-}
 
 fn lower_where_array(
     a_lowered: LoweredAST,
@@ -84,9 +72,9 @@ fn lower_where_array(
             body_scope.ast = Some(local(result_id).i(i_load).store(LoweredAST::FunctionCall {
                 ident: "select".to_string(),
                 args: vec![
+                    Box::new(idx(&c_lowered, &c_dt)),
                     Box::new(idx(&b_lowered, &b_dt)),
                     Box::new(idx(&a_lowered, &a_dt)),
-                    Box::new(idx(&c_lowered, &c_dt)),
                 ],
             }));
         },
@@ -99,17 +87,141 @@ pub fn lower_reduce(
     op: ReduceOp,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule],
+    _rules: &[&RewriteRule],
+    axis: Option<usize>,
 ) -> LoweredAST {
-    let init = identity(&operand, op);
-    let lowered = JitAST::graph_rewrite(*operand, scope, rules, var_producer);
-    let acc = scope.mut_(init);
-    let store = match op {
-        ReduceOp::Sum => local(acc).store(local(acc).load() + lowered),
-        ReduceOp::Prod => local(acc).store(local(acc).load() * lowered),
-        ReduceOp::Max => local(acc).store(call!("max", local(acc).load(), lowered)),
+    let input_shape = operand.shape();
+    let (reduce_size, output_shape): (usize, Vec<usize>) = match axis {
+        Some(ax) => {
+            let sz = input_shape[ax];
+            let out: Vec<usize> = input_shape
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i != ax)
+                .map(|(_, &s)| s)
+                .collect();
+            (sz, out)
+        }
+        None => {
+            let sz = input_shape.iter().product();
+            (sz, vec![])
+        }
     };
-    LoweredAST::Group(vec![store, LoweredAST::Load(local(acc))])
+
+    let var_load = var_producer();
+    let binding_id = match &var_load {
+        LoweredAST::Load(VarRefType::Global(VarRef { id, .. })) => *id,
+        _ => panic!("expected Global var load from var_producer"),
+    };
+
+    let result_dt = operand.dt().peel_array();
+    let scalar_dt = result_dt.peel_all();
+    let elem_bytes = crate::asts::jit::scalar_identity_bytes(&scalar_dt, op);
+    let count = result_dt.element_count();
+    let init = LoweredAST::Const(AstConst {
+        dt: result_dt,
+        data: (0..count)
+            .map(|_| ASTOrConst::Const(elem_bytes.clone()))
+            .collect(),
+    });
+    let acc = scope.mut_(init);
+
+    let thread_id = entrypoint(0).f("x").load();
+
+    let output_coord: Vec<LoweredAST> = if output_shape.len() <= 1 {
+        vec![thread_id.clone()]
+    } else {
+        let (mut coords, rem_var) = (0..output_shape.len() - 1).fold(
+            (vec![], scope.var(thread_id.clone())),
+            |(mut coords, rem_var), i| {
+                let stride = output_shape[i + 1..].iter().product::<usize>() as u32;
+                let new_rem_var = scope.var(local(rem_var).load() % stride.into());
+                coords.push(local(rem_var).load() / stride.into());
+                (coords, new_rem_var)
+            },
+        );
+        coords.push(local(rem_var).load());
+        coords
+    };
+
+    let (base, chain) = operand.inner_movement_chain();
+    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&*operand as &JitAST), |node| {
+        if let JitAST::Movement { operand, .. } = node {
+            Some(operand.as_ref())
+        } else {
+            None
+        }
+    })
+    .map(|n| n.shape())
+    .collect();
+    let base_shape = base.shape();
+
+    let loop_var = scope.mut_(LoweredAST::from(0u32));
+
+    let loop_ast = scope.for_loop(
+        None,
+        Some(
+            local(loop_var)
+                .load()
+                .lt(LoweredAST::from(reduce_size as u32)),
+        ),
+        Some(local(loop_var).store(local(loop_var).load() + LoweredAST::from(1u32))),
+        |body_scope: &mut Scope| {
+            let i = local(loop_var).load();
+
+            let input_coord: Vec<LoweredAST> = match axis {
+                Some(ax) => {
+                    let mut coord = Vec::with_capacity(input_shape.len());
+                    for d in 0..input_shape.len() {
+                        if d == ax {
+                            coord.push(i.clone());
+                        } else {
+                            let out_d = if d < ax { d } else { d - 1 };
+                            coord.push(output_coord[out_d].clone());
+                        }
+                    }
+                    coord
+                }
+                None => {
+                    if input_shape.len() <= 1 {
+                        vec![i]
+                    } else {
+                        let (mut coords, rem_var) = (0..input_shape.len() - 1).fold(
+                            (vec![], body_scope.var(i)),
+                            |(mut coords, rem_var), d| {
+                                let stride = input_shape[d + 1..].iter().product::<usize>() as u32;
+                                let new_rem_var =
+                                    body_scope.var(local(rem_var).load() % stride.into());
+                                coords.push(local(rem_var).load() / stride.into());
+                                (coords, new_rem_var)
+                            },
+                        );
+                        coords.push(local(rem_var).load());
+                        coords
+                    }
+                }
+            };
+
+            let (result_coord, _pad_checks) =
+                movement::apply_chain(input_coord, &chain, &shapes, body_scope);
+            let source_idx = movement::coord_linearize(&result_coord, &base_shape);
+
+            let var_load = LoweredAST::Load(VarRefType::Global(VarRef {
+                id: binding_id,
+                by: vec![Accessor::Index(Box::new(source_idx))],
+            }));
+
+            let acc_val = match op {
+                ReduceOp::Sum => local(acc).load() + var_load,
+                ReduceOp::Prod => local(acc).load() * var_load,
+                ReduceOp::Max => call!("max", local(acc).load(), var_load),
+            };
+
+            body_scope.ast = Some(local(acc).store(acc_val));
+        },
+    );
+
+    LoweredAST::Group(vec![loop_ast, LoweredAST::Load(local(acc))])
 }
 
 // --- Rule transforms ---
@@ -320,9 +432,10 @@ pub fn reciprocal(
 ) -> LoweredAST {
     let mut c = captured;
     let o = JitAST::graph_rewrite(c.remove("x").unwrap(), scope, rules, var_producer);
-    LoweredAST::FunctionCall {
-        ident: "reciprocal".into(),
-        args: vec![Box::new(o)],
+    LoweredAST::BinaryOp {
+        lhs: Box::new(LoweredAST::from(1.0f32)),
+        rhs: Box::new(o),
+        op: BinOp::Div,
     }
 }
 
@@ -425,9 +538,9 @@ pub fn ternary_where(
         _ => LoweredAST::FunctionCall {
             ident: "select".into(),
             args: vec![
+                Box::new(c_lowered),
                 Box::new(b_lowered),
                 Box::new(a_lowered),
-                Box::new(c_lowered),
             ],
         },
     }
@@ -517,13 +630,13 @@ pub fn reduce(
 ) -> LoweredAST {
     let JitAST::Reduce {
         ref operand,
-        axis: _,
+        axis,
         op,
     } = matched
     else {
         unreachable!()
     };
-    lower_reduce(operand.clone(), op, scope, var_producer, rules)
+    lower_reduce(operand.clone(), op, scope, var_producer, rules, Some(axis))
 }
 
 pub fn all_reduce(
@@ -536,5 +649,5 @@ pub fn all_reduce(
     let JitAST::AllReduce { ref operand, op } = matched else {
         unreachable!()
     };
-    lower_reduce(operand.clone(), op, scope, var_producer, rules)
+    lower_reduce(operand.clone(), op, scope, var_producer, rules, None)
 }

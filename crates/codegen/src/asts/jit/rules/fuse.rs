@@ -20,7 +20,7 @@ pub fn fuse_reduce(
         _ => unreachable!(),
     };
     let x = captured.get("x").unwrap().clone();
-    basic::lower_reduce(Box::new(x), op, scope, var_producer, rules)
+    basic::lower_reduce(Box::new(x), op, scope, var_producer, rules, None)
 }
 
 pub fn fuse_cast_cast(

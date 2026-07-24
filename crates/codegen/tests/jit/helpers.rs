@@ -1,10 +1,8 @@
-use codegen::asts::jit::{JitAST, JitBinOp};
-use codegen::asts::lowered::BinOp;
-use codegen::dt::{BasicTy, BasicTyOrStructRef, DType, MaybeAtomic, VecTy};
+use codegen::asts::jit::JitAST;
 use pollster::block_on;
 use wgpu::{BufferDescriptor, BufferUsages};
 
-fn setup_wgpu() -> (wgpu::Device, wgpu::Queue) {
+pub fn setup_wgpu() -> (wgpu::Device, wgpu::Queue) {
     block_on(async {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = instance
@@ -18,7 +16,7 @@ fn setup_wgpu() -> (wgpu::Device, wgpu::Queue) {
     })
 }
 
-fn make_input_buffer(device: &wgpu::Device, queue: &wgpu::Queue, data: &[f32]) -> wgpu::Buffer {
+pub fn make_input_buffer(device: &wgpu::Device, queue: &wgpu::Queue, data: &[f32]) -> wgpu::Buffer {
     let b = device.create_buffer(&BufferDescriptor {
         label: None,
         size: (data.len() * 4) as u64,
@@ -29,7 +27,14 @@ fn make_input_buffer(device: &wgpu::Device, queue: &wgpu::Queue, data: &[f32]) -
     b
 }
 
-fn read_buffer(device: &wgpu::Device, queue: &wgpu::Queue, buffer: &wgpu::Buffer) -> Vec<f32> {
+pub fn run_ast(ast: JitAST, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Vec<f32> {
+    let JitAST::Var { buffer, .. } = ast.realize(device, queue, n) else {
+        panic!("expected Var");
+    };
+    read_buffer(device, queue, &buffer)
+}
+
+pub fn read_buffer(device: &wgpu::Device, queue: &wgpu::Queue, buffer: &wgpu::Buffer) -> Vec<f32> {
     let size = buffer.size();
     let staging = device.create_buffer(&BufferDescriptor {
         label: None,
@@ -58,45 +63,4 @@ fn read_buffer(device: &wgpu::Device, queue: &wgpu::Queue, buffer: &wgpu::Buffer
     drop(data);
     staging.unmap();
     result
-}
-
-#[test]
-fn elementwise_add() {
-    let (device, queue) = setup_wgpu();
-    let n = 64u32;
-
-    let a_data: Vec<f32> = (0..n).map(|i| i as f32).collect();
-    let b_data: Vec<f32> = (0..n).map(|i| (i * 2) as f32).collect();
-
-    let a_buf = make_input_buffer(&device, &queue, &a_data);
-    let b_buf = make_input_buffer(&device, &queue, &b_data);
-
-    let arr_dt = DType::Vector(VecTy::Array(
-        MaybeAtomic::Naked(BasicTyOrStructRef::BasicTy(BasicTy::F32)),
-        None,
-    ));
-
-    let ast = JitAST::BinOp {
-        lhs: Box::new(JitAST::Var {
-            buffer: a_buf,
-            dtype: arr_dt.clone(),
-        }),
-        rhs: Box::new(JitAST::Var {
-            buffer: b_buf,
-            dtype: arr_dt.clone(),
-        }),
-        op: JitBinOp::Basic(BinOp::Add),
-    };
-
-    let JitAST::Var {
-        buffer: result_buf, ..
-    } = ast.realize(&device, &queue, n)
-    else {
-        panic!("expected Var");
-    };
-    let result = read_buffer(&device, &queue, &result_buf);
-
-    for i in 0..n as usize {
-        assert_eq!(result[i], a_data[i] + b_data[i]);
-    }
 }

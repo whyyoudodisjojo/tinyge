@@ -14,9 +14,9 @@ use crate::{
 
 use super::super::pattern::RewriteRule;
 
-fn coord_linearize(coords: &[LoweredAST], shape: &[usize]) -> LoweredAST {
-    if coords.is_empty() {
-        return 0u32.into();
+pub fn coord_linearize(coords: &[LoweredAST], shape: &[usize]) -> LoweredAST {
+    if coords.is_empty() || shape.is_empty() {
+        return coords.first().cloned().unwrap_or(0u32.into());
     }
     coords
         .iter()
@@ -29,6 +29,160 @@ fn coord_linearize(coords: &[LoweredAST], shape: &[usize]) -> LoweredAST {
                 acc + coord.clone()
             }
         })
+}
+
+pub struct PadCheck {
+    pub pre_subtract_coords: Vec<LoweredAST>,
+    pub amounts: Vec<(usize, usize)>,
+    pub inner_shape: Vec<usize>,
+}
+
+pub fn apply_chain(
+    coord: Vec<LoweredAST>,
+    chain: &[&MovOp],
+    shapes: &[Vec<usize>],
+    _scope: &mut Scope,
+) -> (Vec<LoweredAST>, Vec<PadCheck>) {
+    let mut pad_checks = vec![];
+    let result = chain.iter().enumerate().fold(coord, |c, (i, &op)| {
+        let in_shape = &shapes[i + 1];
+        let out_shape_i = &shapes[i];
+        match op {
+            MovOp::Reshape(_to) => {
+                let linear = coord_linearize(&c, out_shape_i);
+                if in_shape.is_empty() {
+                    vec![linear]
+                } else {
+                    let mut result = vec![];
+                    let mut rem = linear;
+                    for j in 0..in_shape.len() {
+                        let stride = in_shape[j + 1..].iter().product::<usize>() as u32;
+                        if j < in_shape.len() - 1 {
+                            result.push(rem.clone() / stride.into());
+                            rem = rem % stride.into();
+                        } else {
+                            result.push(rem.clone());
+                        }
+                    }
+                    result
+                }
+            }
+            MovOp::Expand(_) => {
+                let offset = c.len() - in_shape.len();
+                c.into_iter()
+                    .enumerate()
+                    .filter_map(|(j, coord_val)| {
+                        if j < offset {
+                            None
+                        } else {
+                            let in_j = j - offset;
+                            if in_shape[in_j] == 1 {
+                                Some(0u32.into())
+                            } else {
+                                Some(coord_val)
+                            }
+                        }
+                    })
+                    .collect()
+            }
+            MovOp::Permute(perm) => perm
+                .iter()
+                .enumerate()
+                .fold(vec![0usize; perm.len()], |mut acc, (j, &p)| {
+                    acc[p] = j;
+                    acc
+                })
+                .into_iter()
+                .map(|j| c[j].clone())
+                .collect(),
+            MovOp::Pad(amounts) => {
+                pad_checks.push(PadCheck {
+                    pre_subtract_coords: c.clone(),
+                    amounts: amounts.clone(),
+                    inner_shape: in_shape.clone(),
+                });
+                c.into_iter()
+                    .enumerate()
+                    .map(|(j, coord_val)| {
+                        if amounts[j].0 == 0 {
+                            coord_val
+                        } else {
+                            coord_val - (amounts[j].0 as u32).into()
+                        }
+                    })
+                    .collect()
+            }
+            MovOp::Shrink(amounts) => c
+                .into_iter()
+                .enumerate()
+                .map(|(j, coord_val)| {
+                    if amounts[j].0 == 0 {
+                        coord_val
+                    } else {
+                        coord_val + (amounts[j].0 as u32).into()
+                    }
+                })
+                .collect(),
+            MovOp::Flip(axis) => c
+                .into_iter()
+                .enumerate()
+                .map(|(j, coord_val)| {
+                    if j == *axis {
+                        LoweredAST::from((out_shape_i[*axis] - 1) as u32) - coord_val
+                    } else {
+                        coord_val
+                    }
+                })
+                .collect(),
+        }
+    });
+    (result, pad_checks)
+}
+
+fn pad_bounds_check(
+    loaded: LoweredAST,
+    pad_checks: Vec<PadCheck>,
+    base_dt: &DType,
+    _scope: &mut Scope,
+) -> LoweredAST {
+    let zero = match base_dt.peel_array() {
+        DType::Basic(BasicTy::F32) => LoweredAST::Const(AstConst {
+            dt: DType::Basic(BasicTy::F32),
+            data: vec![ASTOrConst::Const(0.0f32.to_le_bytes().to_vec())],
+        }),
+        _ => LoweredAST::from(0u32),
+    };
+
+    let mut result = loaded;
+    for pc in pad_checks.into_iter().rev() {
+        let mut dim_checks = vec![];
+        for (j, coord_val) in pc.pre_subtract_coords.iter().enumerate() {
+            let lo = pc.amounts[j].0 as u32;
+            let hi = lo + pc.inner_shape[j] as u32;
+            if lo > 0 || pc.amounts[j].1 > 0 {
+                let in_dim = coord_val
+                    .clone()
+                    .ge(lo.into())
+                    .logical_and(coord_val.clone().lt(hi.into()));
+                dim_checks.push(in_dim);
+            }
+        }
+        if !dim_checks.is_empty() {
+            let in_bounds = dim_checks
+                .into_iter()
+                .reduce(|a, b| a.logical_and(b))
+                .unwrap();
+            result = LoweredAST::FunctionCall {
+                ident: "select".to_string(),
+                args: vec![
+                    Box::new(zero.clone()),
+                    Box::new(result),
+                    Box::new(in_bounds),
+                ],
+            };
+        }
+    }
+    result
 }
 
 pub fn movement(
@@ -81,82 +235,7 @@ pub fn movement(
                 }
             };
 
-            let result_coord = chain.iter().enumerate().fold(coord, |c, (i, &op)| {
-                let in_shape = &shapes[i + 1];
-                let out_shape_i = &shapes[i];
-                match op {
-                    MovOp::Reshape(_to) => {
-                        let linear = coord_linearize(&c, out_shape_i);
-                        let mut result = vec![];
-                        let mut rem = linear;
-                        for j in 0..in_shape.len() {
-                            let stride = in_shape[j + 1..].iter().product::<usize>() as u32;
-                            if j < in_shape.len() - 1 {
-                                result.push(rem.clone() / stride.into());
-                                rem = rem % stride.into();
-                            } else {
-                                result.push(rem.clone());
-                            }
-                        }
-                        result
-                    }
-                    MovOp::Expand(_) => c
-                        .into_iter()
-                        .enumerate()
-                        .map(|(j, coord_val)| {
-                            if j < in_shape.len() && in_shape[j] == 1 {
-                                0u32.into()
-                            } else {
-                                coord_val
-                            }
-                        })
-                        .collect(),
-                    MovOp::Permute(perm) => perm
-                        .iter()
-                        .enumerate()
-                        .fold(vec![0usize; perm.len()], |mut acc, (j, &p)| {
-                            acc[p] = j;
-                            acc
-                        })
-                        .into_iter()
-                        .map(|j| c[j].clone())
-                        .collect(),
-                    MovOp::Pad(amounts) => c
-                        .into_iter()
-                        .enumerate()
-                        .map(|(j, coord_val)| {
-                            if amounts[j].0 == 0 {
-                                coord_val
-                            } else {
-                                coord_val - (amounts[j].0 as u32).into()
-                            }
-                        })
-                        .collect(),
-                    MovOp::Shrink(amounts) => c
-                        .into_iter()
-                        .enumerate()
-                        .map(|(j, coord_val)| {
-                            if amounts[j].0 == 0 {
-                                coord_val
-                            } else {
-                                coord_val + (amounts[j].0 as u32).into()
-                            }
-                        })
-                        .collect(),
-                    MovOp::Flip(axis) => c
-                        .into_iter()
-                        .enumerate()
-                        .map(|(j, coord_val)| {
-                            if j == *axis {
-                                LoweredAST::from((out_shape_i[*axis] - 1) as u32) - coord_val
-                            } else {
-                                coord_val
-                            }
-                        })
-                        .collect(),
-                }
-            });
-
+            let (result_coord, pad_checks) = apply_chain(coord, &chain, &shapes, scope);
             let source_idx = coord_linearize(&result_coord, &base_shape);
 
             let loaded = LoweredAST::Load(VarRefType::Global(VarRef {
@@ -164,39 +243,7 @@ pub fn movement(
                 by: vec![Accessor::Index(Box::new(source_idx))],
             }));
 
-            chain
-                .iter()
-                .enumerate()
-                .find_map(|(i, op)| {
-                    if let MovOp::Pad(amounts) = op {
-                        let lo_total = amounts.iter().map(|(lo, _)| *lo).sum::<usize>() as u32;
-                        let src_n = shapes[i + 1].iter().product::<usize>() as u32;
-                        let in_bounds = thread_id
-                            .clone()
-                            .ge(lo_total.into())
-                            .logical_and(thread_id.clone().lt((lo_total + src_n).into()));
-
-                        let zero = match base.dt() {
-                            DType::Basic(BasicTy::F32) => LoweredAST::Const(AstConst {
-                                dt: DType::Basic(BasicTy::F32),
-                                data: vec![ASTOrConst::Const(0.0f32.to_le_bytes().to_vec())],
-                            }),
-                            _ => LoweredAST::from(0u32),
-                        };
-
-                        Some(LoweredAST::FunctionCall {
-                            ident: "select".to_string(),
-                            args: vec![
-                                Box::new(zero),
-                                Box::new(loaded.clone()),
-                                Box::new(in_bounds),
-                            ],
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(loaded)
+            pad_bounds_check(loaded, pad_checks, &base.dt(), scope)
         }
         _ => base_loaded,
     }

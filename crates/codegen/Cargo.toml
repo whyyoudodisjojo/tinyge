@@ -10,9 +10,9 @@ darling = "0.23.0"
 glam ={workspace = true}
 tinyge-graphics = {path = "../graphics"}
 bytemuck = { workspace = true }
+memory = {path = "../memory"}
 
 [dev-dependencies]
 codegen-macros = {path = "../codegen-macros"}
 bytemuck ={workspace = true}
-memory = {path = "../memory"}
 pollster = {workspace = true}

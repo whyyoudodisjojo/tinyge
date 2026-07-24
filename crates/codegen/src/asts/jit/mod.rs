@@ -3,10 +3,11 @@ pub mod pattern;
 pub mod rules;
 pub mod runner;
 
+use memory::buffers::BufferWithType;
 use wgpu::Buffer;
 
-use crate::asts::AstConst;
 use crate::asts::lowered::{BinOp, LoweredAST, UnaryOp, scope::Scope};
+use crate::asts::{AstConst, IntoWgslStruct};
 use crate::dt::{BasicTy, DType, IntegerTy, VecTy};
 
 use self::pattern::RewriteRule;
@@ -130,6 +131,16 @@ pub(crate) fn scalar_identity_bytes(dt: &DType, op: ReduceOp) -> Vec<u8> {
 }
 
 impl JitAST {
+    pub fn new<T>(buf: Buffer) -> Self
+    where
+        T: IntoWgslStruct,
+    {
+        JitAST::Var {
+            buffer: buf,
+            dtype: T::dt(),
+        }
+    }
+
     pub fn collect_var_buffers<'a>(&'a self, out: &mut Vec<&'a Buffer>) {
         match self {
             JitAST::Var { buffer, .. } => out.push(buffer),
@@ -280,5 +291,17 @@ impl JitAST {
         let builtins = rules::builtin_rules();
         let all_rules: Vec<_> = builtins.iter().chain(user_rules.iter()).collect();
         Self::graph_rewrite(ast, scope, &all_rules, var_producer)
+    }
+}
+
+impl<T> From<BufferWithType<T>> for JitAST
+where
+    T: IntoWgslStruct,
+{
+    fn from(value: BufferWithType<T>) -> Self {
+        JitAST::Var {
+            buffer: value.inner,
+            dtype: T::dt(),
+        }
     }
 }

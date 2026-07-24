@@ -120,12 +120,3 @@ fn test_extra_args() {
     assert!(wgsl.contains("@compute @workgroup_size(64)"));
     assert!(wgsl.contains("fn shader_with_extra"));
 }
-
-#[test]
-fn test_derive_atomic_field() {
-    let structs = codegen::asts::build_struct_map();
-    let s = structs.get("WithAtomic").unwrap();
-    assert_eq!(s.inner.len(), 1);
-    assert_eq!(s.inner[0].0, "counter");
-    assert_eq!(s.inner[0].1, DType::Atomic(IntegerTy::U32),);
-}

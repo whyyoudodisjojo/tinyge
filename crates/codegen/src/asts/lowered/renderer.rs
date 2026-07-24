@@ -294,11 +294,13 @@ impl<'a> LoweredRenderer<'a> {
                     .as_ref()
                     .map(|i| self.render_ast(curr_scope, i, 0));
 
-                let cond_block = [init_str, halt_cond_str, increment_str]
-                    .into_iter()
-                    .filter_map(|f| f)
-                    .collect::<Vec<_>>()
-                    .join("; ");
+                let cond_block = [
+                    init_str.unwrap_or_default(),
+                    halt_cond_str.unwrap_or_default(),
+                    increment_str.unwrap_or_default(),
+                ]
+                .map(|s| s.trim_end_matches(';').trim_end().to_string())
+                .join("; ");
                 let body_str =
                     self.render_scope(&curr_scope.child_scopes[body.0].borrow(), indent + 1);
 
