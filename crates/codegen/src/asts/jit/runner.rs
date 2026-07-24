@@ -219,6 +219,8 @@ impl JitAST {
         let mut built_data = runner.build(device);
         let output = runner.dispatch(input_bufs, &mut built_data, device, queue);
 
+        println!("{}", runner.load_source_code());
+
         JitAST::Var {
             buffer: output,
             dtype: self.dt(),

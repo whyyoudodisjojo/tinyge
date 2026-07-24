@@ -2,14 +2,13 @@ use std::collections::HashMap;
 
 use crate::{
     asts::{
-        ASTOrConst, AstConst,
         jit::{JitAST, MovOp},
         lowered::{
             Accessor, LoweredAST, VarRef, VarRefType,
             scope::{Scope, entrypoint, local},
         },
     },
-    dt::{BasicTy, DType},
+    dt::{BasicTy, DType, IntegerTy},
 };
 
 use super::super::pattern::RewriteRule;
@@ -145,11 +144,11 @@ fn pad_bounds_check(
     base_dt: &DType,
     _scope: &mut Scope,
 ) -> LoweredAST {
-    let zero = match base_dt.peel_array() {
-        DType::Basic(BasicTy::F32) => LoweredAST::Const(AstConst {
-            dt: DType::Basic(BasicTy::F32),
-            data: vec![ASTOrConst::Const(0.0f32.to_le_bytes().to_vec())],
-        }),
+    let zero = match base_dt.peel_all() {
+        DType::Basic(BasicTy::F32) => LoweredAST::from(0.0f32),
+        DType::Basic(BasicTy::Integer(IntegerTy::I32)) => LoweredAST::from(0i32),
+        DType::Basic(BasicTy::Integer(IntegerTy::U32)) => LoweredAST::from(0u32),
+        DType::Basic(BasicTy::Bool) => LoweredAST::from(false),
         _ => LoweredAST::from(0u32),
     };
 
