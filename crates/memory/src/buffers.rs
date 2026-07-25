@@ -278,6 +278,29 @@ impl Buffers {
             resource_buffers,
         }
     }
+
+    pub fn build_all(device: &wgpu::Device, spec: &BufferBuildSpec) -> Self {
+        let inputs = Self::build(device, spec, true);
+        let outputs = Self::build(device, spec, false);
+        let resource_buffers = inputs
+            .resource_buffers
+            .into_iter()
+            .zip(outputs.resource_buffers)
+            .map(|(mut input, output)| {
+                for (i, buf) in output.buffers.into_iter().enumerate() {
+                    if input.buffers[i].is_none() {
+                        input.buffers[i] = buf;
+                    }
+                }
+                input
+            })
+            .collect();
+        Self {
+            vertex_buffers: outputs.vertex_buffers,
+            index_buffer: outputs.index_buffer,
+            resource_buffers,
+        }
+    }
 }
 
 pub fn align_to_4_bytes(size: u64) -> u64 {

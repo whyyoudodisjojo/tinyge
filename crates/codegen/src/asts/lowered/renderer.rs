@@ -61,6 +61,7 @@ impl<'a> LoweredRenderer<'a> {
         match g {
             BasicTyOrStructRef::BasicTy(b) => self.render_basic_ty(b),
             BasicTyOrStructRef::StructRef { ident } => ident.clone(),
+            BasicTyOrStructRef::Vec(vt) => self.render_dtype(&DType::Vector((**vt).clone())),
         }
     }
 
@@ -385,20 +386,14 @@ impl<'a> LoweredRenderer<'a> {
                 DType::Basic(b) => match c.data.as_slice() {
                     [ASTOrConst::AST(expr)] => {
                         let target = self.render_basic_ty(b);
-                        format!(
-                            "bitcast<{target}>({})",
-                            self.render_ast(curr_scope, expr, 0)
-                        )
+                        format!("{target}({})", self.render_ast(curr_scope, expr, 0))
                     }
                     _ => self.render_basic_ty_const(b, &c.data, curr_scope, indent),
                 },
                 DType::Vector(v) => match c.data.as_slice() {
                     [ASTOrConst::AST(expr)] => {
                         let target = self.render_dtype(&c.dt);
-                        format!(
-                            "bitcast<{target}>({})",
-                            self.render_ast(curr_scope, expr, 0)
-                        )
+                        format!("{target}({})", self.render_ast(curr_scope, expr, 0))
                     }
                     _ => self.render_vec_const(v, &c.data, curr_scope, indent),
                 },
@@ -407,6 +402,7 @@ impl<'a> LoweredRenderer<'a> {
                     self.render_struct_const(ident, s, &c.data, curr_scope, indent)
                 }
             },
+            LoweredAST::Addr(inner) => format!("&{}", self.render_ast(curr_scope, inner, 0)),
             LoweredAST::FunctionCall { ident, args } => format!(
                 "{}({})",
                 ident,

@@ -8,7 +8,7 @@ fn chain_movement_reduce() {
     let a_data: Vec<f32> = (0..6).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::new(BufferWithType::<[f32; 6]>::from(a_buf))
+    let ast = JitAST::from(BufferWithType::<[f32; 6]>::from(a_buf))
         .reshape(vec![2, 3])
         .flip(1)
         .sum(0)

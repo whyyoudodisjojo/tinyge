@@ -1,11 +1,11 @@
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Not, Rem, Shl, Shr, Sub};
 
 use crate::asts::IntoWgslStruct;
-use crate::asts::jit::{JitAST, JitBinOp, JitUnaryOp, MovOp, ReduceOp, ReduceTarget, TernaryOp};
+use crate::asts::jit::{JitAST, JitBinOp, JitUnaryOp, MovOp, ReduceOp, TernaryOp};
 
 macro_rules! impl_binop_trait {
     ($trait:ident, $method:ident, $op:expr) => {
-        impl<T> $trait for JitAST<T> {
+        impl $trait for JitAST {
             type Output = Self;
             fn $method(self, rhs: Self) -> Self {
                 JitAST::BinOp {
@@ -41,7 +41,7 @@ impl_binop_trait!(
 impl_binop_trait!(Shl, shl, JitBinOp::Basic(crate::asts::lowered::BinOp::Shl));
 impl_binop_trait!(Shr, shr, JitBinOp::Basic(crate::asts::lowered::BinOp::Shr));
 
-impl<T> Not for JitAST<T> {
+impl Not for JitAST {
     type Output = Self;
     fn not(self) -> Self {
         JitAST::UnaryOp {
@@ -51,7 +51,7 @@ impl<T> Not for JitAST<T> {
     }
 }
 
-impl<T> Neg for JitAST<T> {
+impl Neg for JitAST {
     type Output = Self;
     fn neg(self) -> Self {
         JitAST::UnaryOp {
@@ -61,7 +61,7 @@ impl<T> Neg for JitAST<T> {
     }
 }
 
-impl<T> JitAST<T> {
+impl JitAST {
     pub fn eq(self, rhs: Self) -> Self {
         JitAST::BinOp {
             lhs: Box::new(self),
@@ -255,10 +255,6 @@ impl<T> JitAST<T> {
             op: TernaryOp::Mulacc,
         }
     }
-
-}
-
-impl<T: ReduceTarget> JitAST<T> {
     pub fn reshape(self, shape: Vec<usize>) -> Self {
         JitAST::Movement {
             operand: Box::new(self),
@@ -345,103 +341,13 @@ impl<T: ReduceTarget> JitAST<T> {
             op: ReduceOp::Max,
         }
     }
-}
 
-macro_rules! impl_flatten {
-    ($trait:ident, [$($N:ident),+], $input:ty, $output:ty, [$($shape:expr),+]) => {
-        pub trait $trait: Sized {
-            type Output;
-            fn flatten(self) -> JitAST<Self::Output>;
-        }
-
-        impl<E: IntoWgslStruct, $(const $N: usize),+> $trait for JitAST<$input>
-        where [(); N0 * N1]:
-        {
-            type Output = $output;
-            fn flatten(self) -> JitAST<$output> {
-                use std::mem::transmute;
-                let operand = unsafe { transmute::<Box<JitAST<$input>>, Box<JitAST<$output>>>(Box::new(self)) };
-                JitAST::Movement { operand, op: MovOp::Reshape(vec![$($shape),+]) }
-            }
-        }
-    };
-}
-
-macro_rules! impl_pad_shrink {
-    ($pad_name:ident, $shrink_name:ident, [$($N:ident),+], [$($LO:ident, $HI:ident),+], $input:ty, $pad_output:ty, $shrink_output:ty) => {
-        pub fn $pad_name<$(const $LO: usize, const $HI: usize),+>(self) -> JitAST<$pad_output> {
-            use std::mem::transmute;
-            let operand = unsafe { transmute::<Box<JitAST<$input>>, Box<JitAST<$pad_output>>>(Box::new(self)) };
-            JitAST::Movement { operand, op: MovOp::Pad(vec![$(($LO, $HI)),+]) }
-        }
-        pub fn $shrink_name<$(const $LO: usize, const $HI: usize),+>(self) -> JitAST<$shrink_output> {
-            use std::mem::transmute;
-            let operand = unsafe { transmute::<Box<JitAST<$input>>, Box<JitAST<$shrink_output>>>(Box::new(self)) };
-            JitAST::Movement { operand, op: MovOp::Shrink(vec![$(($LO, $HI)),+]) }
-        }
-    };
-}
-
-macro_rules! impl_reshape {
-    ($name:ident, [$($M:ident),+], $output:ty, [$($shape:expr),+]) => {
-        pub fn $name<$(const $M: usize),+>(self) -> JitAST<$output> {
-            use std::mem::transmute;
-            let operand = unsafe { transmute::<Box<JitAST<[E; N0]>>, Box<JitAST<$output>>>(Box::new(self)) };
-            JitAST::Movement { operand, op: MovOp::Reshape(vec![$($shape),+]) }
-        }
-    };
-}
-
-macro_rules! impl_dim {
-    (1) => {
-        impl<E: IntoWgslStruct, const N0: usize> JitAST<[E; N0]> {
-            impl_pad_shrink!(pad_1d, shrink_1d, [N0], [LO, HI], [E; N0], [E; N0 + LO + HI], [E; N0 - LO - HI]);
-            impl_reshape!(reshape_2d, [M, P], [[E; P]; M], [M, P]);
-            impl_reshape!(reshape_3d, [M, P, Q], [[[E; Q]; P]; M], [M, P, Q]);
-            impl_reshape!(reshape_4d, [M, P, Q, R], [[[[E; R]; Q]; P]; M], [M, P, Q, R]);
-        }
-    };
-    (2) => {
-        impl_flatten!(Flatten2D, [N0, N1], [[E; N1]; N0], [E; N0 * N1], [N0 * N1]);
-        impl<E: IntoWgslStruct, const N0: usize, const N1: usize> JitAST<[[E; N1]; N0]> {
-            impl_pad_shrink!(pad_2d, shrink_2d, [N0, N1], [LO0, HI0, LO1, HI1],
-                [[E; N1]; N0],
-                [[E; N1 + LO1 + HI1]; N0 + LO0 + HI0],
-                [[E; N1 - LO1 - HI1]; N0 - LO0 - HI0]);
-        }
-    };
-    (3) => {
-        impl_flatten!(Flatten3D, [N0, N1, N2], [[[E; N2]; N1]; N0], [[E; N2]; N0 * N1], [N0 * N1, N2]);
-        impl<E: IntoWgslStruct, const N0: usize, const N1: usize, const N2: usize> JitAST<[[[E; N2]; N1]; N0]> {
-            impl_pad_shrink!(pad_3d, shrink_3d, [N0, N1, N2], [LO0, HI0, LO1, HI1, LO2, HI2],
-                [[[E; N2]; N1]; N0],
-                [[[E; N2 + LO2 + HI2]; N1 + LO1 + HI1]; N0 + LO0 + HI0],
-                [[[E; N2 - LO2 - HI2]; N1 - LO1 - HI1]; N0 - LO0 - HI0]);
-        }
-    };
-    (4) => {
-        impl_flatten!(Flatten4D, [N0, N1, N2, N3], [[[[E; N3]; N2]; N1]; N0], [[[E; N3]; N2]; N0 * N1], [N0 * N1, N2, N3]);
-        impl<E: IntoWgslStruct, const N0: usize, const N1: usize, const N2: usize, const N3: usize> JitAST<[[[[E; N3]; N2]; N1]; N0]> {
-            impl_pad_shrink!(pad_4d, shrink_4d, [N0, N1, N2, N3], [LO0, HI0, LO1, HI1, LO2, HI2, LO3, HI3],
-                [[[[E; N3]; N2]; N1]; N0],
-                [[[[E; N3 + LO3 + HI3]; N2 + LO2 + HI2]; N1 + LO1 + HI1]; N0 + LO0 + HI0],
-                [[[[E; N3 - LO3 - HI3]; N2 - LO2 - HI2]; N1 - LO1 - HI1]; N0 - LO0 - HI0]);
-        }
-    };
-}
-
-impl_dim!(1);
-impl_dim!(2);
-impl_dim!(3);
-impl_dim!(4);
-
-impl<T> JitAST<T> {
-    pub fn cast<I>(self) -> JitAST<I>
-        where I: IntoWgslStruct
+    pub fn cast<I>(self) -> JitAST
+    where
+        I: IntoWgslStruct,
     {
-        let operand: Box<JitAST<I>> = unsafe { std::mem::transmute(Box::new(self)) };
         JitAST::Cast {
-            operand,
+            operand: Box::new(self),
             dt: I::dt(),
         }
     }

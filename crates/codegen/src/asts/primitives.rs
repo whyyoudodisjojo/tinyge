@@ -29,13 +29,13 @@ macro_rules! impl_const_primitives {
             }
         }
 
-        impl<T> From<$ty> for ASTOrConst<JitAST<T>> {
+        impl From<$ty> for ASTOrConst<JitAST> {
             fn from($val: $ty) -> Self {
                 $dt
             }
         }
 
-        impl<T> From<$ty> for JitAST<T> {
+        impl From<$ty> for JitAST {
             fn from(val: $ty) -> Self {
                 JitAST::Const(AstConst {
                     dt: <$ty as IntoWgslStruct>::dt(),
@@ -56,6 +56,48 @@ impl_primitive!(bool, DType::Basic(BasicTy::Bool));
 impl_primitive!(u32, DType::Basic(BasicTy::Integer(IntegerTy::U32)));
 impl_primitive!(i32, DType::Basic(BasicTy::Integer(IntegerTy::I32)));
 
+macro_rules! impl_const_array {
+    ($n:literal) => {
+        impl From<[f32; $n]> for ASTOrConst<LoweredAST> {
+            fn from(val: [f32; $n]) -> Self {
+                ASTOrConst::Const(val.iter().flat_map(|f| f.to_le_bytes()).collect())
+            }
+        }
+
+        impl From<[f32; $n]> for LoweredAST {
+            fn from(val: [f32; $n]) -> Self {
+                LoweredAST::Const(<[f32; $n] as IntoWgslStruct>::into_const(
+                    val.iter()
+                        .map(|&f| ASTOrConst::Const(f.to_le_bytes().to_vec()))
+                        .collect(),
+                ))
+            }
+        }
+
+        impl From<[f32; $n]> for ASTOrConst<JitAST> {
+            fn from(val: [f32; $n]) -> Self {
+                ASTOrConst::Const(val.iter().flat_map(|f| f.to_le_bytes()).collect())
+            }
+        }
+
+        impl From<[f32; $n]> for JitAST {
+            fn from(val: [f32; $n]) -> Self {
+                JitAST::Const(AstConst {
+                    dt: <[f32; $n] as IntoWgslStruct>::dt(),
+                    data: val
+                        .iter()
+                        .map(|&f| ASTOrConst::Const(f.to_le_bytes().to_vec()))
+                        .collect(),
+                })
+            }
+        }
+    };
+}
+
+impl_const_array!(2);
+impl_const_array!(3);
+impl_const_array!(4);
+
 impl<T: IntoWgslStruct, const N: usize> IntoWgslStruct for [T; N] {
     fn dt() -> DType {
         match (T::dt(), N) {
@@ -64,16 +106,27 @@ impl<T: IntoWgslStruct, const N: usize> IntoWgslStruct for [T; N] {
             (DType::Basic(b), 4) => DType::Vector(VecTy::Vec4(b)),
             (inner_dt, _) => {
                 let inner = match inner_dt {
-                    DType::Basic(BasicTy::Integer(i)) => MaybeAtomic::Atomic(i),
                     DType::Atomic(i) => MaybeAtomic::Atomic(i),
                     DType::Basic(b) => MaybeAtomic::Naked(BasicTyOrStructRef::BasicTy(b)),
                     DType::StructRef { ident } => {
                         MaybeAtomic::Naked(BasicTyOrStructRef::StructRef { ident })
                     }
-                    _ => panic!("unsupported array element type: {:?}", inner_dt),
+                    DType::Vector(_vt @ VecTy::Array(_, None)) => {
+                        panic!("unsized array inside a fixed-size array is not allowed")
+                    }
+                    DType::Vector(vt) => MaybeAtomic::Naked(BasicTyOrStructRef::Vec(Box::new(vt))),
                 };
                 DType::Vector(VecTy::Array(inner, Some(N as u32)))
             }
+        }
+    }
+
+    fn wgsl_byte_size() -> u64 {
+        match (T::dt(), N) {
+            (DType::Basic(_), 2) => 8,
+            (DType::Basic(_), 3) => 12,
+            (DType::Basic(_), 4) => 16,
+            _ => N as u64 * T::wgsl_byte_size(),
         }
     }
 }
@@ -86,16 +139,22 @@ where
         let dt = T::dt();
 
         let inner = match dt {
-            DType::Basic(BasicTy::Integer(i)) => MaybeAtomic::Atomic(i),
             DType::Atomic(i) => MaybeAtomic::Atomic(i),
             DType::Basic(b) => MaybeAtomic::Naked(BasicTyOrStructRef::BasicTy(b)),
             DType::StructRef { ident } => {
                 MaybeAtomic::Naked(BasicTyOrStructRef::StructRef { ident })
             }
-            _ => panic!("Cant get this brothr"),
+            DType::Vector(_vt @ VecTy::Array(_, None)) => {
+                panic!("unsized array inside another array is not allowed")
+            }
+            DType::Vector(vt) => MaybeAtomic::Naked(BasicTyOrStructRef::Vec(Box::new(vt))),
         };
 
         DType::Vector(VecTy::Array(inner, None))
+    }
+
+    fn wgsl_byte_size() -> u64 {
+        T::wgsl_byte_size()
     }
 }
 

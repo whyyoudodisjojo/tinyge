@@ -120,12 +120,37 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                 } else {
                     panic!("expected named argument");
                 };
-                let b = pat
-                    .attrs
-                    .iter()
-                    .find(|a| a.path().is_ident("binding"))
-                    .and_then(|a| FromMeta::from_meta(&a.meta).ok())?;
-                Some((name, b, &pat.ty))
+                let binding_attr = pat.attrs.iter().find(|a| a.path().is_ident("binding"))?;
+
+                let Meta::List(list) = &binding_attr.meta else {
+                    return None;
+                };
+                let items = NestedMeta::parse_meta_list(list.tokens.clone()).ok()?;
+
+                let mut ty_meta = None;
+                let mut is_input_override = None;
+                for item in &items {
+                    match item {
+                        NestedMeta::Meta(meta) if meta.path().is_ident("is_input") => {
+                            if let syn::Meta::NameValue(nv) = meta {
+                                if let syn::Expr::Lit(lit) = &nv.value {
+                                    if let syn::Lit::Bool(b) = &lit.lit {
+                                        is_input_override = Some(b.value);
+                                    }
+                                }
+                            }
+                        }
+                        NestedMeta::Meta(meta) => {
+                            ty_meta = Some(meta.clone());
+                        }
+                        _ => {}
+                    }
+                }
+
+                let ty_meta = ty_meta?;
+                let b: CustomBufferBindingType =
+                    FromMeta::from_list(&[NestedMeta::Meta(ty_meta)]).ok()?;
+                Some((name, b, is_input_override, &pat.ty))
             } else {
                 None
             }
@@ -251,7 +276,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let (arg_names, arg_inner_types): (Vec<_>, Vec<_>) = args
         .iter()
-        .map(|(n, _, ty)| {
+        .map(|(n, _, _, ty)| {
             let inner_ty = {
                 let Type::Path(p) = &***ty else {
                     panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
@@ -276,7 +301,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let arg_n_idents: Vec<_> = args
         .iter()
-        .map(|(n, _, _)| Ident::new(n, ident.span()))
+        .map(|(n, _, _, _)| Ident::new(n, ident.span()))
         .collect();
 
     let arg_struct_f = arg_n_idents
@@ -324,7 +349,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let arg_markers: Vec<_> = args.iter().enumerate().map(|(i, (_, _, ty))| {
+    let arg_markers: Vec<_> = args.iter().enumerate().map(|(i, (_, _, _, ty))| {
         let idx = syn::Index::from(i);
         let Type::Path(p) = &***ty else { panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty }) };
         let seg = p.path.segments.last().unwrap();
@@ -346,7 +371,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         extra_struct_f.push(quote! { pub #field_name: #ty });
     }
 
-    let arg_binding_tys: Vec<_> = args.iter().map(|(_, b, _)| {
+    let arg_binding_tys: Vec<_> = args.iter().map(|(_, b, _, _)| {
         match b {
             CustomBufferBindingType::Uniform => {
                 quote! { codegen::asts::lowered::CustomBufferBindingType::Uniform }
@@ -360,7 +385,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
     let arg_group_layout: Vec<_> = args
         .iter()
         .enumerate()
-        .map(|(i, (n, b, ty))| {
+        .map(|(i, (n, b, is_input_override, ty))| {
             let binding_ty = match b {
                 CustomBufferBindingType::Uniform => {
                     quote! { wgpu::BufferBindingType::Uniform }
@@ -377,32 +402,40 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                     quote! { wgpu::BufferUsages::STORAGE }
                 }
             };
+            let is_input_val = is_input_override.unwrap_or_else(|| match b {
+                CustomBufferBindingType::Uniform => true,
+                CustomBufferBindingType::Storage { read_only } => *read_only,
+            });
             let i_u32 = i as u32;
 
-            let sz = if let Type::Path(p) = ty.as_ref() {
-                let seg = p.path.segments.last().unwrap();
-                let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
-                    panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
-                };
-                let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else {
-                    panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
-                };
-                if let Type::Path(inner_p) = inner
-                    && inner_p
-                        .path
+            let Type::Path(p) = ty.as_ref() else {
+                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+            };
+            let seg = p.path.segments.last().unwrap();
+            let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+            };
+            let syn::GenericArgument::Type(inner) = args.args.first().unwrap() else {
+                panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
+            };
+            let size_f_name = format_ident!("{n}_elem_count");
+            let is_storage_vec = match inner {
+                Type::Path(p)
+                    if p.path
                         .segments
                         .last()
                         .map(|s| s.ident == "Vec")
-                        .unwrap_or_default()
+                        .unwrap_or_default() =>
                 {
-                    let size_f_name = format_ident!("{n}_elem_count");
                     extra_struct_f.push(quote! { pub #size_f_name: u64 });
-                    quote! { self.#size_f_name * std::mem::size_of::<#inner>() as u64 }
-                } else {
-                    quote! { std::mem::size_of::<#ty>() as u64 }
+                    true
                 }
+                _ => false,
+            };
+            let sz = if is_storage_vec {
+                quote! { self.#size_f_name * <#inner as codegen::asts::IntoWgslStruct>::wgsl_byte_size() }
             } else {
-                quote! { std::mem::size_of::<#ty>() as u64 }
+                quote! { <#inner as codegen::asts::IntoWgslStruct>::wgsl_byte_size() }
             };
 
             quote! {
@@ -415,7 +448,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                         min_binding_size: None,
                         size: #sz,
                         usages: #buffer_usages,
-                        is_input: true,
+                        is_input: #is_input_val,
                     },
                     count: None,
                 }

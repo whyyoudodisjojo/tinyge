@@ -37,6 +37,7 @@ pub enum VecTy {
 pub enum BasicTyOrStructRef {
     StructRef { ident: String },
     BasicTy(BasicTy),
+    Vec(Box<VecTy>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -61,6 +62,7 @@ impl DType {
                 MaybeAtomic::Naked(BasicTyOrStructRef::StructRef { ident }) => DType::StructRef {
                     ident: ident.clone(),
                 },
+                MaybeAtomic::Naked(BasicTyOrStructRef::Vec(vt)) => DType::Vector((**vt).clone()),
                 MaybeAtomic::Atomic(i) => DType::Atomic(i.clone()),
             },
             other => other.clone(),
@@ -77,6 +79,7 @@ impl DType {
                 MaybeAtomic::Naked(BasicTyOrStructRef::StructRef { ident }) => DType::StructRef {
                     ident: ident.clone(),
                 },
+                MaybeAtomic::Naked(BasicTyOrStructRef::Vec(vt)) => DType::Vector((**vt).clone()),
                 MaybeAtomic::Atomic(i) => DType::Atomic(i.clone()),
             },
             other => other.clone(),
@@ -108,6 +111,7 @@ impl DType {
                             BasicTyOrStructRef::StructRef { ident } => DType::StructRef {
                                 ident: ident.clone(),
                             },
+                            BasicTyOrStructRef::Vec(vt) => DType::Vector((**vt).clone()),
                         },
                     };
                     elem.apply_accessor(&acc[1..], ir, scope)
@@ -165,7 +169,9 @@ impl DType {
             DType::Vector(VecTy::Vec4(b)) => {
                 MaybeAtomic::Naked(BasicTyOrStructRef::BasicTy(b.clone()))
             }
-            DType::Vector(VecTy::Array(_, _)) => panic!("cannot wrap array in array"),
+            DType::Vector(VecTy::Array(_, _)) => {
+                return self.peel_array().as_array_dtype();
+            }
         };
         DType::Vector(VecTy::Array(inner, None))
     }
@@ -186,6 +192,9 @@ impl DType {
                     }
                     MaybeAtomic::Naked(BasicTyOrStructRef::StructRef { .. }) => {
                         panic!("struct byte size not supported")
+                    }
+                    MaybeAtomic::Naked(BasicTyOrStructRef::Vec(vt)) => {
+                        DType::Vector((**vt).clone()).byte_size()
                     }
                     MaybeAtomic::Atomic(i) => DType::Atomic(i.clone()).byte_size(),
                 };

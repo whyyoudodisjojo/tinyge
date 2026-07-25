@@ -28,7 +28,7 @@ pub struct RayResult {
     pub _pad: [u32; 2],
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, codegen_macros::IntoWgslStruct)]
 pub struct RectangleBounds {
     pub min: Vec3A,
     pub max: Vec3A,

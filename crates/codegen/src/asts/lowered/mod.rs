@@ -107,6 +107,7 @@ impl Struct {
                             BasicTyOrStructRef::StructRef { ident } => DType::StructRef {
                                 ident: ident.clone(),
                             },
+                            BasicTyOrStructRef::Vec(vt) => DType::Vector((**vt).clone()),
                         },
                     },
                 );
@@ -235,6 +236,12 @@ pub enum ASTOrConst<T, C = Vec<u8>> {
     Const(C),
 }
 
+impl From<LoweredAST> for ASTOrConst<LoweredAST> {
+    fn from(val: LoweredAST) -> Self {
+        ASTOrConst::AST(val)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum LoweredAST {
     Store {
@@ -275,6 +282,7 @@ pub enum LoweredAST {
     Continue,
     Break,
     Return,
+    Addr(Box<Self>),
 }
 
 impl LoweredAST {
@@ -323,6 +331,7 @@ impl LoweredAST {
                 .first()
                 .expect("function call with no args")
                 .dt(ir, scope),
+            Self::Addr(inner) => inner.dt(ir, scope),
             _ => panic!("cannot infer type from {:?}", self),
         }
     }
@@ -388,5 +397,9 @@ impl LoweredAST {
             },
             _ => panic!("expected Load target for store, got {:?}", self),
         }
+    }
+
+    pub fn addr(self) -> Self {
+        Self::Addr(Box::new(self))
     }
 }

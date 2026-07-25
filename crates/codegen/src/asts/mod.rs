@@ -25,6 +25,10 @@ where
 {
     fn dt() -> DType;
 
+    fn wgsl_byte_size() -> u64 {
+        std::mem::size_of::<Self>() as u64
+    }
+
     fn into_const(data: Vec<ASTOrConst<LoweredAST>>) -> AstConst<LoweredAST> {
         AstConst {
             dt: Self::dt(),
@@ -33,7 +37,8 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
+#[repr(transparent)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Atomic<T>(pub T);
 
 impl<T: IntoWgslStruct> IntoWgslStruct for Atomic<T> {

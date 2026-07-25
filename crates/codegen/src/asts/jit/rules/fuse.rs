@@ -17,15 +17,13 @@ use super::super::{
     rules::{basic, movement},
 };
 
-pub fn fuse_reduce<T>(
-    matched: JitAST<T>,
-    captured: HashMap<String, JitAST<T>>,
+pub fn fuse_reduce(
+    matched: JitAST,
+    captured: HashMap<String, JitAST>,
     scope: &mut Scope,
-    var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule<T>],
-) -> LoweredAST 
-    where T: Clone
-{
+    var_producer: &mut dyn FnMut(usize) -> LoweredAST,
+    rules: &[&RewriteRule],
+) -> LoweredAST {
     let x = captured.get("x").unwrap().clone();
 
     let outer_op = match &matched {
@@ -61,14 +59,19 @@ pub fn fuse_reduce<T>(
         .map(|(_, &s)| s)
         .collect();
 
-    let var_load = var_producer();
+    let (base, chain) = x.inner_movement_chain();
+    let base_var_id = match base {
+        JitAST::Var { id, .. } => *id,
+        _ => 0,
+    };
+
+    let var_load = var_producer(base_var_id);
     let binding_id = match &var_load {
         LoweredAST::Load(VarRefType::Global(VarRef { id, .. })) => *id,
         _ => panic!("expected Global var load from var_producer"),
     };
 
-    let (base, chain) = x.inner_movement_chain();
-    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&x as &JitAST<T>), |node| {
+    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&x as &JitAST), |node| {
         if let JitAST::Movement { operand, .. } = node {
             Some(operand.as_ref())
         } else {
@@ -102,10 +105,7 @@ pub fn fuse_reduce<T>(
                 .load()
                 .lt(LoweredAST::from(intermediate_size)),
         ),
-        Some(
-            local(outer_loop_var)
-                .store(local(outer_loop_var).load() + LoweredAST::from(1u32)),
-        ),
+        Some(local(outer_loop_var).store(local(outer_loop_var).load() + LoweredAST::from(1u32))),
         |outer_body: &mut Scope| {
             let outer_i = local(outer_loop_var).load();
 
@@ -121,11 +121,7 @@ pub fn fuse_reduce<T>(
             let inner_loop_var = outer_body.mut_(LoweredAST::from(0u32));
             let inner_loop = outer_body.for_loop(
                 None,
-                Some(
-                    local(inner_loop_var)
-                        .load()
-                        .lt(LoweredAST::from(axis_size)),
-                ),
+                Some(local(inner_loop_var).load().lt(LoweredAST::from(axis_size))),
                 Some(
                     local(inner_loop_var)
                         .store(local(inner_loop_var).load() + LoweredAST::from(1u32)),
@@ -133,28 +129,23 @@ pub fn fuse_reduce<T>(
                 |inner_body: &mut Scope| {
                     let inner_i = local(inner_loop_var).load();
 
-                    let intermediate_coord: Vec<LoweredAST> =
-                        if intermediate_shape.len() <= 1 {
-                            vec![outer_i.clone()]
-                        } else {
-                            let (mut coords, rem_var) =
-                                (0..intermediate_shape.len() - 1).fold(
-                                    (vec![], inner_body.var(outer_i.clone())),
-                                    |(mut coords, rem_var), d| {
-                                        let stride = intermediate_shape[d + 1..]
-                                            .iter()
-                                            .product::<usize>() as u32;
-                                        let new_rem_var = inner_body.var(
-                                            local(rem_var).load() % stride.into(),
-                                        );
-                                        coords
-                                            .push(local(rem_var).load() / stride.into());
-                                        (coords, new_rem_var)
-                                    },
-                                );
-                            coords.push(local(rem_var).load());
-                            coords
-                        };
+                    let intermediate_coord: Vec<LoweredAST> = if intermediate_shape.len() <= 1 {
+                        vec![outer_i.clone()]
+                    } else {
+                        let (mut coords, rem_var) = (0..intermediate_shape.len() - 1).fold(
+                            (vec![], inner_body.var(outer_i.clone())),
+                            |(mut coords, rem_var), d| {
+                                let stride =
+                                    intermediate_shape[d + 1..].iter().product::<usize>() as u32;
+                                let new_rem_var =
+                                    inner_body.var(local(rem_var).load() % stride.into());
+                                coords.push(local(rem_var).load() / stride.into());
+                                (coords, new_rem_var)
+                            },
+                        );
+                        coords.push(local(rem_var).load());
+                        coords
+                    };
 
                     let mut input_coord = Vec::with_capacity(input_shape.len());
                     for d in 0..input_shape.len() {
@@ -168,8 +159,7 @@ pub fn fuse_reduce<T>(
 
                     let (result_coord, _pad_checks) =
                         movement::apply_chain(input_coord, &chain, &shapes, inner_body);
-                    let source_idx =
-                        movement::coord_linearize(&result_coord, &base_shape);
+                    let source_idx = movement::coord_linearize(&result_coord, &base_shape);
 
                     let var_load = LoweredAST::Load(VarRefType::Global(VarRef {
                         id: binding_id,
@@ -183,8 +173,7 @@ pub fn fuse_reduce<T>(
                             call!("max", local(inner_acc).load(), var_load)
                         }
                     };
-                    inner_body.ast =
-                        Some(local(inner_acc).store(inner_acc_val));
+                    inner_body.ast = Some(local(inner_acc).store(inner_acc_val));
                 },
             );
 
@@ -206,15 +195,13 @@ pub fn fuse_reduce<T>(
     LoweredAST::Group(vec![outer_loop, LoweredAST::Load(local(outer_acc))])
 }
 
-pub fn fuse_cast_cast<T>(
-    matched: JitAST<T>,
-    _captured: HashMap<String, JitAST<T>>,
+pub fn fuse_cast_cast(
+    matched: JitAST,
+    _captured: HashMap<String, JitAST>,
     scope: &mut Scope,
-    var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule<T>],
-) -> LoweredAST 
-    where T: Clone
-{
+    var_producer: &mut dyn FnMut(usize) -> LoweredAST,
+    rules: &[&RewriteRule],
+) -> LoweredAST {
     let JitAST::Cast {
         operand,
         dt: outer_dt,

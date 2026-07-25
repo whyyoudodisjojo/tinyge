@@ -1,4 +1,3 @@
-use memory::buffers::BufferWithType;
 use wgpu::{
     Buffer, BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
     ComputePassDescriptor, Device, Queue, ShaderStages,
@@ -11,6 +10,7 @@ use tinyge_graphics::shaders::{
 };
 
 use crate::asts::jit::JitAST;
+use crate::asts::lowered::ASTOrConst;
 use crate::asts::lowered::{
     Accessor, BindingMeta, CustomBufferBindingType, EntrypointData, EntrypointGlobals, Functions,
     LoweredAST, ShaderIR, VarRef, VarRefType,
@@ -19,8 +19,8 @@ use crate::asts::lowered::{
 };
 use crate::dt::DType;
 
-pub struct JitRunner<'ast, T> {
-    ast: &'ast JitAST<T>,
+pub struct JitRunner<'ast> {
+    ast: &'ast JitAST,
     element_count: u32,
     num_vars: usize,
     input_dt: DType,
@@ -28,10 +28,8 @@ pub struct JitRunner<'ast, T> {
     output_size: u64,
 }
 
-impl<'ast, T> JitRunner<'ast, T> 
-    where T: Clone
-{
-    pub fn new(ast: &'ast JitAST<T>, element_count: u32) -> Self {
+impl<'ast> JitRunner<'ast> {
+    pub fn new(ast: &'ast JitAST, element_count: u32) -> Self {
         let (num_vars, input_dt) = ast.collect_var_info();
         let input_dt = input_dt.expect("JitAST must have at least one Var");
         let output_dt = ast.dt();
@@ -47,7 +45,7 @@ impl<'ast, T> JitRunner<'ast, T>
     }
 
     fn build_shader_ir(
-        ast: &JitAST<T>,
+        ast: &JitAST,
         num_vars: usize,
         input_dt: &DType,
         output_dt: &DType,
@@ -65,7 +63,7 @@ impl<'ast, T> JitRunner<'ast, T>
             ir.binded.push(BindingMeta {
                 ident: format!("input_{}", i),
                 ty: CustomBufferBindingType::Storage { read_only: true },
-                dtype: input_dt.clone(),
+                dtype: input_dt.peel_array().as_array_dtype(),
             });
         }
         ir.binded.push(BindingMeta {
@@ -76,19 +74,36 @@ impl<'ast, T> JitRunner<'ast, T>
 
         ir.entrypoint_globals = vec![EntrypointGlobals::GlobalInvocationId];
 
+        let var_strides = compute_var_strides(ast);
+
         let mut scope = Scope::new();
         let idx = scope.var(entrypoint(0).f("x").load());
         let mut var_counter = 0;
+        let mut var_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
         let body = JitAST::lower_with_rewrite(
             ast.clone(),
             &mut scope,
-            &mut || {
-                let binding = var_counter;
-                var_counter += 1;
-                LoweredAST::Load(VarRefType::Global(VarRef {
-                    id: binding,
-                    by: vec![Accessor::Index(Box::new(local(idx).load()))],
-                }))
+            &mut |var_id: usize| {
+                let binding = if let Some(&b) = var_map.get(&var_id) {
+                    b
+                } else {
+                    let b = var_counter;
+                    var_counter += 1;
+                    var_map.insert(var_id, b);
+                    b
+                };
+                let stride = var_strides.get(&var_id).copied().unwrap_or(1);
+                if stride > 1 {
+                    LoweredAST::Load(VarRefType::Global(VarRef {
+                        id: binding,
+                        by: vec![],
+                    }))
+                } else {
+                    LoweredAST::Load(VarRefType::Global(VarRef {
+                        id: binding,
+                        by: vec![Accessor::Index(Box::new(local(idx).load()))],
+                    }))
+                }
             },
             &[],
         );
@@ -127,9 +142,7 @@ impl<'ast, T> JitRunner<'ast, T>
     }
 }
 
-impl<'a, T> ComputeShader<'a> for JitRunner<'_, T> 
-    where T: Clone
-{
+impl<'a> ComputeShader<'a> for JitRunner<'_> {
     type Args = Vec<Buffer>;
     type Ret = Buffer;
 
@@ -214,13 +227,60 @@ impl<'a, T> ComputeShader<'a> for JitRunner<'_, T>
     }
 }
 
-impl<T> JitAST<T> 
-    where T: Clone
-{
-    pub fn realize(&self, device: &Device, queue: &Queue, element_count: u32) -> JitAST<T> {
+fn compute_var_strides(ast: &JitAST) -> std::collections::HashMap<usize, u32> {
+    let mut strides = std::collections::HashMap::new();
+    compute_var_strides_inner(ast, &mut strides);
+    strides
+}
+
+fn compute_var_strides_inner(ast: &JitAST, strides: &mut std::collections::HashMap<usize, u32>) {
+    match ast {
+        JitAST::Var { id, dtype, buffer } => {
+            if strides.contains_key(id) {
+                return;
+            }
+            let scalar_byte_size = dtype.peel_all().byte_size() as u64;
+            let element_byte_size = dtype.byte_size() as u64;
+            let num_elements = buffer.size() / element_byte_size;
+            let stride = if num_elements > 1 {
+                (element_byte_size / scalar_byte_size) as u32
+            } else {
+                1
+            };
+            strides.insert(*id, stride);
+        }
+        JitAST::BinOp { lhs, rhs, .. } => {
+            compute_var_strides_inner(lhs, strides);
+            compute_var_strides_inner(rhs, strides);
+        }
+        JitAST::UnaryOp { operand, .. }
+        | JitAST::Cast { operand, .. }
+        | JitAST::Movement { operand, .. }
+        | JitAST::Reduce { operand, .. }
+        | JitAST::AllReduce { operand, .. } => {
+            compute_var_strides_inner(operand, strides);
+        }
+        JitAST::Ternary { a, b, c, .. } => {
+            compute_var_strides_inner(a, strides);
+            compute_var_strides_inner(b, strides);
+            compute_var_strides_inner(c, strides);
+        }
+        JitAST::Const(c) => {
+            for d in &c.data {
+                if let ASTOrConst::AST(a) = d {
+                    compute_var_strides_inner(a, strides);
+                }
+            }
+        }
+        JitAST::Lowered { .. } => {}
+    }
+}
+
+impl JitAST {
+    pub fn realize(&self, device: &Device, queue: &Queue, element_count: u32) -> JitAST {
         let mut bufs = vec![];
         self.collect_var_buffers(&mut bufs);
-        let input_bufs: Vec<Buffer> = bufs.into_iter().map(|b| b.inner.clone()).collect();
+        let input_bufs: Vec<Buffer> = bufs.into_iter().cloned().collect();
 
         let mut runner = JitRunner::new(self, element_count);
         let mut built_data = runner.build(device);
@@ -229,7 +289,8 @@ impl<T> JitAST<T>
         println!("{}", runner.load_source_code());
 
         JitAST::Var {
-            buffer: BufferWithType::from(output),
+            id: usize::MAX,
+            buffer: output,
             dtype: self.dt(),
         }
     }

@@ -180,13 +180,13 @@ fn traverse(
             LoweredAST::Return
         });
         local(stack_ptr).store(0u32.into());
-        local(0).i(0u32.into()).store(call!("i32", root_idx.var_ref().load()));
+        local(0).i(0u32.into()).store(cast::<i32>(vec![root_idx.var_ref().load().into()]));
         local(stack_ptr).store(local(stack_ptr).load() + 1u32.into());
         scope.while_loop(
             local(stack_ptr).load().gt(0u32.into()),
             |b| {
                 let dec = local(stack_ptr).store(local(stack_ptr).load() - 1u32.into());
-                let pop = local(node_idx).store(call!("u32", local(0).i(local(stack_ptr).load()).load()));
+                let pop = local(node_idx).store(cast::<u32>(vec![local(0).i(local(stack_ptr).load()).load().into()]));
                 let node = b.var(nodes.var_ref().i(local(node_idx).load()).load());
                 let t_near = b.mut_((-1.0f32).into());
                 let (ri, ri_cond) = ray_intersects(b, ray, local(node).f("min").f("xyz").load(), local(node).f("max").f("xyz").load(), local(t_max_var).load());
@@ -251,7 +251,7 @@ fn traverse(
                 )
             },
         );
-        results.var_ref().i(local(ray_idx).load()).f("hit_node_idx").store(call!("i32", local(hit_idx).load()));
+        results.var_ref().i(local(ray_idx).load()).f("hit_node_idx").store(cast::<i32>(vec![local(hit_idx).load().into()]));
         results.var_ref().i(local(ray_idx).load()).f("t_near").store(local(hit_t).load());
     );
 

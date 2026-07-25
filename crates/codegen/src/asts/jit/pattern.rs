@@ -50,9 +50,7 @@ pub enum PatJitAST {
 }
 
 impl PatJitAST {
-    pub fn matches<T>(&self, ast: &JitAST<T>, ctx: &mut HashMap<String, JitAST<T>>) -> bool 
-        where T: Clone
-    {
+    pub fn matches(&self, ast: &JitAST, ctx: &mut HashMap<String, JitAST>) -> bool {
         match (self, ast) {
             (PatJitAST::Var(n), _) => {
                 ctx.insert(n.clone(), ast.clone());
@@ -211,40 +209,38 @@ impl PatJitAST {
     }
 }
 
-pub struct RewriteRule<T>{
+pub struct RewriteRule {
     pub pat: PatJitAST,
     pub transform: fn(
-        JitAST<T>,
-        HashMap<String, JitAST<T>>,
+        JitAST,
+        HashMap<String, JitAST>,
         &mut Scope,
-        &mut dyn FnMut() -> LoweredAST,
-        &[&RewriteRule<T>],
+        &mut dyn FnMut(usize) -> LoweredAST,
+        &[&RewriteRule],
     ) -> LoweredAST,
 }
 
-impl<T> RewriteRule<T> {
+impl RewriteRule {
     pub fn new(
         pat: PatJitAST,
         transform: fn(
-            JitAST<T>,
-            HashMap<String, JitAST<T>>,
+            JitAST,
+            HashMap<String, JitAST>,
             &mut Scope,
-            &mut dyn FnMut() -> LoweredAST,
-            &[&RewriteRule<T>],
+            &mut dyn FnMut(usize) -> LoweredAST,
+            &[&RewriteRule],
         ) -> LoweredAST,
     ) -> Self {
         Self { pat, transform }
     }
 }
 
-impl<T> JitAST<T> 
-    where T: Clone
-{
+impl JitAST {
     pub fn graph_rewrite(
         ast: Self,
         scope: &mut Scope,
-        rules: &[&RewriteRule<T>],
-        on_var: &mut dyn FnMut() -> LoweredAST,
+        rules: &[&RewriteRule],
+        on_var: &mut dyn FnMut(usize) -> LoweredAST,
     ) -> LoweredAST {
         for rule in rules {
             let mut ctx = HashMap::new();
@@ -253,7 +249,8 @@ impl<T> JitAST<T>
             }
         }
         match ast {
-            JitAST::Var { .. } => return on_var(),
+            JitAST::Var { id, .. } => return on_var(id),
+            JitAST::Lowered { expr, .. } => return expr,
             JitAST::Const(c) => {
                 return LoweredAST::Const(AstConst {
                     dt: c.dt,

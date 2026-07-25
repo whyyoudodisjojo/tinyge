@@ -184,15 +184,93 @@ fn pad_bounds_check(
     result
 }
 
-pub fn movement<T>(
-    matched: JitAST<T>,
-    _captured: HashMap<String, JitAST<T>>,
+fn load_packed(
+    binding_id: usize,
+    chain: &[&MovOp],
+    shapes: &[Vec<usize>],
+    base_shape: &[usize],
+    out_shape: &[usize],
     scope: &mut Scope,
-    var_producer: &mut dyn FnMut() -> LoweredAST,
-    rules: &[&RewriteRule<T>],
-) -> LoweredAST 
-    where T: Clone
-{
+    base_dt: &DType,
+) -> LoweredAST {
+    let thread_id = entrypoint(0).f("x").load();
+    let element_size: u32 = base_shape.iter().product::<usize>() as u32;
+    let (result_coord, pad_checks) =
+        apply_chain(vec![LoweredAST::from(0u32)], chain, shapes, scope);
+    let component_offset = coord_linearize(&result_coord, base_shape);
+    let source_idx = thread_id * element_size.into() + component_offset;
+
+    let out_count: usize = out_shape.iter().product::<usize>().max(1);
+    let loaded = if out_count > 1 && out_count <= 4 {
+        let vec_ident = match out_count {
+            2 => "vec2",
+            3 => "vec3",
+            4 => "vec4",
+            _ => unreachable!(),
+        };
+        LoweredAST::FunctionCall {
+            ident: vec_ident.to_string(),
+            args: (0..out_count)
+                .map(|i| {
+                    Box::new(LoweredAST::Load(VarRefType::Global(VarRef {
+                        id: binding_id,
+                        by: vec![Accessor::Index(Box::new(
+                            source_idx.clone() + LoweredAST::from(i as u32),
+                        ))],
+                    })))
+                })
+                .collect(),
+        }
+    } else {
+        LoweredAST::Load(VarRefType::Global(VarRef {
+            id: binding_id,
+            by: vec![Accessor::Index(Box::new(source_idx))],
+        }))
+    };
+    pad_bounds_check(loaded, pad_checks, base_dt, scope)
+}
+
+fn load_flat(
+    binding_id: usize,
+    chain: &[&MovOp],
+    shapes: &[Vec<usize>],
+    base_shape: &[usize],
+    out_shape: &[usize],
+    scope: &mut Scope,
+    base_dt: &DType,
+) -> LoweredAST {
+    let thread_id = entrypoint(0).f("x").load();
+    let coord = if out_shape.len() <= 1 {
+        vec![thread_id]
+    } else {
+        let (mut coords, rem_var) = (0..out_shape.len() - 1).fold(
+            (vec![], scope.var(thread_id)),
+            |(mut coords, rem_var), i| {
+                let stride = out_shape[i + 1..].iter().product::<usize>() as u32;
+                let new_rem_var = scope.var(local(rem_var).load() % stride.into());
+                coords.push(local(rem_var).load() / stride.into());
+                (coords, new_rem_var)
+            },
+        );
+        coords.push(local(rem_var).load());
+        coords
+    };
+    let (result_coord, pad_checks) = apply_chain(coord, chain, shapes, scope);
+    let source_idx = coord_linearize(&result_coord, base_shape);
+    let loaded = LoweredAST::Load(VarRefType::Global(VarRef {
+        id: binding_id,
+        by: vec![Accessor::Index(Box::new(source_idx))],
+    }));
+    pad_bounds_check(loaded, pad_checks, base_dt, scope)
+}
+
+pub fn movement(
+    matched: JitAST,
+    _captured: HashMap<String, JitAST>,
+    scope: &mut Scope,
+    var_producer: &mut dyn FnMut(usize) -> LoweredAST,
+    rules: &[&RewriteRule],
+) -> LoweredAST {
     let (base, chain) = matched.inner_movement_chain();
     if chain.is_empty() {
         return JitAST::graph_rewrite(base.clone(), scope, rules, var_producer);
@@ -202,7 +280,7 @@ pub fn movement<T>(
 
     let base_loaded = JitAST::graph_rewrite(base.clone(), scope, rules, var_producer);
 
-    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&matched as &JitAST<T>), |node| {
+    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&matched as &JitAST), |node| {
         if let JitAST::Movement { operand, .. } = node {
             Some(operand.as_ref())
         } else {
@@ -213,38 +291,41 @@ pub fn movement<T>(
     .collect();
 
     match &base_loaded {
-        LoweredAST::Load(VarRefType::Global(vr)) => {
-            let binding_id = vr.id;
-            let thread_id = entrypoint(0).f("x").load();
-
-            let coord = {
-                let linear = thread_id.clone();
-                if out_shape.len() <= 1 {
-                    vec![linear]
-                } else {
-                    let (mut coords, rem_var) = (0..out_shape.len() - 1).fold(
-                        (vec![], scope.var(linear)),
-                        |(mut coords, rem_var), i| {
-                            let stride = out_shape[i + 1..].iter().product::<usize>() as u32;
-                            let new_rem_var = scope.var(local(rem_var).load() % stride.into());
-                            coords.push(local(rem_var).load() / stride.into());
-                            (coords, new_rem_var)
-                        },
-                    );
-                    coords.push(local(rem_var).load());
-                    coords
-                }
-            };
-
-            let (result_coord, pad_checks) = apply_chain(coord, &chain, &shapes, scope);
-            let source_idx = coord_linearize(&result_coord, &base_shape);
-
-            let loaded = LoweredAST::Load(VarRefType::Global(VarRef {
-                id: binding_id,
-                by: vec![Accessor::Index(Box::new(source_idx))],
-            }));
-
-            pad_bounds_check(loaded, pad_checks, &base.dt(), scope)
+        LoweredAST::Load(VarRefType::Global(vr)) if vr.by.is_empty() => load_packed(
+            vr.id,
+            &chain,
+            &shapes,
+            &base_shape,
+            &out_shape,
+            scope,
+            &base.dt(),
+        ),
+        LoweredAST::Load(VarRefType::Global(vr)) => load_flat(
+            vr.id,
+            &chain,
+            &shapes,
+            &base_shape,
+            &out_shape,
+            scope,
+            &base.dt(),
+        ),
+        _ if out_shape.iter().product::<usize>() == 1 => {
+            let component_idx: u32 = chain
+                .iter()
+                .filter_map(|op| match op {
+                    MovOp::Shrink(amounts) => Some(amounts.iter()),
+                    _ => None,
+                })
+                .flatten()
+                .map(|(lo, _)| *lo as u32)
+                .sum();
+            let fields = ["x", "y", "z", "w"];
+            if (component_idx as usize) < fields.len() {
+                let tmp = scope.var(base_loaded);
+                LoweredAST::Load(local(tmp).f(fields[component_idx as usize]))
+            } else {
+                base_loaded
+            }
         }
         _ => base_loaded,
     }
