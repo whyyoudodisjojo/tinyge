@@ -1,5 +1,5 @@
 use codegen_macros::IntoWgslStruct;
-use tinyge_graphics::shaders::buffers::BufferWithType;
+use memory::buffers::BufferWithType;
 use wgpu::{Device, Queue};
 
 use crate::collisions::algos::{GpuBVHTraversal, GpuCollisionAlgorithm, Ray, RayResult};

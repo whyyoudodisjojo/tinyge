@@ -11,6 +11,7 @@ bytemuck = { workspace = true, features = ["derive"] }
 wgpu = { workspace = true }
 codegen = {path = "../../crates/codegen"}
 codegen-macros = {path = "../../crates/codegen-macros"}
+memory = {path = "../../crates/memory"}
 
 [dev-dependencies]
 pollster.workspace = true

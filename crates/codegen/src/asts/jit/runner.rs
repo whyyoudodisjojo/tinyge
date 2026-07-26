@@ -1,3 +1,4 @@
+use memory::buffers::ResourceType;
 use wgpu::{
     Buffer, BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
     ComputePassDescriptor, Device, Queue, ShaderStages,
@@ -5,7 +6,6 @@ use wgpu::{
 
 use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
-    buffers::ResourceType,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
 

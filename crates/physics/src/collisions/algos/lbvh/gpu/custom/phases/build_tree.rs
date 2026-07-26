@@ -1,6 +1,6 @@
+use memory::buffers::{BufferWithType, ResourceType};
 use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
-    buffers::{BufferWithType, ResourceType},
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
 use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};

@@ -3,7 +3,7 @@ use std::ops::Add;
 use bytemuck::{Pod, Zeroable};
 use codegen_macros::IntoWgslStruct;
 use glam::{Vec3A, Vec4};
-use tinyge_graphics::shaders::buffers::BufferWithType;
+use memory::buffers::BufferWithType;
 
 pub mod gpu_accelerated;
 pub mod lbvh;

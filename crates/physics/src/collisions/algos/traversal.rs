@@ -3,7 +3,8 @@ use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope};
 
 use codegen::{call, group};
 use codegen_macros::shader;
-use tinyge_graphics::shaders::{ComputeShader, buffers::BufferWithType};
+use memory::buffers::BufferWithType;
+use tinyge_graphics::shaders::{ComputeShader};
 
 use crate::collisions::algos::{
     BVHNode, BVHTree, CpuBVHTraversal, CpuStorage, FlattenedBVHNode, GpuBVHTraversal, GpuStorage,

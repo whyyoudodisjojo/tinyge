@@ -1,5 +1,5 @@
+use memory::buffers::{BufferWithType, ResourceType};
 use tinyge_graphics::shaders::{
-    buffers::{BufferWithType, ResourceType},
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
 use wgpu::{BufferUsages, ShaderStages};
@@ -187,7 +187,8 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
 
 #[cfg(test)]
 mod tests {
-    use tinyge_graphics::shaders::{ComputeShaderWrapper, buffers::Buffers};
+    use memory::buffers::Buffers;
+use tinyge_graphics::shaders::{ComputeShaderWrapper};
     use wgpu::util::DeviceExt;
 
     use super::*;

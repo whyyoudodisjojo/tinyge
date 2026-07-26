@@ -1,6 +1,6 @@
+use memory::buffers::{BufferWithType, Buffers};
 use tinyge_graphics::shaders::{
     ComputeShaderWrapper,
-    buffers::{BufferWithType, Buffers},
 };
 use wgpu::{Buffer, Device};
 
