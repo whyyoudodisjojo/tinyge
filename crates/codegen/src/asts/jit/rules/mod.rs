@@ -1,16 +1,16 @@
-pub mod basic;
-pub mod fuse;
-pub mod movement;
-pub mod simplify;
+pub mod post_traversal;
+pub mod pre_traversal;
 
 use crate::asts::jit::{JitBinOp, JitUnaryOp, TernaryOp};
+use PatJitAST::*;
+use post_traversal::{basic, fuse, movement};
+use pre_traversal::{fuse as pre_fuse, simplify};
 
 use super::pattern::{PatJitAST, RewriteRule};
 
 pub fn builtin_rules() -> Vec<RewriteRule> {
-    use PatJitAST::*;
     vec![
-        RewriteRule::new(
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -18,7 +18,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::cdiv,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -26,7 +26,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::binop_max,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -34,7 +34,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::cmod,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -42,7 +42,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::fdiv,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -50,7 +50,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::pow,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -58,7 +58,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::floordiv,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -66,7 +66,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::floormod,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -74,56 +74,56 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::threefry,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             UnaryOp {
                 operand: Box::new(Var("x".into())),
                 op: Some(JitUnaryOp::Exp2),
             },
             basic::exp2,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             UnaryOp {
                 operand: Box::new(Var("x".into())),
                 op: Some(JitUnaryOp::Log2),
             },
             basic::log2,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             UnaryOp {
                 operand: Box::new(Var("x".into())),
                 op: Some(JitUnaryOp::Sin),
             },
             basic::sin,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             UnaryOp {
                 operand: Box::new(Var("x".into())),
                 op: Some(JitUnaryOp::Sqrt),
             },
             basic::sqrt,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             UnaryOp {
                 operand: Box::new(Var("x".into())),
                 op: Some(JitUnaryOp::Reciprocal),
             },
             basic::reciprocal,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             UnaryOp {
                 operand: Box::new(Var("x".into())),
                 op: Some(JitUnaryOp::Trunc),
             },
             basic::trunc,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             UnaryOp {
                 operand: Box::new(Var("x".into())),
                 op: Some(JitUnaryOp::Bitcast),
             },
             basic::bitcast,
         ),
-        RewriteRule::new(
+        RewriteRule::pre(
             Cast {
                 operand: Box::new(Cast {
                     operand: Box::new(Var("x".into())),
@@ -131,16 +131,16 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
                 }),
                 dt: None,
             },
-            fuse::fuse_cast_cast,
+            pre_fuse::fuse_cast_cast,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             Cast {
                 operand: Box::new(Var("x".into())),
                 dt: None,
             },
             basic::cast,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             Ternary {
                 a: Box::new(Var("a".into())),
                 b: Box::new(Var("b".into())),
@@ -149,7 +149,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::ternary_where,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             Ternary {
                 a: Box::new(Var("a".into())),
                 b: Box::new(Var("b".into())),
@@ -158,14 +158,22 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::ternary_mulacc,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             Movement {
                 operand: Box::new(Var("x".into())),
                 op: None,
             },
             movement::movement,
         ),
-        RewriteRule::new(
+        RewriteRule::pre(
+            BinOp {
+                lhs: Box::new(Var("lhs".into())),
+                rhs: Box::new(Var("rhs".into())),
+                op: None,
+            },
+            simplify::simplify_binop_pre,
+        ),
+        RewriteRule::post(
             BinOp {
                 lhs: Box::new(Var("lhs".into())),
                 rhs: Box::new(Var("rhs".into())),
@@ -173,14 +181,14 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::binop_basic,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             UnaryOp {
                 operand: Box::new(Var("x".into())),
                 op: None,
             },
             basic::unaryop_basic,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             AllReduce {
                 operand: Box::new(Reduce {
                     operand: Box::new(Var("x".into())),
@@ -191,7 +199,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             fuse::fuse_reduce,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             Reduce {
                 operand: Box::new(AllReduce {
                     operand: Box::new(Var("x".into())),
@@ -202,7 +210,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             fuse::fuse_reduce,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             AllReduce {
                 operand: Box::new(AllReduce {
                     operand: Box::new(Var("x".into())),
@@ -212,7 +220,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             fuse::fuse_reduce,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             Reduce {
                 operand: Box::new(Var("x".into())),
                 axis: None,
@@ -220,7 +228,7 @@ pub fn builtin_rules() -> Vec<RewriteRule> {
             },
             basic::reduce,
         ),
-        RewriteRule::new(
+        RewriteRule::post(
             AllReduce {
                 operand: Box::new(Var("x".into())),
                 op: None,

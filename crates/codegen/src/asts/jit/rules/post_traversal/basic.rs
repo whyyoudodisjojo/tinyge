@@ -13,10 +13,9 @@ use crate::{
     dt::{BasicTy, DType, IntegerTy, VecTy},
 };
 
-use super::super::pattern::RewriteRule;
+use crate::asts::jit::pattern::RewriteRule;
 
 use super::movement;
-use super::simplify;
 
 fn lower_where_array(
     a_lowered: LoweredAST,
@@ -239,8 +238,8 @@ pub fn cdiv(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let l = JitAST::graph_rewrite(c.remove("lhs").unwrap(), scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(c.remove("rhs").unwrap(), scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(c.remove("rhs").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "ceil_div".into(),
         args: vec![Box::new(l), Box::new(r)],
@@ -255,8 +254,8 @@ pub fn binop_max(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let l = JitAST::graph_rewrite(c.remove("lhs").unwrap(), scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(c.remove("rhs").unwrap(), scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(c.remove("rhs").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "max".into(),
         args: vec![Box::new(l), Box::new(r)],
@@ -271,8 +270,8 @@ pub fn cmod(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let l = JitAST::graph_rewrite(c.remove("lhs").unwrap(), scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(c.remove("rhs").unwrap(), scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(c.remove("rhs").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "ceil_mod".into(),
         args: vec![Box::new(l), Box::new(r)],
@@ -287,8 +286,8 @@ pub fn fdiv(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let l = JitAST::graph_rewrite(c.remove("lhs").unwrap(), scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(c.remove("rhs").unwrap(), scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(c.remove("rhs").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "fdiv".into(),
         args: vec![Box::new(l), Box::new(r)],
@@ -303,8 +302,8 @@ pub fn pow(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let l = JitAST::graph_rewrite(c.remove("lhs").unwrap(), scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(c.remove("rhs").unwrap(), scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(c.remove("rhs").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "pow".into(),
         args: vec![Box::new(l), Box::new(r)],
@@ -319,8 +318,8 @@ pub fn floordiv(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let l = JitAST::graph_rewrite(c.remove("lhs").unwrap(), scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(c.remove("rhs").unwrap(), scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(c.remove("rhs").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "floor_div".into(),
         args: vec![Box::new(l), Box::new(r)],
@@ -335,8 +334,8 @@ pub fn floormod(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let l = JitAST::graph_rewrite(c.remove("lhs").unwrap(), scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(c.remove("rhs").unwrap(), scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(c.remove("rhs").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "floor_mod".into(),
         args: vec![Box::new(l), Box::new(r)],
@@ -351,8 +350,8 @@ pub fn threefry(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let l = JitAST::graph_rewrite(c.remove("lhs").unwrap(), scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(c.remove("rhs").unwrap(), scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(c.remove("rhs").unwrap(), scope, rules, var_producer);
     let key = LoweredAST::Const(AstConst {
         dt: DType::Basic(BasicTy::Integer(IntegerTy::U32)),
         data: vec![ASTOrConst::Const(2654435761u32.to_le_bytes().to_vec())],
@@ -376,7 +375,7 @@ pub fn exp2(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let o = JitAST::graph_rewrite(c.remove("x").unwrap(), scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "exp2".into(),
         args: vec![Box::new(o)],
@@ -391,7 +390,7 @@ pub fn log2(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let o = JitAST::graph_rewrite(c.remove("x").unwrap(), scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "log2".into(),
         args: vec![Box::new(o)],
@@ -406,7 +405,7 @@ pub fn sin(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let o = JitAST::graph_rewrite(c.remove("x").unwrap(), scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "sin".into(),
         args: vec![Box::new(o)],
@@ -421,7 +420,7 @@ pub fn sqrt(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let o = JitAST::graph_rewrite(c.remove("x").unwrap(), scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "sqrt".into(),
         args: vec![Box::new(o)],
@@ -436,7 +435,7 @@ pub fn reciprocal(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let o = JitAST::graph_rewrite(c.remove("x").unwrap(), scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
     LoweredAST::BinaryOp {
         lhs: Box::new(LoweredAST::from(1.0f32)),
         rhs: Box::new(o),
@@ -452,7 +451,7 @@ pub fn trunc(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let o = JitAST::graph_rewrite(c.remove("x").unwrap(), scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "trunc".into(),
         args: vec![Box::new(o)],
@@ -467,7 +466,7 @@ pub fn bitcast(
     rules: &[&RewriteRule],
 ) -> LoweredAST {
     let mut c = captured;
-    let o = JitAST::graph_rewrite(c.remove("x").unwrap(), scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
     LoweredAST::FunctionCall {
         ident: "bitcast".into(),
         args: vec![Box::new(o)],
@@ -487,7 +486,7 @@ pub fn cast(
     let src_dt = operand.dt();
     let src_count = src_dt.element_count();
     let dst_count = dt.element_count();
-    let o = JitAST::graph_rewrite(*operand, scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(*operand, scope, rules, var_producer);
 
     let data: Vec<ASTOrConst<LoweredAST>> = if src_count == dst_count {
         vec![ASTOrConst::AST(o)]
@@ -533,9 +532,9 @@ pub fn ternary_where(
     let b_dt = b.dt();
     let c_dt = c.dt();
     let result_dt = a_dt.clone();
-    let a_lowered = JitAST::graph_rewrite(*a, scope, rules, var_producer);
-    let b_lowered = JitAST::graph_rewrite(*b, scope, rules, var_producer);
-    let c_lowered = JitAST::graph_rewrite(*c, scope, rules, var_producer);
+    let a_lowered = JitAST::graph_rewrite_post(*a, scope, rules, var_producer);
+    let b_lowered = JitAST::graph_rewrite_post(*b, scope, rules, var_producer);
+    let c_lowered = JitAST::graph_rewrite_post(*c, scope, rules, var_producer);
     match &result_dt {
         DType::Vector(VecTy::Array(_, Some(n))) => lower_where_array(
             a_lowered, b_lowered, c_lowered, a_dt, b_dt, c_dt, *n, result_dt, scope,
@@ -561,9 +560,9 @@ pub fn ternary_mulacc(
     let JitAST::Ternary { a, b, c, op: _ } = matched else {
         unreachable!()
     };
-    let a_lowered = JitAST::graph_rewrite(*a, scope, rules, var_producer);
-    let b_lowered = JitAST::graph_rewrite(*b, scope, rules, var_producer);
-    let c_lowered = JitAST::graph_rewrite(*c, scope, rules, var_producer);
+    let a_lowered = JitAST::graph_rewrite_post(*a, scope, rules, var_producer);
+    let b_lowered = JitAST::graph_rewrite_post(*b, scope, rules, var_producer);
+    let c_lowered = JitAST::graph_rewrite_post(*c, scope, rules, var_producer);
     LoweredAST::BinaryOp {
         lhs: Box::new(LoweredAST::BinaryOp {
             lhs: Box::new(a_lowered),
@@ -586,7 +585,7 @@ pub fn unaryop_basic(
         JitAST::UnaryOp { operand, op } => (operand, op),
         _ => unreachable!(),
     };
-    let o = JitAST::graph_rewrite(*operand, scope, rules, var_producer);
+    let o = JitAST::graph_rewrite_post(*operand, scope, rules, var_producer);
     match op {
         JitUnaryOp::Basic(basic) => LoweredAST::UnaryOp {
             operand: Box::new(o),
@@ -608,14 +607,8 @@ pub fn binop_basic(
         _ => unreachable!(),
     };
 
-    let lhs_simple = simplify::simplify_node(*lhs);
-    let rhs_simple = simplify::simplify_node(*rhs);
-    if let Some(simple) = simplify::simplify_binop(lhs_simple.clone(), rhs_simple.clone(), op) {
-        return JitAST::graph_rewrite(simple, scope, rules, var_producer);
-    }
-
-    let l = JitAST::graph_rewrite(lhs_simple, scope, rules, var_producer);
-    let r = JitAST::graph_rewrite(rhs_simple, scope, rules, var_producer);
+    let l = JitAST::graph_rewrite_post(*lhs, scope, rules, var_producer);
+    let r = JitAST::graph_rewrite_post(*rhs, scope, rules, var_producer);
     match op {
         JitBinOp::Basic(basic) => LoweredAST::BinaryOp {
             lhs: Box::new(l),

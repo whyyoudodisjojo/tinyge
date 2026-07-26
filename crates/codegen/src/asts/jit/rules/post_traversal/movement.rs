@@ -11,7 +11,7 @@ use crate::{
     dt::{BasicTy, DType, IntegerTy},
 };
 
-use super::super::pattern::RewriteRule;
+use crate::asts::jit::pattern::RewriteRule;
 
 pub fn coord_linearize(coords: &[LoweredAST], shape: &[usize]) -> LoweredAST {
     if coords.is_empty() || shape.is_empty() {
@@ -273,12 +273,12 @@ pub fn movement(
 ) -> LoweredAST {
     let (base, chain) = matched.inner_movement_chain();
     if chain.is_empty() {
-        return JitAST::graph_rewrite(base.clone(), scope, rules, var_producer);
+        return JitAST::graph_rewrite_post(base.clone(), scope, rules, var_producer);
     }
     let out_shape = matched.shape();
     let base_shape = base.shape();
 
-    let base_loaded = JitAST::graph_rewrite(base.clone(), scope, rules, var_producer);
+    let base_loaded = JitAST::graph_rewrite_post(base.clone(), scope, rules, var_producer);
 
     let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&matched as &JitAST), |node| {
         if let JitAST::Movement { operand, .. } = node {

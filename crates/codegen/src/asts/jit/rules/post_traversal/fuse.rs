@@ -12,10 +12,9 @@ use crate::{
     call,
 };
 
-use super::super::{
-    pattern::RewriteRule,
-    rules::{basic, movement},
-};
+use crate::asts::jit::pattern::RewriteRule;
+
+use super::{basic, movement};
 
 pub fn fuse_reduce(
     matched: JitAST,
@@ -193,32 +192,4 @@ pub fn fuse_reduce(
     );
 
     LoweredAST::Group(vec![outer_loop, LoweredAST::Load(local(outer_acc))])
-}
-
-pub fn fuse_cast_cast(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
-    scope: &mut Scope,
-    var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
-) -> LoweredAST {
-    let JitAST::Cast {
-        operand,
-        dt: outer_dt,
-    } = matched
-    else {
-        unreachable!()
-    };
-    let JitAST::Cast {
-        operand: inner_operand,
-        ..
-    } = *operand
-    else {
-        unreachable!()
-    };
-    let fused = JitAST::Cast {
-        operand: inner_operand,
-        dt: outer_dt,
-    };
-    basic::cast(fused, HashMap::new(), scope, var_producer, rules)
 }

@@ -209,19 +209,29 @@ impl PatJitAST {
     }
 }
 
-pub struct RewriteRule {
-    pub pat: PatJitAST,
-    pub transform: fn(
-        JitAST,
-        HashMap<String, JitAST>,
-        &mut Scope,
-        &mut dyn FnMut(usize) -> LoweredAST,
-        &[&RewriteRule],
-    ) -> LoweredAST,
+pub enum RewriteRule {
+    Pre {
+        pat: PatJitAST,
+        transform: fn(JitAST, HashMap<String, JitAST>) -> JitAST,
+    },
+    Post {
+        pat: PatJitAST,
+        transform: fn(
+            JitAST,
+            HashMap<String, JitAST>,
+            &mut Scope,
+            &mut dyn FnMut(usize) -> LoweredAST,
+            &[&RewriteRule],
+        ) -> LoweredAST,
+    },
 }
 
 impl RewriteRule {
-    pub fn new(
+    pub fn pre(pat: PatJitAST, transform: fn(JitAST, HashMap<String, JitAST>) -> JitAST) -> Self {
+        Self::Pre { pat, transform }
+    }
+
+    pub fn post(
         pat: PatJitAST,
         transform: fn(
             JitAST,
@@ -231,21 +241,83 @@ impl RewriteRule {
             &[&RewriteRule],
         ) -> LoweredAST,
     ) -> Self {
-        Self { pat, transform }
+        Self::Post { pat, transform }
     }
 }
 
 impl JitAST {
-    pub fn graph_rewrite(
+    fn pre_rewrite(ast: Self, rules: &[&RewriteRule]) -> Self {
+        let ast = match ast {
+            JitAST::BinOp { lhs, rhs, op } => JitAST::BinOp {
+                lhs: Box::new(Self::pre_rewrite(*lhs, rules)),
+                rhs: Box::new(Self::pre_rewrite(*rhs, rules)),
+                op,
+            },
+            JitAST::UnaryOp { operand, op } => JitAST::UnaryOp {
+                operand: Box::new(Self::pre_rewrite(*operand, rules)),
+                op,
+            },
+            JitAST::Cast { operand, dt } => JitAST::Cast {
+                operand: Box::new(Self::pre_rewrite(*operand, rules)),
+                dt,
+            },
+            JitAST::Ternary { a, b, c, op } => JitAST::Ternary {
+                a: Box::new(Self::pre_rewrite(*a, rules)),
+                b: Box::new(Self::pre_rewrite(*b, rules)),
+                c: Box::new(Self::pre_rewrite(*c, rules)),
+                op,
+            },
+            JitAST::Movement { operand, op } => JitAST::Movement {
+                operand: Box::new(Self::pre_rewrite(*operand, rules)),
+                op,
+            },
+            JitAST::Reduce { operand, axis, op } => JitAST::Reduce {
+                operand: Box::new(Self::pre_rewrite(*operand, rules)),
+                axis,
+                op,
+            },
+            JitAST::AllReduce { operand, op } => JitAST::AllReduce {
+                operand: Box::new(Self::pre_rewrite(*operand, rules)),
+                op,
+            },
+            JitAST::Const(c) => JitAST::Const(AstConst {
+                dt: c.dt,
+                data: c
+                    .data
+                    .into_iter()
+                    .map(|d| match d {
+                        ASTOrConst::AST(a) => ASTOrConst::AST(Self::pre_rewrite(a, rules)),
+                        ASTOrConst::Const(c) => ASTOrConst::Const(c),
+                    })
+                    .collect(),
+            }),
+            other => other,
+        };
+
+        for rule in rules {
+            if let RewriteRule::Pre { pat, transform } = rule {
+                let mut ctx = HashMap::new();
+                if pat.matches(&ast, &mut ctx) {
+                    return transform(ast, ctx);
+                }
+            }
+        }
+
+        ast
+    }
+
+    pub fn graph_rewrite_post(
         ast: Self,
         scope: &mut Scope,
         rules: &[&RewriteRule],
         on_var: &mut dyn FnMut(usize) -> LoweredAST,
     ) -> LoweredAST {
         for rule in rules {
-            let mut ctx = HashMap::new();
-            if rule.pat.matches(&ast, &mut ctx) {
-                return (rule.transform)(ast, ctx, scope, on_var, rules);
+            if let RewriteRule::Post { pat, transform } = rule {
+                let mut ctx = HashMap::new();
+                if pat.matches(&ast, &mut ctx) {
+                    return transform(ast, ctx, scope, on_var, rules);
+                }
             }
         }
         match ast {
@@ -259,7 +331,7 @@ impl JitAST {
                         .into_iter()
                         .map(|d| match d {
                             ASTOrConst::AST(a) => {
-                                ASTOrConst::AST(Self::graph_rewrite(a, scope, rules, on_var))
+                                ASTOrConst::AST(Self::graph_rewrite_post(a, scope, rules, on_var))
                             }
                             ASTOrConst::Const(c) => ASTOrConst::Const(c),
                         })
@@ -271,5 +343,15 @@ impl JitAST {
                 std::mem::discriminant(&ast)
             ),
         }
+    }
+
+    pub fn graph_rewrite(
+        ast: Self,
+        scope: &mut Scope,
+        rules: &[&RewriteRule],
+        on_var: &mut dyn FnMut(usize) -> LoweredAST,
+    ) -> LoweredAST {
+        let ast = Self::pre_rewrite(ast, rules);
+        Self::graph_rewrite_post(ast, scope, rules, on_var)
     }
 }
