@@ -1,10 +1,8 @@
 pub mod events;
 
-use std::{
-    sync::{
-        Arc,
-        mpsc::{self, Receiver, Sender},
-    },
+use std::sync::{
+    Arc,
+    mpsc::{self, Receiver, Sender},
 };
 
 use winit::{application::ApplicationHandler, event::WindowEvent, window::Window};
@@ -13,9 +11,9 @@ use crate::{
     game_loop::events::{BaseEvent, EventsExecutor, RenderEventHandle, UpdateEventOrTimedEvent},
     renderer::{
         Renderer,
-        strategies::{RenderDispatcher, RenderPath, single::StateRenderSinglePass},
+        strategies::{RenderAble, RenderDispatcher, RenderPath},
     },
-    state::StateUpdates,
+    state::{StateRender, StateUpdates},
 };
 
 pub struct GameLoop<State, Executor>
@@ -55,7 +53,8 @@ where
         + Sync
         + 'static
         + StateUpdates<'static, UpdateEvent = <Executor as EventsExecutor<State>>::UpdateEvent>
-        + StateRenderSinglePass,
+        + StateRender
+        + RenderAble,
     for<'b> RenderPath<'b, State, State::RenderStrategy>: RenderDispatcher<'static>,
 {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {

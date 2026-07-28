@@ -4,10 +4,7 @@ use std::{
 };
 
 use tinyge_graphics::{
-    renderer::strategies::{
-        RenderAble,
-        single::{SinglePass, StateRenderSinglePass},
-    },
+    renderer::strategies::{RenderAble, single::SinglePass},
     shaders::ShaderWrapper,
     state::{StateRender, StateUpdates},
 };
@@ -192,5 +189,3 @@ impl<'b> RenderAble for State<'b> {
         render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
     }
 }
-
-impl<'a> StateRenderSinglePass for State<'a> {}

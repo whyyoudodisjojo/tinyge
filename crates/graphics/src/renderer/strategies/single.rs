@@ -8,12 +8,10 @@ use crate::{
     state::{StateRender, StateUpdates},
 };
 
-pub trait StateRenderSinglePass: StateRender + RenderAble {}
-
 pub trait SinglePassRenderer<'a> {
     fn render<State>(&mut self, state: &mut State)
     where
-        State: StateRenderSinglePass + StateUpdates<'a>;
+        State: StateRender + RenderAble + StateUpdates<'a>;
 }
 
 pub struct SinglePass;
@@ -21,7 +19,7 @@ pub struct SinglePass;
 impl<'a> SinglePassRenderer<'a> for Renderer<'a> {
     fn render<State>(&mut self, state: &mut State)
     where
-        State: StateRenderSinglePass + StateUpdates<'a>,
+        State: StateRender + RenderAble + StateUpdates<'a>,
     {
         let Some(ctx) = &mut self.ctx else {
             return;
@@ -60,7 +58,7 @@ impl<'a> SinglePassRenderer<'a> for Renderer<'a> {
 
 impl<'a, 'b, S> RenderDispatcher<'a> for RenderPath<'b, S, SinglePass>
 where
-    S: StateRenderSinglePass + StateUpdates<'a>,
+    S: StateRender + RenderAble + StateUpdates<'a>,
 {
     fn dispatch_render(&mut self, renderer: &mut Renderer<'a>) {
         SinglePassRenderer::render(renderer, self.inner);
