@@ -35,7 +35,7 @@ impl<'a> LayeredPassRenderer<'a> for Renderer<'a> {
             return;
         };
 
-        Self::prepare_surface(&self.recompilation_manager, ctx, state);
+        Self::prepare_surface(ctx, state);
 
         let output = match ctx.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(s) => s,

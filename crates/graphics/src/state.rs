@@ -1,4 +1,4 @@
-use wgpu::{Device, Queue, TextureViewDescriptor};
+use wgpu::{Device, Queue, TextureFormat, TextureViewDescriptor};
 
 pub trait StateUpdates<'a>
 where
@@ -8,6 +8,7 @@ where
 
     fn init(&mut self, device: &Device, queue: &Queue);
     fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>);
+    fn rebuild_shaders(&mut self, _device: &Device, _texture_format: &TextureFormat) {}
 }
 
 pub trait StateRender {

@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tinyge_graphics::{
     renderer::strategies::{RenderAble, single::SinglePass},
@@ -15,7 +12,7 @@ use memory::{
 };
 use wgpu::{
     BufferDescriptor, BufferUsages, Color, Device, Operations, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor,
+    RenderPassDescriptor, TextureFormat,
 };
 use winit::dpi::PhysicalSize;
 
@@ -36,11 +33,11 @@ pub struct State<'a> {
 }
 
 pub struct Shaders {
-    pub pentagon: Arc<ShaderWrapper<Pentagon>>,
+    pub pentagon: ShaderWrapper<Pentagon>,
 }
 
 impl<'a> State<'a> {
-    pub fn new(shader: Shaders) -> Self {
+    pub fn new() -> Self {
         Self {
             buffers: None,
             time_buffer: None,
@@ -49,7 +46,9 @@ impl<'a> State<'a> {
                 height: 1080,
             },
             start_time: SystemTime::now(),
-            shaders: shader,
+            shaders: Shaders {
+                pentagon: ShaderWrapper::new(Pentagon::new()),
+            },
         }
     }
 }
@@ -125,6 +124,10 @@ impl<'a> StateUpdates<'a> for State<'a> {
             }
         }
     }
+
+    fn rebuild_shaders(&mut self, device: &Device, texture_format: &TextureFormat) {
+        self.shaders.pentagon.build(device, texture_format, None);
+    }
 }
 
 impl<'a> StateRender for State<'a> {
@@ -170,9 +173,8 @@ impl<'b> RenderAble for State<'b> {
         });
 
         let buffers = self.buffers.as_ref().unwrap();
-        let mut built_data = self.shaders.pentagon.shader.lock().unwrap();
-        let sockets_ref = built_data.get_sockets().unwrap();
-        render_pass.set_pipeline(&sockets_ref.pipeline);
+        let built_data = self.shaders.pentagon.built_data.as_mut().unwrap();
+        render_pass.set_pipeline(&built_data.pipeline);
         render_pass.set_vertex_buffer(0, buffers.vertex_buffers[0].raw().slice(..));
         render_pass.set_index_buffer(
             buffers.index_buffer.as_ref().unwrap().raw().slice(..),
@@ -183,7 +185,6 @@ impl<'b> RenderAble for State<'b> {
             self.time_buffer.as_ref().unwrap().inner.clone(),
         )];
 
-        let built_data = built_data.get_sockets_mut().unwrap();
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);
         render_pass.set_bind_group(0, bind_group, &[]);
         render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);

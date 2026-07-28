@@ -64,16 +64,15 @@ where
 
         pollster::block_on(self.renderer.init(window));
 
-        let (queue, device) = self
+        let (queue, device, texture_format) = self
             .renderer
             .ctx
             .as_ref()
-            .map(|c| (&c.queue, &c.device))
+            .map(|c| (&c.queue, &c.device, &c.surface_config.format))
             .unwrap();
 
-        self.renderer.recompilation_manager.recompile_all(device);
-
         self.state.init(device, queue);
+        self.state.rebuild_shaders(device, texture_format);
 
         self.executor.handle_event(
             BaseEvent::Resumed,

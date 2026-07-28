@@ -1,10 +1,4 @@
 pub mod descriptors;
-pub mod manager;
-
-use std::sync::{
-    Arc, Mutex,
-    mpsc::{Receiver, Sender, channel},
-};
 
 use memory::{
     buffers::{AccelerationStructures, DynamicBindGroup, ResourceGroup},
@@ -43,7 +37,7 @@ pub trait Shader<'a> {
         device: &Device,
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
-    ) {
+    ) -> ShaderBuiltData {
         let MeshBufferSpecs {
             vertex_buffers: vertex_layouts,
             ..
@@ -118,61 +112,40 @@ pub trait Shader<'a> {
             .map(DynamicBindGroup::new)
             .collect();
 
-        let res = ShaderBuiltData {
+        ShaderBuiltData {
             pipeline,
             bind_groups,
-        };
-
-        self.handle_recompilation(res);
+        }
     }
-
-    fn handle_recompilation(&mut self, built_data: ShaderBuiltData);
 }
 
 pub struct ShaderWrapper<S>
 where
     S: for<'a> Shader<'a>,
 {
-    pub shader: Arc<Mutex<S>>,
-    sender_tx: Sender<RecompilationData>,
+    pub built_data: Option<ShaderBuiltData>,
+    pub shader: S,
 }
 
 impl<S> ShaderWrapper<S>
 where
     S: for<'a> Shader<'a>,
 {
-    pub fn new(shader: Arc<Mutex<S>>) -> (Arc<Self>, Receiver<RecompilationData>) {
-        let (tx, rx) = channel();
-        (
-            Arc::new(Self {
-                shader,
-                sender_tx: tx,
-            }),
-            rx,
-        )
-    }
-
-    pub fn get_sender_tx(&self) -> Sender<RecompilationData> {
-        self.sender_tx.clone()
-    }
-
-    pub fn watch(rx: Receiver<RecompilationData>, shader: Arc<Mutex<S>>) {
-        while let Ok(RecompilationData {
-            device,
-            texture_format,
-            cache,
-        }) = rx.recv()
-        {
-            let mut s = shader.lock().unwrap();
-            s.build(&device, &texture_format, cache.as_ref());
+    pub fn new(shader: S) -> Self {
+        Self {
+            built_data: None,
+            shader,
         }
     }
-}
 
-pub struct RecompilationData {
-    device: Device,
-    texture_format: TextureFormat,
-    cache: Option<PipelineCache>,
+    pub fn build(
+        &mut self,
+        device: &Device,
+        texture_format: &TextureFormat,
+        cache: Option<&PipelineCache>,
+    ) {
+        self.built_data = Some(self.shader.build(device, texture_format, cache));
+    }
 }
 
 pub struct ComputeShaderWrapper<S, T> {

@@ -4,10 +4,7 @@ use std::sync::{Arc, Weak};
 use wgpu::*;
 use winit::window::Window;
 
-use crate::{
-    shaders::manager::RecompilationManager,
-    state::{StateRender, StateUpdates},
-};
+use crate::state::{StateRender, StateUpdates};
 
 pub struct RendererCtx<'a> {
     pub instance: Instance,
@@ -52,18 +49,13 @@ pub struct AdapterDescriptor {
 pub struct Renderer<'a> {
     pub ctx: Option<RendererCtx<'a>>,
     pub descriptor: RendererDescriptor<'a>,
-    pub recompilation_manager: RecompilationManager,
 }
 
 impl<'a> Renderer<'a> {
-    pub fn new(
-        descriptor: RendererDescriptor<'a>,
-        recompilation_manager: RecompilationManager,
-    ) -> Self {
+    pub fn new(descriptor: RendererDescriptor<'a>) -> Self {
         Self {
             ctx: None,
             descriptor,
-            recompilation_manager,
         }
     }
 
@@ -105,8 +97,6 @@ impl<'a> Renderer<'a> {
             desired_maximum_frame_latency: 2,
         };
 
-        self.recompilation_manager.update_texture_format(format);
-
         surface.configure(&device, &surface_config);
 
         self.ctx = Some(RendererCtx {
@@ -125,7 +115,6 @@ impl<'a> Renderer<'a> {
     }
 
     pub fn prepare_surface<State>(
-        recompilation_manager: &RecompilationManager,
         ctx: &mut RendererCtx,
         state: &mut State,
     ) where
@@ -140,7 +129,7 @@ impl<'a> Renderer<'a> {
 
             ctx.surface.configure(&ctx.device, &ctx.surface_config);
 
-            recompilation_manager.recompile_all(&ctx.device);
+            state.rebuild_shaders(&ctx.device, &ctx.surface_config.format);
         }
     }
 }
