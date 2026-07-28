@@ -1,6 +1,5 @@
 pub mod strategies;
 use std::{
-    hash::Hash,
     sync::{Arc, Weak},
 };
 
@@ -8,8 +7,7 @@ use wgpu::*;
 use winit::window::Window;
 
 use crate::{
-    shaders::manager::ShaderManager,
-    state::{StateRender, StateUpdates},
+    shaders::manager::RecompilationManager, state::{StateRender, StateUpdates},
 };
 
 pub struct RendererCtx<'a> {
@@ -52,21 +50,19 @@ pub struct AdapterDescriptor {
     pub force_fallback_adapter: bool,
 }
 
-pub struct Renderer<'a, K> {
+pub struct Renderer<'a> {
     pub ctx: Option<RendererCtx<'a>>,
     pub descriptor: RendererDescriptor<'a>,
-    pub shader_manager: ShaderManager<'a, K>,
+    pub recompilation_manager: RecompilationManager
 }
 
-impl<'a, K> Renderer<'a, K>
-where
-    K: Hash + Eq + PartialEq + Clone,
+impl<'a> Renderer<'a>
 {
-    pub fn new(descriptor: RendererDescriptor<'a>, shader_manager: ShaderManager<'a, K>) -> Self {
+    pub fn new(descriptor: RendererDescriptor<'a>, recompilation_manager: RecompilationManager) -> Self {
         Self {
             ctx: None,
             descriptor,
-            shader_manager,
+            recompilation_manager
         }
     }
 
@@ -108,8 +104,7 @@ where
             desired_maximum_frame_latency: 2,
         };
 
-        self.shader_manager.update_texture_format(format);
-        self.shader_manager.recompile_shaders(&device);
+        self.recompilation_manager.update_texture_format(format);
 
         surface.configure(&device, &surface_config);
 
@@ -129,11 +124,11 @@ where
     }
 
     pub fn prepare_surface<State>(
+       recompilation_manager: &RecompilationManager,
         ctx: &mut RendererCtx,
-        shader_manager: &mut ShaderManager<K>,
         state: &mut State,
     ) where
-        State: StateRender + StateUpdates<K = K>,
+        State: StateRender + StateUpdates<'a>,
     {
         let render_width = state.render_width();
         let render_height = state.render_height();
@@ -144,7 +139,7 @@ where
 
             ctx.surface.configure(&ctx.device, &ctx.surface_config);
 
-            shader_manager.recompile_shaders(&ctx.device);
+            recompilation_manager.recompile_all(&ctx.device);
         }
     }
 }

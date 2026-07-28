@@ -128,18 +128,8 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let items = NestedMeta::parse_meta_list(list.tokens.clone()).ok()?;
 
                 let mut ty_meta = None;
-                let mut is_input_override = None;
                 for item in &items {
                     match item {
-                        NestedMeta::Meta(meta) if meta.path().is_ident("is_input") => {
-                            if let syn::Meta::NameValue(nv) = meta {
-                                if let syn::Expr::Lit(lit) = &nv.value {
-                                    if let syn::Lit::Bool(b) = &lit.lit {
-                                        is_input_override = Some(b.value);
-                                    }
-                                }
-                            }
-                        }
                         NestedMeta::Meta(meta) => {
                             ty_meta = Some(meta.clone());
                         }
@@ -150,7 +140,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let ty_meta = ty_meta?;
                 let b: CustomBufferBindingType =
                     FromMeta::from_list(&[NestedMeta::Meta(ty_meta)]).ok()?;
-                Some((name, b, is_input_override, &pat.ty))
+                Some((name, b, &pat.ty))
             } else {
                 None
             }
@@ -276,7 +266,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let (arg_names, arg_inner_types): (Vec<_>, Vec<_>) = args
         .iter()
-        .map(|(n, _, _, ty)| {
+        .map(|(n, _, ty)| {
             let inner_ty = {
                 let Type::Path(p) = &***ty else {
                     panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty })
@@ -301,7 +291,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let arg_n_idents: Vec<_> = args
         .iter()
-        .map(|(n, _, _, _)| Ident::new(n, ident.span()))
+        .map(|(n, _, _)| Ident::new(n, ident.span()))
         .collect();
 
     let arg_struct_f = arg_n_idents
@@ -349,7 +339,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let arg_markers: Vec<_> = args.iter().enumerate().map(|(i, (_, _, _, ty))| {
+    let arg_markers: Vec<_> = args.iter().enumerate().map(|(i, (_, _, ty))| {
         let idx = syn::Index::from(i);
         let Type::Path(p) = &***ty else { panic!("expected BindedBuffer<T, N>, got {}", quote! { #ty }) };
         let seg = p.path.segments.last().unwrap();
@@ -371,7 +361,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
         extra_struct_f.push(quote! { pub #field_name: #ty });
     }
 
-    let arg_binding_tys: Vec<_> = args.iter().map(|(_, b, _, _)| {
+    let arg_binding_tys: Vec<_> = args.iter().map(|(_, b, _)| {
         match b {
             CustomBufferBindingType::Uniform => {
                 quote! { codegen::asts::lowered::CustomBufferBindingType::Uniform }
@@ -385,7 +375,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
     let arg_group_layout: Vec<_> = args
         .iter()
         .enumerate()
-        .map(|(i, (n, b, is_input_override, ty))| {
+        .map(|(i, (n, b, ty))| {
             let binding_ty = match b {
                 CustomBufferBindingType::Uniform => {
                     quote! { wgpu::BufferBindingType::Uniform }
@@ -402,10 +392,6 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                     quote! { wgpu::BufferUsages::STORAGE }
                 }
             };
-            let is_input_val = is_input_override.unwrap_or_else(|| match b {
-                CustomBufferBindingType::Uniform => true,
-                CustomBufferBindingType::Storage { read_only } => *read_only,
-            });
             let i_u32 = i as u32;
 
             let Type::Path(p) = ty.as_ref() else {
@@ -448,7 +434,6 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                         min_binding_size: None,
                         size: #sz,
                         usages: #buffer_usages,
-                        is_input: #is_input_val,
                     },
                     count: None,
                 }
@@ -536,6 +521,14 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                         codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir }.translate()
                     }
 
+                    fn build_sockets(&self, resource_group_layout: &[tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>], device: &wgpu::Device) -> Self::Args {
+                        let mut resources = self.build_sockets_dyn(resource_group_layout);
+                        let mut buffers = resources[0].buffers.drain(..);
+                        Self::Args {
+                            #(#arg_n_idents: buffers.next().unwrap().into(),)*
+                        }
+                    }
+
                     fn resource_buffers_with_bind_group_layouts(
                         &self,
                     ) -> Vec<tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>> {
@@ -549,7 +542,7 @@ pub fn shader(attr: TokenStream, item: TokenStream) -> TokenStream {
                     fn dispatch(
                         &mut self,
                         args: Self::Args,
-                        built_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<'a>,
+                        built_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<Self::Args>,
                         device: &wgpu::Device,
                         queue: &wgpu::Queue,
                     ) -> Self::Ret {

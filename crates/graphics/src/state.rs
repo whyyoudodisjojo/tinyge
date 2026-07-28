@@ -1,19 +1,13 @@
-use std::collections::HashMap;
-
 use wgpu::{Device, Queue, TextureViewDescriptor};
 
-use crate::shaders::{Shader, ShaderWrapper};
-
-pub trait StateUpdates
+pub trait StateUpdates<'a>
 where
     Self: Sized,
 {
     type UpdateEvent;
-    type K;
 
-    fn init<'a>(
+    fn init(
         &mut self,
-        shaders: &HashMap<Self::K, ShaderWrapper<'a, std::sync::Arc<dyn Shader<'a>>>>,
         device: &Device,
         queue: &Queue,
     );

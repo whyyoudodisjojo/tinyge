@@ -1,9 +1,14 @@
-use memory::buffers::{BufferWithType, ResourceType};
+use memory::{
+    buffers::{BufferWithType, ResourceType},
+    socket::TinyBuffer,
+};
 use tinyge_graphics::shaders::{
     ComputeShader,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
-use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
+use wgpu::{
+    BufferUsages, ComputePassDescriptor, Device, ShaderStages, wgt::CommandEncoderDescriptor,
+};
 
 pub struct ComputeRectsArgs {
     pub model_verts_buffer: BufferWithType<Vec<[f32; 4]>>,
@@ -43,7 +48,6 @@ impl<'a> ComputeShader<'a> for ComputeRects {
                         min_binding_size: None,
                         size: (16 * self.num_verts) as u64,
                         usages: BufferUsages::STORAGE,
-                        is_input: true,
                     },
                     count: None,
                 },
@@ -56,7 +60,6 @@ impl<'a> ComputeShader<'a> for ComputeRects {
                         min_binding_size: None,
                         size: (8 * self.num_models) as u64,
                         usages: BufferUsages::STORAGE,
-                        is_input: true,
                     },
                     count: None,
                 },
@@ -69,7 +72,6 @@ impl<'a> ComputeShader<'a> for ComputeRects {
                         min_binding_size: None,
                         size: (32 * self.num_models) as u64,
                         usages: BufferUsages::STORAGE,
-                        is_input: false,
                     },
                     count: None,
                 },
@@ -85,10 +87,28 @@ impl<'a> ComputeShader<'a> for ComputeRects {
         include_str!("../../../../shaders/lbvh/compute_rects.wgsl").into()
     }
 
+    fn build_sockets(
+        &self,
+        resource_group_layout: &[ResourceGroupLayout<'a>],
+        device: &Device,
+    ) -> Self::Args {
+        let mut resources = self.build_sockets_dyn(resource_group_layout);
+        let mut buffers: Vec<TinyBuffer> = resources.swap_remove(0).buffers.into_iter().collect();
+        for buf in &mut buffers {
+            buf.build(device);
+        }
+        let mut iter = buffers.into_iter();
+        ComputeRectsArgs {
+            model_verts_buffer: iter.next().unwrap().into(),
+            model_infos_buffer: iter.next().unwrap().into(),
+            output_rect_buffer: iter.next().unwrap().into(),
+        }
+    }
+
     fn dispatch(
         &mut self,
         args: Self::Args,
-        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<'a>,
+        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<Self::Args>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {

@@ -1,17 +1,15 @@
 use image::{DynamicImage, GenericImageView};
-use wgpu::{
-    Extent3d, Origin3d, Queue, TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect,
-    TextureView,
-};
+use wgpu::{Extent3d, Origin3d, Queue, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureAspect};
+
+use crate::socket::TinyTexture;
 
 #[derive(Clone, Hash)]
-pub struct ResourceTexture {
-    pub texture: Texture,
-    pub view: TextureView,
+pub struct ResourceTexture<'a> {
+    pub texture: TinyTexture<'a>,
     pub sz: Extent3d,
 }
 
-impl ResourceTexture {
+impl<'a> ResourceTexture<'a> {
     pub fn copy_image_data(&self, image: DynamicImage, queue: &Queue) {
         let rgba = image.to_rgba8();
         let dims = image.dimensions();
@@ -27,7 +25,7 @@ impl ResourceTexture {
         queue.write_texture(
             TexelCopyTextureInfo {
                 aspect: TextureAspect::All,
-                texture: &self.texture,
+                texture: self.texture.raw(),
                 mip_level: 0,
                 origin: Origin3d::ZERO,
             },

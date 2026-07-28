@@ -7,7 +7,7 @@ use crate::logic::{TimedEvent, UpdateEvents, state::State};
 
 pub struct Executor;
 
-impl EventsExecutor<State> for Executor {
+impl EventsExecutor<State<'static>> for Executor {
     type CustomEvent = TimedEvent;
     type UpdateEvent = UpdateEvents;
 

@@ -1,24 +1,22 @@
 mod logic;
 mod shader;
 
+use std::sync::{Arc, Mutex};
+
 use tinyge_graphics::{
-    game_loop::GameLoop,
-    renderer::{AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor},
-    shaders::manager::ShaderManager,
+    game_loop::GameLoop, renderer::{AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor}, shaders::{ShaderWrapper, manager::RecompilationManager},
 };
 use wgpu::{Backends, wgt::DeviceDescriptor};
 use winit::event_loop::EventLoop;
 
 use crate::{
-    logic::{executor::Executor, state::State},
-    shader::{ShaderId, pentagon::Pentagon},
+    logic::{executor::Executor, state::{Shaders, State}}, shader::pentagon::Pentagon,
 };
 
 fn main() {
-    let mut shader_manager: ShaderManager<ShaderId> = ShaderManager::new();
-
-    let shader = Pentagon;
-    shader_manager.register_shader(ShaderId(1), shader);
+    let mut recompilation_manager = RecompilationManager::new();
+    let (shader, rx) = ShaderWrapper::new(Arc::new(Mutex::new(Pentagon::new())));
+    recompilation_manager.register_shader(shader.clone(), rx);
 
     let renderer = Renderer::new(
         RendererDescriptor {
@@ -41,11 +39,11 @@ fn main() {
                 trace: Default::default(),
             },
         },
-        shader_manager,
+        recompilation_manager,
     );
 
     // TODO: Have GameLoop struct not allow creation without a vlaid render strategy impl
-    let mut game_loop = GameLoop::new(State::new(), Executor, renderer);
+    let mut game_loop = GameLoop::new(State::new(Shaders{pentagon: shader}), Executor, renderer);
 
     let event_loop = EventLoop::with_user_event().build().unwrap();
 

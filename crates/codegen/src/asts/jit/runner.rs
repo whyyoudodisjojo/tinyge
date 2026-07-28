@@ -1,7 +1,7 @@
-use memory::buffers::ResourceType;
+use memory::{buffers::ResourceType, socket::TinyBuffer};
 use wgpu::{
-    Buffer, BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
-    ComputePassDescriptor, Device, Queue, ShaderStages,
+    BufferBindingType, BufferUsages, CommandEncoderDescriptor, ComputePassDescriptor, Device,
+    Queue, ShaderStages,
 };
 
 use tinyge_graphics::shaders::{
@@ -143,8 +143,8 @@ impl<'ast> JitRunner<'ast> {
 }
 
 impl<'a> ComputeShader<'a> for JitRunner<'_> {
-    type Args = Vec<Buffer>;
-    type Ret = Buffer;
+    type Args = Vec<TinyBuffer>;
+    type Ret = TinyBuffer;
 
     fn entry_point(&self) -> &'static str {
         "jit_main"
@@ -166,8 +166,7 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
                     has_dynamic_offset: false,
                     min_binding_size: None,
                     size: 0,
-                    usages: BufferUsages::STORAGE,
-                    is_input: true,
+                    usages: BufferUsages::STORAGE | BufferUsages::COPY_DST,
                 },
                 count: None,
             });
@@ -180,30 +179,43 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
                 has_dynamic_offset: false,
                 min_binding_size: None,
                 size: self.output_size,
-                usages: BufferUsages::STORAGE,
-                is_input: false,
+                usages: BufferUsages::STORAGE | BufferUsages::COPY_SRC,
             },
             count: None,
         });
         vec![ResourceGroupLayout { entries }]
     }
 
+    fn build_sockets(
+        &self,
+        resource_group_layout: &[ResourceGroupLayout<'a>],
+        device: &Device,
+    ) -> Self::Args {
+        let mut var_bufs = vec![];
+        self.ast.collect_var_buffers(&mut var_bufs);
+        let mut bufs: Vec<TinyBuffer> = var_bufs.into_iter().cloned().collect();
+
+        let ResourceBindingType::Buffer { usages, .. } =
+            &resource_group_layout[0].entries[self.num_vars].ty
+        else {
+            unreachable!()
+        };
+        let mut output = TinyBuffer::new(self.output_size, *usages);
+        output.build(device);
+        bufs.push(output);
+        bufs
+    }
+
     fn dispatch(
         &mut self,
-        args: Self::Args,
-        built_data: &mut ComputeShaderBuiltData<'a>,
+        mut args: Self::Args,
+        built_data: &mut ComputeShaderBuiltData<Self::Args>,
         device: &Device,
         queue: &Queue,
     ) -> Self::Ret {
-        let output_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("jit_output"),
-            size: self.output_size,
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
+        let output_buf = args.pop().unwrap();
         let mut resources: Vec<ResourceType> = args.into_iter().map(ResourceType::Buffer).collect();
-        resources.push(ResourceType::Buffer(output_buffer.clone()));
+        resources.push(ResourceType::Buffer(output_buf.clone()));
 
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);
 
@@ -223,7 +235,7 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
 
         queue.submit(std::iter::once(encoder.finish()));
 
-        output_buffer
+        output_buf
     }
 }
 
@@ -241,7 +253,7 @@ fn compute_var_strides_inner(ast: &JitAST, strides: &mut std::collections::HashM
             }
             let scalar_byte_size = dtype.peel_all().byte_size() as u64;
             let element_byte_size = dtype.byte_size() as u64;
-            let num_elements = buffer.size() / element_byte_size;
+            let num_elements = buffer.size / element_byte_size;
             let stride = if num_elements > 1 {
                 (element_byte_size / scalar_byte_size) as u32
             } else {
@@ -278,15 +290,13 @@ fn compute_var_strides_inner(ast: &JitAST, strides: &mut std::collections::HashM
 
 impl JitAST {
     pub fn realize(&self, device: &Device, queue: &Queue, element_count: u32) -> JitAST {
-        let mut bufs = vec![];
-        self.collect_var_buffers(&mut bufs);
-        let input_bufs: Vec<Buffer> = bufs.into_iter().cloned().collect();
-
         let mut runner = JitRunner::new(self, element_count);
         let mut built_data = runner.build(device);
-        let output = runner.dispatch(input_bufs, &mut built_data, device, queue);
 
         println!("{}", runner.load_source_code());
+
+        let args = built_data.buffers.clone();
+        let output = runner.dispatch(args, &mut built_data, device, queue);
 
         JitAST::Var {
             id: usize::MAX,

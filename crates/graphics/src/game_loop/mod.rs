@@ -22,11 +22,11 @@ use crate::{
 pub struct GameLoop<State, Executor>
 where
     Executor: EventsExecutor<State>,
-    State: Send + Sync + 'static + StateUpdates,
+    State: Send + Sync + 'static + StateUpdates<'static>,
 {
     pub state: State,
     pub executor: Executor,
-    pub renderer: Renderer<'static, State::K>,
+    pub renderer: Renderer<'static>,
     pub rx: Receiver<UpdateEventOrTimedEvent<Executor::UpdateEvent, Executor::CustomEvent>>,
     pub tx: Sender<UpdateEventOrTimedEvent<Executor::UpdateEvent, Executor::CustomEvent>>,
 }
@@ -34,9 +34,9 @@ where
 impl<State, Executor> GameLoop<State, Executor>
 where
     Executor: EventsExecutor<State>,
-    State: Send + Sync + 'static + StateUpdates,
+    State: Send + Sync + 'static + StateUpdates<'static>,
 {
-    pub fn new(state: State, executor: Executor, renderer: Renderer<'static, State::K>) -> Self {
+    pub fn new(state: State, executor: Executor, renderer: Renderer<'static>) -> Self {
         let (tx, rx) = mpsc::channel();
 
         Self {
@@ -55,10 +55,9 @@ where
     State: Send
         + Sync
         + 'static
-        + StateUpdates<UpdateEvent = <Executor as EventsExecutor<State>>::UpdateEvent>
-        + StateRenderSinglePass<State::K>,
-    State::K: Eq + PartialEq + Hash + Clone,
-    for<'b> RenderPath<'b, State, State::RenderStrategy>: RenderDispatcher<State::K>,
+        + StateUpdates<'static, UpdateEvent = <Executor as EventsExecutor<State>>::UpdateEvent>
+        + StateRenderSinglePass,
+    for<'b> RenderPath<'b, State, State::RenderStrategy>: RenderDispatcher<'static>,
 {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window_attrs = Window::default_attributes();
@@ -74,8 +73,10 @@ where
             .map(|c| (&c.queue, &c.device))
             .unwrap();
 
+        self.renderer.recompilation_manager.recompile_all(device);
+
         self.state
-            .init(&self.renderer.shader_manager.shaders, device, queue);
+            .init(device, queue);
 
         self.executor.handle_event(
             BaseEvent::Resumed,

@@ -2055,6 +2055,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "raytracer"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "memory",
+ "pollster",
+ "tinyge-graphics",
+ "tinyge-physics",
+ "wgpu",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

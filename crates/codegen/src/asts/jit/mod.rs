@@ -4,7 +4,8 @@ pub mod rules;
 pub mod runner;
 
 use memory::buffers::BufferWithType;
-use wgpu::{Buffer, BufferDescriptor, BufferUsages, Device};
+use memory::socket::TinyBuffer;
+use wgpu::{BufferUsages};
 
 use crate::asts::lowered::{BinOp, LoweredAST, UnaryOp, scope::Scope};
 use crate::asts::{AstConst, IntoWgslStruct};
@@ -64,7 +65,7 @@ pub enum TernaryOp {
 pub enum JitAST {
     Var {
         id: usize,
-        buffer: Buffer,
+        buffer: TinyBuffer,
         dtype: DType,
     },
 
@@ -152,16 +153,14 @@ where
 }
 
 impl JitAST {
-    pub fn new<T>(device: &Device) -> Self
+    pub fn new<T>() -> Self
     where
         T: IntoWgslStruct,
     {
-        let buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: T::wgsl_byte_size(),
-            mapped_at_creation: false,
-            usage: BufferUsages::COPY_DST | BufferUsages::STORAGE,
-        });
+        let buffer = TinyBuffer::new(
+            T::wgsl_byte_size(),
+            BufferUsages::COPY_DST | BufferUsages::STORAGE,
+        );
 
         JitAST::Var {
             id: COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
@@ -170,7 +169,7 @@ impl JitAST {
         }
     }
 
-    pub fn collect_var_buffers<'a>(&'a self, out: &mut Vec<&'a Buffer>) {
+    pub fn collect_var_buffers<'a>(&'a self, out: &mut Vec<&'a TinyBuffer>) {
         let mut seen = std::collections::HashSet::new();
         self.collect_var_buffers_inner(&mut seen, out);
     }
@@ -178,7 +177,7 @@ impl JitAST {
     fn collect_var_buffers_inner<'a>(
         &'a self,
         seen: &mut std::collections::HashSet<usize>,
-        out: &mut Vec<&'a Buffer>,
+        out: &mut Vec<&'a TinyBuffer>,
     ) {
         match self {
             JitAST::Var { id, buffer, .. } => {

@@ -1,5 +1,3 @@
-use std::hash::Hash;
-
 use wgpu::{CommandEncoderDescriptor, CurrentSurfaceTexture};
 
 use crate::{
@@ -14,35 +12,33 @@ pub struct LayeredRenderPass<RenderPassState> {
     pub state: RenderPassState,
 }
 
-pub trait LayeredStateRender<K>: StateRender {
+pub trait LayeredStateRender: StateRender {
     fn get_render_layers<'a>(
         &'a mut self,
-    ) -> &'a mut [LayeredRenderPass<&'a mut dyn RenderAble<K>>];
+    ) -> &'a mut [LayeredRenderPass<&'a mut dyn RenderAble>];
 }
 
-pub trait StateRenderedLayeredPass<K>: StateRender + LayeredStateRender<K> {}
+pub trait StateRenderedLayeredPass: StateRender + LayeredStateRender {}
 
 pub struct LayeredPass;
 
-pub trait LayeredPassRenderer<K> {
+pub trait LayeredPassRenderer<'a> {
     fn render<State>(&mut self, state: &mut State)
     where
-        State: StateRenderedLayeredPass<K> + StateUpdates<K = K>;
+        State: StateRenderedLayeredPass + StateUpdates<'a>;
 }
 
-impl<'a, K> LayeredPassRenderer<K> for Renderer<'a, K>
-where
-    K: Hash + Clone + PartialEq + Eq,
+impl<'a> LayeredPassRenderer<'a> for Renderer<'a>
 {
     fn render<State>(&mut self, state: &mut State)
     where
-        State: LayeredStateRender<K> + StateUpdates<K = K>,
+        State: LayeredStateRender + StateUpdates<'a>,
     {
         let Some(ctx) = &mut self.ctx else {
             return;
         };
 
-        Self::prepare_surface(ctx, &mut self.shader_manager, state);
+        Self::prepare_surface(&self.recompilation_manager, ctx, state);
 
         let output = match ctx.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(s) => s,
@@ -69,7 +65,6 @@ where
 
             l.state.render_pass(
                 &mut encoder,
-                &mut self.shader_manager.shaders,
                 &view,
                 &ctx.device,
                 &ctx.queue,
@@ -82,12 +77,11 @@ where
     }
 }
 
-impl<'b, S, K> RenderDispatcher<K> for RenderPath<'b, S, LayeredPass>
+impl<'a, 'b, S> RenderDispatcher<'a> for RenderPath<'b, S, LayeredPass>
 where
-    K: Clone + Hash + PartialEq + Eq,
-    S: StateRenderedLayeredPass<K> + StateUpdates<K = K>,
+    S: StateRenderedLayeredPass + StateUpdates<'a>,
 {
-    fn dispatch_render<'a>(&mut self, renderer: &mut Renderer<'a, K>) {
+    fn dispatch_render(&mut self, renderer: &mut Renderer<'a>) {
         LayeredPassRenderer::render(renderer, self.inner);
     }
 }

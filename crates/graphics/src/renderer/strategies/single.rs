@@ -1,5 +1,3 @@
-use std::hash::Hash;
-
 use wgpu::{CommandEncoderDescriptor, CurrentSurfaceTexture};
 
 use crate::{
@@ -10,29 +8,27 @@ use crate::{
     state::{StateRender, StateUpdates},
 };
 
-pub trait StateRenderSinglePass<K>: StateRender + RenderAble<K> {}
+pub trait StateRenderSinglePass: StateRender + RenderAble {}
 
-pub trait SinglePassRenderer<K> {
+pub trait SinglePassRenderer<'a> {
     fn render<State>(&mut self, state: &mut State)
     where
-        State: StateRenderSinglePass<K> + StateUpdates<K = K>;
+        State: StateRenderSinglePass + StateUpdates<'a>;
 }
 
 pub struct SinglePass;
 
-impl<'a, K> SinglePassRenderer<K> for Renderer<'a, K>
-where
-    K: Hash + Clone + PartialEq + Eq,
+impl<'a> SinglePassRenderer<'a> for Renderer<'a>
 {
     fn render<State>(&mut self, state: &mut State)
     where
-        State: StateRenderSinglePass<K> + StateUpdates<K = K>,
+        State: StateRenderSinglePass + StateUpdates<'a>,
     {
         let Some(ctx) = &mut self.ctx else {
             return;
         };
 
-        Self::prepare_surface(ctx, &mut self.shader_manager, state);
+        Self::prepare_surface(&self.recompilation_manager, ctx, state);
 
         let output = match ctx.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(s) => s,
@@ -58,7 +54,6 @@ where
 
         state.render_pass(
             &mut encoder,
-            &mut self.shader_manager.shaders,
             &view,
             &ctx.device,
             &ctx.queue,
@@ -69,12 +64,11 @@ where
     }
 }
 
-impl<'b, S, K> RenderDispatcher<K> for RenderPath<'b, S, SinglePass>
+impl<'a, 'b, S> RenderDispatcher<'a> for RenderPath<'b, S, SinglePass>
 where
-    K: Clone + Hash + PartialEq + Eq,
-    S: StateRenderSinglePass<K> + StateUpdates<K = K>,
+    S: StateRenderSinglePass + StateUpdates<'a>,
 {
-    fn dispatch_render<'a>(&mut self, renderer: &mut Renderer<'a, K>) {
+    fn dispatch_render(&mut self, renderer: &mut Renderer<'a>) {
         SinglePassRenderer::render(renderer, self.inner);
     }
 }

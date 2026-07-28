@@ -1,9 +1,14 @@
-use memory::buffers::{BufferWithType, ResourceType};
+use memory::{
+    buffers::{BufferWithType, ResourceType},
+    socket::TinyBuffer,
+};
 use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
-use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
+use wgpu::{
+    BufferUsages, ComputePassDescriptor, Device, ShaderStages, wgt::CommandEncoderDescriptor,
+};
 
 use crate::collisions::algos::FlattenedBVHNode;
 
@@ -48,6 +53,26 @@ impl<'a> ComputeShader<'a> for BuildTree {
         include_str!("../../../../shaders/lbvh/build_tree.wgsl").to_string()
     }
 
+    fn build_sockets(
+        &self,
+        resource_group_layout: &[ResourceGroupLayout<'a>],
+        device: &Device,
+    ) -> Self::Args {
+        let mut resources = self.build_sockets_dyn(resource_group_layout);
+        let mut buffers: Vec<TinyBuffer> = resources.swap_remove(0).buffers.into_iter().collect();
+        for buf in &mut buffers {
+            buf.build(device);
+        }
+        let mut iter = buffers.into_iter();
+        BuildTreeArgs {
+            keys_buffer: iter.next().unwrap().into(),
+            rects_buffer: iter.next().unwrap().into(),
+            nodes_buffer: iter.next().unwrap().into(),
+            counts_buffer: iter.next().unwrap().into(),
+            params_buffer: iter.next().unwrap().into(),
+        }
+    }
+
     fn resource_buffers_with_bind_group_layouts(
         &self,
     ) -> Vec<tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>> {
@@ -62,7 +87,6 @@ impl<'a> ComputeShader<'a> for BuildTree {
                         min_binding_size: None,
                         size: self.num_leaves as u64 * 8,
                         usages: BufferUsages::STORAGE,
-                        is_input: true,
                     },
                     count: None,
                 },
@@ -75,7 +99,6 @@ impl<'a> ComputeShader<'a> for BuildTree {
                         min_binding_size: None,
                         size: self.num_leaves as u64 * 32,
                         usages: BufferUsages::STORAGE,
-                        is_input: true,
                     },
                     count: None,
                 },
@@ -88,7 +111,6 @@ impl<'a> ComputeShader<'a> for BuildTree {
                         min_binding_size: None,
                         size: ((2 * self.num_leaves - 1) as u64 * 48).max(48),
                         usages: BufferUsages::STORAGE,
-                        is_input: false,
                     },
                     count: None,
                 },
@@ -101,7 +123,6 @@ impl<'a> ComputeShader<'a> for BuildTree {
                         min_binding_size: None,
                         size: ((self.num_leaves - 1) as u64 * 4).max(4),
                         usages: BufferUsages::STORAGE,
-                        is_input: false,
                     },
                     count: None,
                 },
@@ -113,8 +134,7 @@ impl<'a> ComputeShader<'a> for BuildTree {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                         size: 4,
-                        usages: BufferUsages::UNIFORM,
-                        is_input: false,
+                        usages: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                     },
                     count: None,
                 },
@@ -125,7 +145,7 @@ impl<'a> ComputeShader<'a> for BuildTree {
     fn dispatch(
         &mut self,
         args: Self::Args,
-        built_data: &mut ComputeShaderBuiltData<'a>,
+        built_data: &mut ComputeShaderBuiltData<Self::Args>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {

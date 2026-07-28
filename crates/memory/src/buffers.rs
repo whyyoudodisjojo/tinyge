@@ -7,27 +7,28 @@ use std::{
 use bytemuck::Pod;
 use lru::LruCache;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Blas, Buffer,
-    BufferDescriptor, BufferUsages, Device, Sampler, Tlas, wgt::TextureViewDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
+    Device,
 };
 
 use crate::{
-    descriptors::{ResourceBinding, ResourceBindingType},
+    descriptors::{ResourceBinding},
+    socket::{TinyBlas, TinyBuffer, TinySampler, TinyTlas},
     texture::ResourceTexture,
 };
 
 #[derive(Clone)]
-pub struct ResourceGroup {
-    pub buffers: Vec<Option<Buffer>>,
-    pub textures: Vec<ResourceTexture>,
-    pub samplers: Vec<Sampler>,
-    pub acceleration_structures: Vec<AccelerationStructures>,
+pub struct ResourceGroup<'a> {
+    pub buffers: Vec<TinyBuffer>,
+    pub textures: Vec<ResourceTexture<'a>>,
+    pub samplers: Vec<TinySampler<'a>>,
+    pub acceleration_structures: Vec<AccelerationStructures<'a>>,
 }
 
 #[derive(Clone)]
-pub struct AccelerationStructures {
-    pub blas: Blas,
-    pub tlas: Tlas,
+pub struct AccelerationStructures<'a> {
+    pub blas: TinyBlas<'a>,
+    pub tlas: TinyTlas<'a>,
 }
 
 pub struct DynamicBindGroup {
@@ -36,13 +37,6 @@ pub struct DynamicBindGroup {
 }
 
 impl DynamicBindGroup {
-    pub fn new_from_buffer_spec(spec: &BufferBuildSpec) -> Vec<Self> {
-        spec.resource_buffer
-            .iter()
-            .map(|b| DynamicBindGroup::new(b.layout.clone()))
-            .collect()
-    }
-
     pub fn new(layout: BindGroupLayout) -> Self {
         Self {
             layout,
@@ -83,10 +77,12 @@ impl DynamicBindGroup {
                     .map(|(i, b)| BindGroupEntry {
                         binding: i as u32,
                         resource: match b {
-                            ResourceType::Buffer(b) => b.as_entire_binding(),
-                            ResourceType::Sampler(s) => BindingResource::Sampler(s),
-                            ResourceType::Texture(t) => BindingResource::TextureView(&t.view),
-                            ResourceType::AccelerationStructure(t) => t.as_binding(),
+                            ResourceType::Buffer(b) => b.raw().as_entire_binding(),
+                            ResourceType::Sampler(s) => BindingResource::Sampler(s.raw()),
+                            ResourceType::Texture(t) => {
+                                BindingResource::TextureView(t.texture.raw_view())
+                            }
+                            ResourceType::AccelerationStructure(t) => t.raw().as_binding(),
                         },
                     })
                     .collect::<Vec<_>>(),
@@ -100,13 +96,6 @@ impl DynamicBindGroup {
 }
 
 #[derive(Clone)]
-pub struct BufferBuildSpec<'a> {
-    pub vertex_buffer_szs: Vec<u64>,
-    pub index_buffer_sz: u64,
-    pub resource_buffer: Vec<ResourceGroupBuildSpec<'a>>,
-}
-
-#[derive(Clone)]
 pub struct ResourceGroupBuildSpec<'a> {
     pub layout_entries: Vec<ResourceBinding<'a>>,
     pub layout: BindGroupLayout,
@@ -114,18 +103,25 @@ pub struct ResourceGroupBuildSpec<'a> {
 
 #[derive(Clone)]
 pub struct BufferWithType<T> {
-    pub inner: Buffer,
+    pub inner: TinyBuffer,
     _p_d: PhantomData<T>,
 }
 
-impl<T> From<Buffer> for BufferWithType<T> {
-    fn from(value: Buffer) -> Self {
+impl<T> From<TinyBuffer> for BufferWithType<T> {
+    fn from(value: TinyBuffer) -> Self {
         BufferWithType {
             inner: value,
             _p_d: PhantomData,
         }
     }
 }
+
+impl<T> From<Buffer> for BufferWithType<T> {
+    fn from(buffer: Buffer) -> Self {
+        BufferWithType::from(TinyBuffer::from(buffer))
+    }
+}
+
 pub trait AsByteSlice {
     fn as_byte_slice(&self) -> &[u8];
 }
@@ -147,160 +143,28 @@ where
     T: Pod,
 {
     pub fn write<Q: AsByteSlice>(&self, queue: &wgpu::Queue, data: &Q) {
-        queue.write_buffer(&self.inner, 0, data.as_byte_slice());
+        queue.write_buffer(self.inner.raw(), 0, data.as_byte_slice());
     }
 }
 
 #[derive(Clone)]
-pub struct Buffers {
-    pub vertex_buffers: Vec<Buffer>,
-    pub index_buffer: Option<Buffer>,
-    pub resource_buffers: Vec<ResourceGroup>,
+pub struct Buffers<'a> {
+    pub vertex_buffers: Vec<TinyBuffer>,
+    pub index_buffer: Option<TinyBuffer>,
+    pub resource_buffers: Vec<ResourceGroup<'a>>,
 }
 
-pub struct ResourceEntry {
+pub struct ResourceEntry<'a> {
     pub binding: u32,
-    pub resource: ResourceType,
+    pub resource: ResourceType<'a>,
 }
 
 #[derive(Clone, Hash)]
-pub enum ResourceType {
-    Buffer(Buffer),
-    Sampler(Sampler),
-    Texture(ResourceTexture),
-    AccelerationStructure(Tlas),
-}
-
-impl Buffers {
-    pub fn build(device: &wgpu::Device, spec: &BufferBuildSpec, build_input_only: bool) -> Self {
-        let vertex_buffers = spec
-            .vertex_buffer_szs
-            .iter()
-            .map(|size| {
-                device.create_buffer(&BufferDescriptor {
-                    label: None,
-                    size: align_to_4_bytes(*size),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                    mapped_at_creation: false,
-                })
-            })
-            .collect::<Vec<_>>();
-        let index_buffer = if spec.index_buffer_sz > 0 {
-            Some(device.create_buffer(&BufferDescriptor {
-                label: None,
-                size: align_to_4_bytes(spec.index_buffer_sz),
-                usage: BufferUsages::INDEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                mapped_at_creation: false,
-            }))
-        } else {
-            None
-        };
-
-        let resource_buffers = spec
-            .resource_buffer
-            .iter()
-            .map(|b| {
-                let mut buffers: Vec<Option<Buffer>> = vec![None; b.layout_entries.len()];
-                let mut textures: Vec<ResourceTexture> = Vec::new();
-                let mut samplers: Vec<Sampler> = Vec::new();
-                let mut acceleration_structures = vec![];
-
-                for (binding_idx, layout_entry) in b.layout_entries.iter().enumerate() {
-                    let _binding = binding_idx as u32;
-
-                    match &layout_entry.ty {
-                        ResourceBindingType::Buffer {
-                            size,
-                            usages,
-                            is_input,
-                            ..
-                        } => {
-                            if build_input_only && !*is_input || !build_input_only && *is_input {
-                                continue;
-                            }
-                            let buffer = device.create_buffer(&BufferDescriptor {
-                                label: None,
-                                usage: *usages | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                                size: align_to_4_bytes(*size),
-                                mapped_at_creation: false,
-                            });
-                            buffers[binding_idx] = Some(buffer);
-                        }
-                        ResourceBindingType::Texture {
-                            texture_descriptor, ..
-                        } => {
-                            let texture = device.create_texture(texture_descriptor);
-                            let view = texture.create_view(&TextureViewDescriptor::default());
-                            textures.push(ResourceTexture {
-                                texture,
-                                view,
-                                sz: texture_descriptor.size,
-                            });
-                        }
-                        ResourceBindingType::Sampler {
-                            sampler_descriptor, ..
-                        } => {
-                            let sampler = device.create_sampler(sampler_descriptor);
-                            samplers.push(sampler);
-                        }
-                        ResourceBindingType::StorageTexture { .. } => {
-                            todo!("StorageTexture not yet implemented in build")
-                        }
-                        ResourceBindingType::AccelerationStructure {
-                            tlas_desc,
-                            blas_desc,
-                            blas_geo_sz_desc,
-                            ..
-                        } => {
-                            let tlas = device.create_tlas(tlas_desc);
-                            let blas = device.create_blas(blas_desc, blas_geo_sz_desc.clone());
-
-                            acceleration_structures.push(AccelerationStructures { blas, tlas });
-                        }
-                        ResourceBindingType::ExternalTexture => {
-                            todo!("ExternalTexture not yet implemented in build")
-                        }
-                    };
-                }
-
-                ResourceGroup {
-                    buffers,
-                    textures,
-                    samplers,
-                    acceleration_structures,
-                }
-            })
-            .collect();
-
-        Self {
-            vertex_buffers,
-            index_buffer,
-            resource_buffers,
-        }
-    }
-
-    pub fn build_all(device: &wgpu::Device, spec: &BufferBuildSpec) -> Self {
-        let inputs = Self::build(device, spec, true);
-        let outputs = Self::build(device, spec, false);
-        let resource_buffers = inputs
-            .resource_buffers
-            .into_iter()
-            .zip(outputs.resource_buffers)
-            .map(|(mut input, output)| {
-                for (i, buf) in output.buffers.into_iter().enumerate() {
-                    if input.buffers[i].is_none() {
-                        input.buffers[i] = buf;
-                    }
-                }
-                input
-            })
-            .collect();
-        Self {
-            vertex_buffers: outputs.vertex_buffers,
-            index_buffer: outputs.index_buffer,
-            resource_buffers,
-        }
-    }
+pub enum ResourceType<'a> {
+    Buffer(TinyBuffer),
+    Sampler(TinySampler<'a>),
+    Texture(ResourceTexture<'a>),
+    AccelerationStructure(TinyTlas<'a>),
 }
 
 pub fn align_to_4_bytes(size: u64) -> u64 {

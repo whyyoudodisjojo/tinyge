@@ -5,7 +5,7 @@ use memory::descriptors::{
     ColorTarget, MeshBufferSpecs, ResourceBinding, ResourceGroupLayout, ShaderPipelineDescriptor,
     VertexBufferSpec,
 };
-use tinyge_graphics::shaders::Shader;
+use tinyge_graphics::shaders::{Shader, ShaderBuiltData};
 use wgpu::{
     BlendComponent, BlendState, BufferUsages, ColorWrites, MultisampleState, PrimitiveState,
     ShaderStages, VertexAttribute, VertexBufferLayout, VertexFormat,
@@ -41,12 +41,28 @@ pub const INDICES: &[u16] = &[
     0, // Padding for 4-byte alignment
 ];
 
-pub struct Pentagon;
+pub struct Pentagon{
+    pub sockets: Option<ShaderBuiltData>
+}
+
+impl Pentagon{
+    pub fn new() -> Self{
+        Pentagon { sockets: None }
+    }
+
+    pub fn get_sockets(&self) -> Option<&ShaderBuiltData>{
+        self.sockets.as_ref()
+    }
+
+    pub fn get_sockets_mut(&mut self) -> Option<&mut ShaderBuiltData>{
+        self.sockets.as_mut()
+    }
+}
 
 impl<'a> Shader<'a> for Pentagon {
     fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'a> {
-        let vertex_sz = (3 * 4) + (3 * 4); // position (3 floats) + color (3 floats) = 24 bytes per vertex
-        let vertex_buffer_sz = vertex_sz * VERTICES.len() as u64; // 5 vertices
+        let vertex_sz = (3 * 4) + (3 * 4);
+        let vertex_buffer_sz = vertex_sz * VERTICES.len() as u64;
 
         let layout = VertexBufferLayout {
             array_stride: vertex_sz,
@@ -70,7 +86,7 @@ impl<'a> Shader<'a> for Pentagon {
                 layout,
                 size: vertex_buffer_sz,
             }],
-            index_buffer_size: (INDICES.len() * 2) as u64, // 9 indices * 2 bytes each = 18 bytes
+            index_buffer_size: (INDICES.len() * 2) as u64, 
         }
     }
 
@@ -85,7 +101,6 @@ impl<'a> Shader<'a> for Pentagon {
                     min_binding_size: NonZeroU64::new(4),
                     size: 4,
                     usages: BufferUsages::UNIFORM,
-                    is_input: false,
                 },
                 count: None,
             }],
@@ -122,5 +137,9 @@ impl<'a> Shader<'a> for Pentagon {
             fragment_entry_point: Some("fs_main"),
             multiview_mask: None,
         }
+    }
+
+    fn handle_recompilation(&mut self, built_data: tinyge_graphics::shaders::ShaderBuiltData) {
+        self.sockets = Some(built_data);
     }
 }

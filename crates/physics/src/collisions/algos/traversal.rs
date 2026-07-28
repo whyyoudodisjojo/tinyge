@@ -4,7 +4,7 @@ use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope};
 use codegen::{call, group};
 use codegen_macros::shader;
 use memory::buffers::BufferWithType;
-use tinyge_graphics::shaders::{ComputeShader};
+use tinyge_graphics::shaders::ComputeShader;
 
 use crate::collisions::algos::{
     BVHNode, BVHTree, CpuBVHTraversal, CpuStorage, FlattenedBVHNode, GpuBVHTraversal, GpuStorage,
@@ -398,7 +398,7 @@ fn test_lbvh_traverse_gpu() {
 
         let results_buffer = bvh_tree.traverse_gpu(&rays_buffer, 1, &device, &queue);
 
-        let results: Vec<RayResult> = read_buffer(&device, &queue, &results_buffer.inner);
+        let results: Vec<RayResult> = read_buffer(&device, &queue, results_buffer.inner.raw());
 
         println!(
             "Ray 0: hit_node_idx={}, t_near={}",

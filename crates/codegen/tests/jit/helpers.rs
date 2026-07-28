@@ -31,7 +31,7 @@ pub fn run_ast(ast: JitAST, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) 
     let JitAST::Var { buffer, .. } = ast.realize(device, queue, n) else {
         panic!("expected Var");
     };
-    read_buffer(device, queue, &buffer)
+    read_buffer(device, queue, buffer.raw())
 }
 
 pub fn read_buffer(device: &wgpu::Device, queue: &wgpu::Queue, buffer: &wgpu::Buffer) -> Vec<f32> {

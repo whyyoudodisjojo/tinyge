@@ -1,10 +1,9 @@
-use std::{collections::HashMap, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData};
 
 use wgpu::{CommandEncoder, TextureView};
 
 use crate::{
     renderer::Renderer,
-    shaders::{Shader, ShaderWrapper},
 };
 
 pub mod layered;
@@ -24,15 +23,14 @@ impl<'a, S, Style> RenderPath<'a, S, Style> {
     }
 }
 
-pub trait RenderDispatcher<K> {
-    fn dispatch_render<'a>(&mut self, renderer: &mut Renderer<'a, K>);
+pub trait RenderDispatcher<'a> {
+    fn dispatch_render(&mut self, renderer: &mut Renderer<'a>);
 }
 
-pub trait RenderAble<K> {
+pub trait RenderAble {
     fn render_pass<'a>(
         &mut self,
         encoder: &mut CommandEncoder,
-        shaders: &mut HashMap<K, ShaderWrapper<'a, Arc<dyn Shader<'a>>>>,
         view: &TextureView,
         device: &wgpu::Device,
         queue: &wgpu::Queue,

@@ -1,9 +1,11 @@
-use memory::buffers::ResourceType;
+use memory::{buffers::ResourceType, socket::TinyBuffer};
 use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
-use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
+use wgpu::{
+    BufferUsages, ComputePassDescriptor, Device, ShaderStages, wgt::CommandEncoderDescriptor,
+};
 
 use crate::collisions::algos::lbvh::{
     Key,
@@ -43,6 +45,26 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
         include_str!("../../../../shaders/lbvh/radix_sort.wgsl").to_string()
     }
 
+    fn build_sockets(
+        &self,
+        resource_group_layout: &[ResourceGroupLayout<'a>],
+        device: &Device,
+    ) -> Self::Args {
+        let mut resources = self.build_sockets_dyn(resource_group_layout);
+        let mut buffers: Vec<TinyBuffer> = resources.swap_remove(0).buffers.into_iter().collect();
+        for buf in &mut buffers {
+            buf.build(device);
+        }
+        let mut iter = buffers.into_iter();
+        RadixSortPhaseArgs {
+            param_buffer: iter.next().unwrap().into(),
+            input_arr_buffer: iter.next().unwrap().into(),
+            count_arr_buffer: iter.next().unwrap().into(),
+            output_arr_buffer: iter.next().unwrap().into(),
+            global_offsets_buffer: iter.next().unwrap().into(),
+        }
+    }
+
     fn resource_buffers_with_bind_group_layouts(
         &self,
     ) -> Vec<tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>> {
@@ -56,8 +78,7 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                         size: size_of::<Params>() as u64,
-                        usages: BufferUsages::UNIFORM,
-                        is_input: false,
+                        usages: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                     },
                     count: None,
                 },
@@ -70,7 +91,6 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         min_binding_size: None,
                         size: self.num_elems as u64 * size_of::<Key>() as u64,
                         usages: BufferUsages::STORAGE,
-                        is_input: true,
                     },
                     count: None,
                 },
@@ -83,7 +103,6 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         min_binding_size: None,
                         size: 16 * 4,
                         usages: BufferUsages::STORAGE,
-                        is_input: false,
                     },
                     count: None,
                 },
@@ -95,8 +114,7 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                         size: self.num_elems as u64 * size_of::<Key>() as u64,
-                        usages: BufferUsages::STORAGE,
-                        is_input: false,
+                        usages: BufferUsages::STORAGE | BufferUsages::COPY_DST,
                     },
                     count: None,
                 },
@@ -109,7 +127,6 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
                         min_binding_size: None,
                         size: 16 * 4,
                         usages: BufferUsages::STORAGE,
-                        is_input: false,
                     },
                     count: None,
                 },
@@ -120,7 +137,7 @@ impl<'a> ComputeShader<'a> for RadixSortPhase {
     fn dispatch(
         &mut self,
         args: Self::Args,
-        built_data: &mut ComputeShaderBuiltData<'a>,
+        built_data: &mut ComputeShaderBuiltData<Self::Args>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {

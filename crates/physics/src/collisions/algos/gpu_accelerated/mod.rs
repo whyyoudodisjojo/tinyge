@@ -1,15 +1,18 @@
-use memory::buffers::{BufferWithType, ResourceType};
-use tinyge_graphics::shaders::{
-    descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
+use memory::{
+    buffers::{AccelerationStructures, BufferWithType, ResourceType},
+    socket::{TinyBlas, TinyBuffer, TinyTlas},
 };
-use wgpu::{BufferUsages, ShaderStages};
+use tinyge_graphics::shaders::descriptors::{
+    ResourceBinding, ResourceBindingType, ResourceGroupLayout,
+};
+use wgpu::{BufferUsages, ComputePassDescriptor, Device, ShaderStages};
 
 pub struct AccelerationShader {
-    num_rays: u32,
-    max_candidates: u32,
-    max_instances: u32,
-    blas_vertex_count: u32,
-    gpu_ray_size: u64,
+    pub num_rays: u32,
+    pub max_candidates: u32,
+    pub max_instances: u32,
+    pub blas_vertex_count: u32,
+    pub gpu_ray_size: u64,
 }
 
 #[repr(C)]
@@ -24,8 +27,9 @@ pub struct RawCandidate {
     pub _pad: u32,
 }
 
-pub struct AccelerationArgs {
-    pub tlas: wgpu::Tlas,
+pub struct AccelerationArgs<'a> {
+    pub tlas: TinyTlas<'a>,
+    pub blas: TinyBlas<'a>,
     pub rays_buffer: BufferWithType<Vec<crate::collisions::algos::GpuRay>>,
     pub candidates_buffer: BufferWithType<Vec<RawCandidate>>,
     pub counter_buffer: BufferWithType<u32>,
@@ -34,7 +38,7 @@ pub struct AccelerationArgs {
 }
 
 impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
-    type Args = AccelerationArgs;
+    type Args = AccelerationArgs<'a>;
     type Ret = ();
 
     fn resource_buffers_with_bind_group_layouts(
@@ -78,8 +82,7 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                         size: self.gpu_ray_size * self.num_rays as u64,
-                        usages: BufferUsages::STORAGE,
-                        is_input: true,
+                        usages: BufferUsages::STORAGE | BufferUsages::COPY_DST,
                     },
                     count: None,
                 },
@@ -91,8 +94,7 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                         size: (32 * self.max_candidates) as u64,
-                        usages: BufferUsages::STORAGE,
-                        is_input: false,
+                        usages: BufferUsages::STORAGE | BufferUsages::COPY_SRC,
                     },
                     count: None,
                 },
@@ -104,8 +106,9 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                         size: 4,
-                        usages: BufferUsages::STORAGE,
-                        is_input: false,
+                        usages: BufferUsages::STORAGE
+                            | BufferUsages::COPY_DST
+                            | BufferUsages::COPY_SRC,
                     },
                     count: None,
                 },
@@ -117,8 +120,9 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                         size: 4,
-                        usages: BufferUsages::UNIFORM | BufferUsages::STORAGE,
-                        is_input: false,
+                        usages: BufferUsages::UNIFORM
+                            | BufferUsages::STORAGE
+                            | BufferUsages::COPY_DST,
                     },
                     count: None,
                 },
@@ -130,13 +134,48 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
                         has_dynamic_offset: false,
                         min_binding_size: None,
                         size: 4,
-                        usages: BufferUsages::UNIFORM | BufferUsages::STORAGE,
-                        is_input: false,
+                        usages: BufferUsages::UNIFORM
+                            | BufferUsages::STORAGE
+                            | BufferUsages::COPY_DST,
                     },
                     count: None,
                 },
             ],
         }]
+    }
+
+    fn build_sockets(
+        &self,
+        resource_group_layout: &[ResourceGroupLayout<'a>],
+        device: &Device,
+    ) -> Self::Args {
+        let mut resources = self.build_sockets_dyn(resource_group_layout);
+        let res = resources.swap_remove(0);
+        let mut acc_structs = res.acceleration_structures.into_iter();
+        let mut buffers = res.buffers.into_iter();
+        let AccelerationStructures { tlas, blas } = acc_structs.next().unwrap();
+
+        let mut rays: TinyBuffer = buffers.next().unwrap();
+        let mut candidates: TinyBuffer = buffers.next().unwrap();
+        let mut counter: TinyBuffer = buffers.next().unwrap();
+        let mut num_rays: TinyBuffer = buffers.next().unwrap();
+        let mut max_candidates: TinyBuffer = buffers.next().unwrap();
+
+        rays.build(device);
+        candidates.build(device);
+        counter.build(device);
+        num_rays.build(device);
+        max_candidates.build(device);
+
+        AccelerationArgs {
+            tlas,
+            blas,
+            rays_buffer: rays.into(),
+            candidates_buffer: candidates.into(),
+            counter_buffer: counter.into(),
+            num_rays_buffer: num_rays.into(),
+            max_candidates_buffer: max_candidates.into(),
+        }
     }
 
     fn load_source_code(&self) -> String {
@@ -150,12 +189,10 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
     fn dispatch(
         &mut self,
         args: Self::Args,
-        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<'a>,
+        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<Self::Args>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {
-        use wgpu::ComputePassDescriptor;
-
         let bind_group_resources = vec![
             ResourceType::AccelerationStructure(args.tlas),
             ResourceType::Buffer(args.rays_buffer.inner),
@@ -187,8 +224,7 @@ impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {
 
 #[cfg(test)]
 mod tests {
-    use memory::buffers::Buffers;
-use tinyge_graphics::shaders::{ComputeShaderWrapper};
+    use tinyge_graphics::shaders::ComputeShaderWrapper;
     use wgpu::util::DeviceExt;
 
     use super::*;
@@ -242,16 +278,6 @@ use tinyge_graphics::shaders::{ComputeShaderWrapper};
                 &device,
             );
 
-            let input_buffers =
-                Buffers::build(&device, &shader.buffer_build_spec.buffer_build_spec, true);
-
-            let rays_buffer = input_buffers.resource_buffers[0].buffers[1]
-                .clone()
-                .unwrap();
-            let astructs = &input_buffers.resource_buffers[0].acceleration_structures[0];
-            let blas = &astructs.blas;
-            let mut tlas = astructs.tlas.clone();
-
             let rays: Vec<crate::collisions::algos::GpuRay> = vec![
                 crate::collisions::algos::GpuRay {
                     origin: [0.0, 0.0, 1.0, 0.0],
@@ -294,7 +320,11 @@ use tinyge_graphics::shaders::{ComputeShaderWrapper};
                     inv_dir: [0.0, 0.0, -1.0, 0.0],
                 },
             ];
-            queue.write_buffer(&rays_buffer, 0, bytemuck::cast_slice(&rays));
+            queue.write_buffer(
+                shader.built_data.buffers.rays_buffer.inner.raw(),
+                0,
+                bytemuck::cast_slice(&rays),
+            );
 
             let tri_verts: Vec<[f32; 3]> =
                 vec![[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0]];
@@ -305,6 +335,23 @@ use tinyge_graphics::shaders::{ComputeShaderWrapper};
                     | wgpu::BufferUsages::COPY_DST
                     | wgpu::BufferUsages::BLAS_INPUT,
             });
+
+            let raw_blas = device.create_blas(
+                &wgpu::wgt::CreateBlasDescriptor {
+                    label: None,
+                    flags: wgpu::AccelerationStructureFlags::PREFER_FAST_TRACE,
+                    update_mode: wgpu::AccelerationStructureUpdateMode::Build,
+                },
+                wgpu::BlasGeometrySizeDescriptors::Triangles {
+                    descriptors: vec![wgpu::BlasTriangleGeometrySizeDescriptor {
+                        vertex_format: wgpu::VertexFormat::Float32x3,
+                        vertex_count: 3,
+                        index_format: None,
+                        index_count: None,
+                        flags: wgpu::AccelerationStructureGeometryFlags::OPAQUE,
+                    }],
+                },
+            );
 
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -318,7 +365,7 @@ use tinyge_graphics::shaders::{ComputeShaderWrapper};
             };
 
             let blas_entry = wgpu::BlasBuildEntry {
-                blas,
+                blas: &raw_blas,
                 geometry: wgpu::BlasGeometries::TriangleGeometries(vec![
                     wgpu::BlasTriangleGeometry {
                         size: &size_desc,
@@ -333,53 +380,55 @@ use tinyge_graphics::shaders::{ComputeShaderWrapper};
                 ]),
             };
 
-            tlas[0] = Some(wgpu::TlasInstance::new(
-                blas,
+            shader.built_data.buffers.tlas.build(&device);
+            shader.built_data.buffers.tlas.raw_mut()[0] = Some(wgpu::TlasInstance::new(
+                &raw_blas,
                 [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 0,
                 0xFF,
             ));
 
-            encoder.build_acceleration_structures(&[blas_entry], std::iter::once(&tlas));
+            encoder.build_acceleration_structures(
+                &[blas_entry],
+                std::iter::once(shader.built_data.buffers.tlas.raw()),
+            );
             queue.submit(std::iter::once(encoder.finish()));
 
-            let internal_bufs =
-                Buffers::build(&device, &shader.buffer_build_spec.buffer_build_spec, false);
-            let candidates_buffer = internal_bufs.resource_buffers[0].buffers[2]
-                .clone()
-                .unwrap();
-            let counter_buffer = internal_bufs.resource_buffers[0].buffers[3]
-                .clone()
-                .unwrap();
-            let num_rays_buffer = internal_bufs.resource_buffers[0].buffers[4]
-                .clone()
-                .unwrap();
-            let max_candidates_buffer = internal_bufs.resource_buffers[0].buffers[5]
-                .clone()
-                .unwrap();
-
-            queue.write_buffer(&num_rays_buffer, 0, bytemuck::bytes_of(&num_rays));
             queue.write_buffer(
-                &max_candidates_buffer,
+                shader.built_data.buffers.num_rays_buffer.inner.raw(),
+                0,
+                bytemuck::bytes_of(&num_rays),
+            );
+            queue.write_buffer(
+                shader.built_data.buffers.max_candidates_buffer.inner.raw(),
                 0,
                 bytemuck::bytes_of(&max_candidates),
             );
-            queue.write_buffer(&counter_buffer, 0, bytemuck::bytes_of(&0u32));
+            queue.write_buffer(
+                shader.built_data.buffers.counter_buffer.inner.raw(),
+                0,
+                bytemuck::bytes_of(&0u32),
+            );
 
             shader.dispatch(
                 AccelerationArgs {
-                    tlas,
-                    rays_buffer: rays_buffer.into(),
-                    candidates_buffer: candidates_buffer.clone().into(),
-                    counter_buffer: BufferWithType::<u32>::from(counter_buffer.clone()),
-                    num_rays_buffer: BufferWithType::<u32>::from(num_rays_buffer),
-                    max_candidates_buffer: BufferWithType::<u32>::from(max_candidates_buffer),
+                    tlas: shader.built_data.buffers.tlas.clone(),
+                    blas: shader.built_data.buffers.blas.clone(),
+                    rays_buffer: shader.built_data.buffers.rays_buffer.clone(),
+                    candidates_buffer: shader.built_data.buffers.candidates_buffer.clone(),
+                    counter_buffer: shader.built_data.buffers.counter_buffer.clone(),
+                    num_rays_buffer: shader.built_data.buffers.num_rays_buffer.clone(),
+                    max_candidates_buffer: shader.built_data.buffers.max_candidates_buffer.clone(),
                 },
                 &device,
                 &queue,
             );
 
-            let counter: Vec<u32> = read_buffer(&device, &queue, &counter_buffer);
+            let counter: Vec<u32> = read_buffer(
+                &device,
+                &queue,
+                shader.built_data.buffers.counter_buffer.inner.raw(),
+            );
             println!("Counter value: {}", counter[0]);
             assert!(
                 counter[0] >= 4,
@@ -387,7 +436,11 @@ use tinyge_graphics::shaders::{ComputeShaderWrapper};
                 counter[0]
             );
 
-            let candidates: Vec<RawCandidate> = read_buffer(&device, &queue, &candidates_buffer);
+            let candidates: Vec<RawCandidate> = read_buffer(
+                &device,
+                &queue,
+                shader.built_data.buffers.candidates_buffer.inner.raw(),
+            );
 
             for i in 0..counter[0].min(candidates.len() as u32) as usize {
                 let hit = &candidates[i];

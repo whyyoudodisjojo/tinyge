@@ -1,24 +1,28 @@
 pub mod descriptors;
 pub mod manager;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, mpsc::{Receiver, Sender, channel}};
 
 use memory::{
-    buffers::{BufferBuildSpec, DynamicBindGroup, ResourceGroupBuildSpec},
-    descriptors::{
-        MeshBufferSpecs, ResourceGroupLayout, ShaderPipelineDescriptor, VertexBufferSpec,
+    buffers::{
+        AccelerationStructures, DynamicBindGroup, ResourceGroup,
     },
+    descriptors::{
+        MeshBufferSpecs, ResourceBindingType, ResourceGroupLayout,
+        ShaderPipelineDescriptor, VertexBufferSpec,
+    },
+    socket::{TinyBlas, TinyBuffer, TinySampler, TinyTexture, TinyTlas},
+    texture::ResourceTexture,
 };
 use wgpu::*;
 
-pub struct ShaderBuiltData<'a> {
+pub struct ShaderBuiltData {
     pub pipeline: RenderPipeline,
-    pub buffer_build_spec: BufferBuildSpec<'a>,
     pub bind_groups: Vec<DynamicBindGroup>,
 }
 
-pub struct ComputeShaderBuiltData<'a> {
-    pub buffer_build_spec: BufferBuildSpec<'a>,
+pub struct ComputeShaderBuiltData<T> {
+    pub buffers: T,
     pub bind_groups: Vec<DynamicBindGroup>,
     pub pipeline: ComputePipeline,
 }
@@ -34,19 +38,19 @@ pub trait Shader<'a> {
     fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'_>;
 
     fn build(
-        &self,
+        &mut self,
         device: &Device,
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
-    ) -> ShaderBuiltData<'a> {
+    ){
         let MeshBufferSpecs {
             vertex_buffers: vertex_layouts,
-            index_buffer_size,
+            ..
         } = self.mesh_buffers_layouts();
-        let (vertex_layouts, vertex_buffer_sizes) = vertex_layouts
+        let vertex_layouts = vertex_layouts
             .into_iter()
-            .map(|VertexBufferSpec { layout, size }| (layout, size))
-            .collect::<(Vec<_>, Vec<_>)>();
+            .map(|VertexBufferSpec { layout, .. }| layout)
+            .collect::<Vec<_>>();
 
         let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
 
@@ -108,118 +112,80 @@ pub trait Shader<'a> {
             cache,
         });
 
-        let build_spec = BufferBuildSpec {
-            vertex_buffer_szs: vertex_buffer_sizes,
-            index_buffer_sz: index_buffer_size,
-            resource_buffer: resource_buffer_descs
-                .into_iter()
-                .zip(bind_group_layouts)
-                .map(|(d, l)| ResourceGroupBuildSpec {
-                    layout: l,
-                    layout_entries: d.entries,
-                })
-                .collect(),
+        let bind_groups = bind_group_layouts
+            .into_iter()
+            .map(DynamicBindGroup::new)
+            .collect();
+
+        let res =  ShaderBuiltData {
+            pipeline,
+            bind_groups,
         };
 
-        let bind_groups = DynamicBindGroup::new_from_buffer_spec(&build_spec);
+        self.handle_recompilation(res);
+    }
 
-        ShaderBuiltData {
-            pipeline,
-            buffer_build_spec: build_spec,
-            bind_groups,
+    fn handle_recompilation(&mut self, built_data: ShaderBuiltData);
+}
+
+pub struct ShaderWrapper<S>
+    where S: for<'a>Shader<'a>
+{
+    pub shader: Arc<Mutex<S>>,
+    sender_tx: Sender<RecompilationData>,
+}
+
+impl<S> ShaderWrapper<S>
+    where S: for<'a> Shader<'a>
+{
+    pub fn new(shader: Arc<Mutex<S>>) -> (Arc<Self>, Receiver<RecompilationData>) {
+        let (tx, rx) = channel();
+        (Arc::new(Self { shader, sender_tx: tx }), rx)
+    }
+
+    pub fn get_sender_tx(&self) -> Sender<RecompilationData>{
+        self.sender_tx.clone()
+    }
+
+    pub fn watch(rx: Receiver<RecompilationData>, shader: Arc<Mutex<S>>){
+        while let Ok(RecompilationData { device, texture_format, cache }) = rx.recv(){
+            let mut s = shader.lock().unwrap();
+            s.build(&device, &texture_format, cache.as_ref());
         }
     }
 }
 
-pub struct ShaderWrapper<'a, S> {
-    pub buffer_build_spec: Option<ShaderBuiltData<'a>>,
+pub struct RecompilationData{
+    device: Device,
+    texture_format: TextureFormat,
+    cache: Option<PipelineCache>
+}
+
+pub struct ComputeShaderWrapper<S, T> {
+    pub built_data: ComputeShaderBuiltData<T>,
     pub inner: S,
 }
 
-impl<'a, S> ShaderWrapper<'a, S>
-where
-    S: Shader<'a>,
-{
-    pub fn new(
-        shader: S,
-        device: &Device,
-        texture_format: &TextureFormat,
-        cache: Option<&PipelineCache>,
-    ) -> Self {
-        let buffer_build_spec = shader.build(device, texture_format, cache);
-        Self {
-            buffer_build_spec: Some(buffer_build_spec),
-            inner: shader,
-        }
-    }
-
-    pub fn recompile(
-        &mut self,
-        device: &Device,
-        texture_format: &TextureFormat,
-        cache: Option<&PipelineCache>,
-    ) {
-        let buffer_build_spec = self.inner.build(device, texture_format, cache);
-        self.buffer_build_spec = Some(buffer_build_spec);
-    }
-}
-
-impl<'a, S: ?Sized> Shader<'a> for Arc<S>
-where
-    S: Shader<'a>,
-{
-    fn build(
-        &self,
-        device: &Device,
-        texture_format: &TextureFormat,
-        cache: Option<&PipelineCache>,
-    ) -> ShaderBuiltData<'a> {
-        self.as_ref().build(device, texture_format, cache)
-    }
-
-    fn load_source_code(&self) -> String {
-        self.as_ref().load_source_code()
-    }
-
-    fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'a> {
-        self.as_ref().mesh_buffers_layouts()
-    }
-
-    fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
-        self.as_ref().resource_buffers_with_bind_group_layouts()
-    }
-
-    fn shader_pipeline_desc(&self) -> ShaderPipelineDescriptor<'_> {
-        self.as_ref().shader_pipeline_desc()
-    }
-}
-
-pub struct ComputeShaderWrapper<'a, S> {
-    pub buffer_build_spec: ComputeShaderBuiltData<'a>,
-    pub inner: S,
-}
-
-impl<'a, S> ComputeShaderWrapper<'a, S>
+impl<'a, S> ComputeShaderWrapper<S, S::Args>
 where
     S: ComputeShader<'a>,
 {
     pub fn new(shader: S, device: &Device) -> Self {
-        let spec = shader.build(device);
-
+        let buffers = shader.build(device);
         Self {
-            buffer_build_spec: spec,
+            built_data: buffers,
             inner: shader,
         }
     }
 
     pub fn recompile(&mut self, device: &Device) {
         let buffer_build_spec = self.inner.build(device);
-        self.buffer_build_spec = buffer_build_spec;
+        self.built_data = buffer_build_spec;
     }
 
     pub fn dispatch(&mut self, args: S::Args, device: &Device, queue: &Queue) -> S::Ret {
         self.inner
-            .dispatch(args, &mut self.buffer_build_spec, device, queue)
+            .dispatch(args, &mut self.built_data, device, queue)
     }
 }
 
@@ -233,7 +199,76 @@ pub trait ComputeShader<'a> {
     fn load_source_code(&self) -> String;
     fn entry_point(&self) -> &'static str;
 
-    fn build(&self, device: &Device) -> ComputeShaderBuiltData<'a> {
+    fn build_sockets_dyn(
+        &self,
+        resource_group_layout: &[ResourceGroupLayout<'a>],
+    ) -> Vec<ResourceGroup<'a>> {
+        resource_group_layout
+            .iter()
+            .map(|r| {
+                let mut acc_struct = vec![];
+                let mut buffers = vec![];
+                let mut samplers = vec![];
+                let mut textures = vec![];
+
+                r.entries.iter().for_each(|e| match &e.ty {
+                    ResourceBindingType::AccelerationStructure {
+                        tlas_desc,
+                        blas_desc,
+                        blas_geo_sz_desc,
+                        ..
+                    } => {
+                        let tlas = TinyTlas::new(tlas_desc.clone());
+                        let blas = TinyBlas::new(blas_desc.clone(), blas_geo_sz_desc.clone());
+
+                        acc_struct.push(AccelerationStructures { blas, tlas })
+                    }
+                    ResourceBindingType::Buffer {
+                        size,
+                        usages,
+                        ..
+                    } => {
+                        let buffer = TinyBuffer::new(size.clone(), usages.clone());
+                        buffers.push(buffer);
+                    }
+                    ResourceBindingType::ExternalTexture => todo!(),
+                    ResourceBindingType::Sampler {
+                        sampler_descriptor,
+                        ..
+                    } => {
+                        let sampler = TinySampler::new(sampler_descriptor.clone());
+                        samplers.push(sampler)
+                    }
+                    ResourceBindingType::StorageTexture {..} => todo!(),
+                    ResourceBindingType::Texture {
+                        texture_descriptor,
+                        ..
+                    } => {
+                        let texture = TinyTexture::new(texture_descriptor.clone());
+                        textures.push(ResourceTexture {
+                            texture,
+                            sz: texture_descriptor.size,
+                        });
+                    }
+                });
+
+                ResourceGroup {
+                    buffers,
+                    textures,
+                    samplers,
+                    acceleration_structures: acc_struct,
+                }
+            })
+            .collect()
+    }
+
+    fn build_sockets(
+        &self,
+        resource_group_layout: &[ResourceGroupLayout<'a>],
+        device: &Device,
+    ) -> Self::Args;
+
+    fn build(&self, device: &Device) -> ComputeShaderBuiltData<Self::Args> {
         let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
 
         let bind_group_layouts = resource_buffer_descs
@@ -271,32 +306,24 @@ pub trait ComputeShader<'a> {
             cache: None,
         });
 
-        let build_spec = BufferBuildSpec {
-            vertex_buffer_szs: vec![],
-            index_buffer_sz: 0,
-            resource_buffer: resource_buffer_descs
-                .into_iter()
-                .zip(bind_group_layouts)
-                .map(|(d, l)| ResourceGroupBuildSpec {
-                    layout: l,
-                    layout_entries: d.entries,
-                })
-                .collect(),
-        };
+        let bind_groups = bind_group_layouts
+            .into_iter()
+            .map(DynamicBindGroup::new)
+            .collect();
 
-        let bind_groups = DynamicBindGroup::new_from_buffer_spec(&build_spec);
+        let buffers = self.build_sockets(&resource_buffer_descs, device);
 
         ComputeShaderBuiltData {
             bind_groups,
             pipeline,
-            buffer_build_spec: build_spec,
+            buffers,
         }
     }
 
     fn dispatch(
         &mut self,
         args: Self::Args,
-        build_data: &mut ComputeShaderBuiltData<'a>,
+        build_data: &mut ComputeShaderBuiltData<Self::Args>,
         device: &Device,
         queue: &Queue,
     ) -> Self::Ret;

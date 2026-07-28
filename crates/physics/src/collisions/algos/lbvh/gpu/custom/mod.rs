@@ -1,7 +1,5 @@
-use memory::buffers::{BufferWithType, Buffers};
-use tinyge_graphics::shaders::{
-    ComputeShaderWrapper,
-};
+use memory::buffers::BufferWithType;
+use tinyge_graphics::shaders::ComputeShaderWrapper;
 use wgpu::{Buffer, Device};
 
 use crate::collisions::algos::{
@@ -31,11 +29,11 @@ pub struct LBVHBuffers {
 }
 
 pub struct LBVHBuilder {
-    compute_rects: ComputeShaderWrapper<'static, ComputeRects>,
-    mortonize: ComputeShaderWrapper<'static, Mortonize>,
-    build_leaves: ComputeShaderWrapper<'static, BuildTree>,
-    build_structure: ComputeShaderWrapper<'static, BuildTree>,
-    compute_bounds: ComputeShaderWrapper<'static, BuildTree>,
+    compute_rects: ComputeShaderWrapper<ComputeRects, ComputeRectsArgs>,
+    mortonize: ComputeShaderWrapper<Mortonize, MortonizeArgs>,
+    build_leaves: ComputeShaderWrapper<BuildTree, BuildTreeArgs>,
+    build_structure: ComputeShaderWrapper<BuildTree, BuildTreeArgs>,
+    compute_bounds: ComputeShaderWrapper<BuildTree, BuildTreeArgs>,
     radix_sort: RadixSort,
     buffers: LBVHBuffers,
     num_models: u32,
@@ -60,43 +58,62 @@ impl LBVHBuilder {
         );
         let radix_sort = RadixSort::new(num_models, device);
 
-        let compute_rects_buffers = Buffers::build(
-            device,
-            &compute_rects.buffer_build_spec.buffer_build_spec,
-            false,
-        );
-        let rects_buffer = compute_rects_buffers.resource_buffers[0].buffers[2]
+        let rects_buffer = compute_rects
+            .built_data
+            .buffers
+            .output_rect_buffer
+            .inner
+            .inner
             .clone()
             .unwrap();
 
-        let mortonize_buffers = Buffers::build(
-            device,
-            &mortonize.buffer_build_spec.buffer_build_spec,
-            false,
-        );
-        let keys_buffer = mortonize_buffers.resource_buffers[0].buffers[1]
+        let keys_buffer = mortonize
+            .built_data
+            .buffers
+            .keys_buffer
+            .inner
+            .inner
             .clone()
             .unwrap();
-        let global_bounds_buffer = mortonize_buffers.resource_buffers[0].buffers[2]
+        let global_bounds_buffer = mortonize
+            .built_data
+            .buffers
+            .global_bounds_buffer
+            .inner
+            .inner
             .clone()
             .unwrap();
-        let num_rects_buffer = mortonize_buffers.resource_buffers[0].buffers[3]
+        let num_rects_buffer = mortonize
+            .built_data
+            .buffers
+            .num_rects_buffer
+            .inner
+            .inner
             .clone()
             .unwrap();
 
-        let build_tree_buffers = Buffers::build(
-            device,
-            &build_leaves.buffer_build_spec.buffer_build_spec,
-            false,
-        );
-
-        let nodes_buffer = build_tree_buffers.resource_buffers[0].buffers[2]
+        let nodes_buffer = build_leaves
+            .built_data
+            .buffers
+            .nodes_buffer
+            .inner
+            .inner
             .clone()
             .unwrap();
-        let counts_buffer = build_tree_buffers.resource_buffers[0].buffers[3]
+        let counts_buffer = build_leaves
+            .built_data
+            .buffers
+            .counts_buffer
+            .inner
+            .inner
             .clone()
             .unwrap();
-        let params_buffer = build_tree_buffers.resource_buffers[0].buffers[4]
+        let params_buffer = build_leaves
+            .built_data
+            .buffers
+            .params_buffer
+            .inner
+            .inner
             .clone()
             .unwrap();
 

@@ -1,0 +1,14 @@
+[package]
+name = "raytracer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tinyge-physics = {path = "../../crates/physics"}
+wgpu.workspace = true
+tinyge-graphics= {path = "../../crates/graphics"}
+memory = {path = "../../crates/memory"}
+bytemuck.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true

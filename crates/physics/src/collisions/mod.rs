@@ -39,7 +39,7 @@ where
         let res = self.algo.build(model_verts, model_infos, device, queue);
         res.traverse_gpu(
             &rays,
-            (rays.inner.size() / size_of::<Ray>() as u64) as u32,
+            (rays.inner.size / size_of::<Ray>() as u64) as u32,
             device,
             queue,
         )
