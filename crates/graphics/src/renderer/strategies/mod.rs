@@ -1,10 +1,8 @@
-use std::{marker::PhantomData};
+use std::marker::PhantomData;
 
 use wgpu::{CommandEncoder, TextureView};
 
-use crate::{
-    renderer::Renderer,
-};
+use crate::renderer::Renderer;
 
 pub mod layered;
 pub mod single;

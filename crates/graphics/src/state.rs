@@ -6,11 +6,7 @@ where
 {
     type UpdateEvent;
 
-    fn init(
-        &mut self,
-        device: &Device,
-        queue: &Queue,
-    );
+    fn init(&mut self, device: &Device, queue: &Queue);
     fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>);
 }
 

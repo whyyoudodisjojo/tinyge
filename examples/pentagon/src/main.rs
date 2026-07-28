@@ -4,13 +4,19 @@ mod shader;
 use std::sync::{Arc, Mutex};
 
 use tinyge_graphics::{
-    game_loop::GameLoop, renderer::{AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor}, shaders::{ShaderWrapper, manager::RecompilationManager},
+    game_loop::GameLoop,
+    renderer::{AdapterDescriptor, Renderer, RendererDescriptor, RendererInstanceDescriptor},
+    shaders::{ShaderWrapper, manager::RecompilationManager},
 };
 use wgpu::{Backends, wgt::DeviceDescriptor};
 use winit::event_loop::EventLoop;
 
 use crate::{
-    logic::{executor::Executor, state::{Shaders, State}}, shader::pentagon::Pentagon,
+    logic::{
+        executor::Executor,
+        state::{Shaders, State},
+    },
+    shader::pentagon::Pentagon,
 };
 
 fn main() {
@@ -43,7 +49,7 @@ fn main() {
     );
 
     // TODO: Have GameLoop struct not allow creation without a vlaid render strategy impl
-    let mut game_loop = GameLoop::new(State::new(Shaders{pentagon: shader}), Executor, renderer);
+    let mut game_loop = GameLoop::new(State::new(Shaders { pentagon: shader }), Executor, renderer);
 
     let event_loop = EventLoop::with_user_event().build().unwrap();
 

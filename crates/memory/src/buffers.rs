@@ -12,7 +12,7 @@ use wgpu::{
 };
 
 use crate::{
-    descriptors::{ResourceBinding},
+    descriptors::ResourceBinding,
     socket::{TinyBlas, TinyBuffer, TinySampler, TinyTlas},
     texture::ResourceTexture,
 };

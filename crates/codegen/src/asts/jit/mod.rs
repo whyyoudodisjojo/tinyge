@@ -5,7 +5,7 @@ pub mod runner;
 
 use memory::buffers::BufferWithType;
 use memory::socket::TinyBuffer;
-use wgpu::{BufferUsages};
+use wgpu::BufferUsages;
 
 use crate::asts::lowered::{BinOp, LoweredAST, UnaryOp, scope::Scope};
 use crate::asts::{AstConst, IntoWgslStruct};

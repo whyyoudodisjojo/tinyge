@@ -41,20 +41,20 @@ pub const INDICES: &[u16] = &[
     0, // Padding for 4-byte alignment
 ];
 
-pub struct Pentagon{
-    pub sockets: Option<ShaderBuiltData>
+pub struct Pentagon {
+    pub sockets: Option<ShaderBuiltData>,
 }
 
-impl Pentagon{
-    pub fn new() -> Self{
+impl Pentagon {
+    pub fn new() -> Self {
         Pentagon { sockets: None }
     }
 
-    pub fn get_sockets(&self) -> Option<&ShaderBuiltData>{
+    pub fn get_sockets(&self) -> Option<&ShaderBuiltData> {
         self.sockets.as_ref()
     }
 
-    pub fn get_sockets_mut(&mut self) -> Option<&mut ShaderBuiltData>{
+    pub fn get_sockets_mut(&mut self) -> Option<&mut ShaderBuiltData> {
         self.sockets.as_mut()
     }
 }
@@ -86,7 +86,7 @@ impl<'a> Shader<'a> for Pentagon {
                 layout,
                 size: vertex_buffer_sz,
             }],
-            index_buffer_size: (INDICES.len() * 2) as u64, 
+            index_buffer_size: (INDICES.len() * 2) as u64,
         }
     }
 

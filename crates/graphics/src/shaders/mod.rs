@@ -1,15 +1,16 @@
 pub mod descriptors;
 pub mod manager;
 
-use std::sync::{Arc, Mutex, mpsc::{Receiver, Sender, channel}};
+use std::sync::{
+    Arc, Mutex,
+    mpsc::{Receiver, Sender, channel},
+};
 
 use memory::{
-    buffers::{
-        AccelerationStructures, DynamicBindGroup, ResourceGroup,
-    },
+    buffers::{AccelerationStructures, DynamicBindGroup, ResourceGroup},
     descriptors::{
-        MeshBufferSpecs, ResourceBindingType, ResourceGroupLayout,
-        ShaderPipelineDescriptor, VertexBufferSpec,
+        MeshBufferSpecs, ResourceBindingType, ResourceGroupLayout, ShaderPipelineDescriptor,
+        VertexBufferSpec,
     },
     socket::{TinyBlas, TinyBuffer, TinySampler, TinyTexture, TinyTlas},
     texture::ResourceTexture,
@@ -42,7 +43,7 @@ pub trait Shader<'a> {
         device: &Device,
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
-    ){
+    ) {
         let MeshBufferSpecs {
             vertex_buffers: vertex_layouts,
             ..
@@ -117,7 +118,7 @@ pub trait Shader<'a> {
             .map(DynamicBindGroup::new)
             .collect();
 
-        let res =  ShaderBuiltData {
+        let res = ShaderBuiltData {
             pipeline,
             bind_groups,
         };
@@ -129,36 +130,49 @@ pub trait Shader<'a> {
 }
 
 pub struct ShaderWrapper<S>
-    where S: for<'a>Shader<'a>
+where
+    S: for<'a> Shader<'a>,
 {
     pub shader: Arc<Mutex<S>>,
     sender_tx: Sender<RecompilationData>,
 }
 
 impl<S> ShaderWrapper<S>
-    where S: for<'a> Shader<'a>
+where
+    S: for<'a> Shader<'a>,
 {
     pub fn new(shader: Arc<Mutex<S>>) -> (Arc<Self>, Receiver<RecompilationData>) {
         let (tx, rx) = channel();
-        (Arc::new(Self { shader, sender_tx: tx }), rx)
+        (
+            Arc::new(Self {
+                shader,
+                sender_tx: tx,
+            }),
+            rx,
+        )
     }
 
-    pub fn get_sender_tx(&self) -> Sender<RecompilationData>{
+    pub fn get_sender_tx(&self) -> Sender<RecompilationData> {
         self.sender_tx.clone()
     }
 
-    pub fn watch(rx: Receiver<RecompilationData>, shader: Arc<Mutex<S>>){
-        while let Ok(RecompilationData { device, texture_format, cache }) = rx.recv(){
+    pub fn watch(rx: Receiver<RecompilationData>, shader: Arc<Mutex<S>>) {
+        while let Ok(RecompilationData {
+            device,
+            texture_format,
+            cache,
+        }) = rx.recv()
+        {
             let mut s = shader.lock().unwrap();
             s.build(&device, &texture_format, cache.as_ref());
         }
     }
 }
 
-pub struct RecompilationData{
+pub struct RecompilationData {
     device: Device,
     texture_format: TextureFormat,
-    cache: Option<PipelineCache>
+    cache: Option<PipelineCache>,
 }
 
 pub struct ComputeShaderWrapper<S, T> {
@@ -223,26 +237,20 @@ pub trait ComputeShader<'a> {
 
                         acc_struct.push(AccelerationStructures { blas, tlas })
                     }
-                    ResourceBindingType::Buffer {
-                        size,
-                        usages,
-                        ..
-                    } => {
+                    ResourceBindingType::Buffer { size, usages, .. } => {
                         let buffer = TinyBuffer::new(size.clone(), usages.clone());
                         buffers.push(buffer);
                     }
                     ResourceBindingType::ExternalTexture => todo!(),
                     ResourceBindingType::Sampler {
-                        sampler_descriptor,
-                        ..
+                        sampler_descriptor, ..
                     } => {
                         let sampler = TinySampler::new(sampler_descriptor.clone());
                         samplers.push(sampler)
                     }
-                    ResourceBindingType::StorageTexture {..} => todo!(),
+                    ResourceBindingType::StorageTexture { .. } => todo!(),
                     ResourceBindingType::Texture {
-                        texture_descriptor,
-                        ..
+                        texture_descriptor, ..
                     } => {
                         let texture = TinyTexture::new(texture_descriptor.clone());
                         textures.push(ResourceTexture {

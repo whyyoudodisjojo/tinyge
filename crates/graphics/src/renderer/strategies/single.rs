@@ -18,8 +18,7 @@ pub trait SinglePassRenderer<'a> {
 
 pub struct SinglePass;
 
-impl<'a> SinglePassRenderer<'a> for Renderer<'a>
-{
+impl<'a> SinglePassRenderer<'a> for Renderer<'a> {
     fn render<State>(&mut self, state: &mut State)
     where
         State: StateRenderSinglePass + StateUpdates<'a>,
@@ -52,12 +51,7 @@ impl<'a> SinglePassRenderer<'a> for Renderer<'a>
             .device
             .create_command_encoder(&CommandEncoderDescriptor { label: None });
 
-        state.render_pass(
-            &mut encoder,
-            &view,
-            &ctx.device,
-            &ctx.queue,
-        );
+        state.render_pass(&mut encoder, &view, &ctx.device, &ctx.queue);
 
         ctx.queue.submit(std::iter::once(encoder.finish()));
         output.present();

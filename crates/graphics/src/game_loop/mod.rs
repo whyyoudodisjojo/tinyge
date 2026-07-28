@@ -1,7 +1,6 @@
 pub mod events;
 
 use std::{
-    hash::Hash,
     sync::{
         Arc,
         mpsc::{self, Receiver, Sender},
@@ -75,8 +74,7 @@ where
 
         self.renderer.recompilation_manager.recompile_all(device);
 
-        self.state
-            .init(device, queue);
+        self.state.init(device, queue);
 
         self.executor.handle_event(
             BaseEvent::Resumed,

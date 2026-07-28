@@ -7,7 +7,9 @@ use tinyge_graphics::{
     renderer::strategies::{
         RenderAble,
         single::{SinglePass, StateRenderSinglePass},
-    }, shaders::ShaderWrapper, state::{StateRender, StateUpdates},
+    },
+    shaders::ShaderWrapper,
+    state::{StateRender, StateUpdates},
 };
 
 use memory::{
@@ -21,7 +23,11 @@ use wgpu::{
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    logic::UpdateEvents, shader::{Vertex, pentagon::{INDICES, Pentagon, VERTICES}},
+    logic::UpdateEvents,
+    shader::{
+        Vertex,
+        pentagon::{INDICES, Pentagon, VERTICES},
+    },
 };
 
 pub struct State<'a> {
@@ -29,11 +35,11 @@ pub struct State<'a> {
     pub time_buffer: Option<BufferWithType<f32>>,
     pub sz: PhysicalSize<u32>,
     pub start_time: SystemTime,
-    pub shaders: Shaders
+    pub shaders: Shaders,
 }
 
-pub struct Shaders{
-    pub pentagon: Arc<ShaderWrapper<Pentagon>>
+pub struct Shaders {
+    pub pentagon: Arc<ShaderWrapper<Pentagon>>,
 }
 
 impl<'a> State<'a> {
@@ -46,7 +52,7 @@ impl<'a> State<'a> {
                 height: 1080,
             },
             start_time: SystemTime::now(),
-            shaders: shader
+            shaders: shader,
         }
     }
 }
@@ -54,11 +60,7 @@ impl<'a> State<'a> {
 impl<'a> StateUpdates<'a> for State<'a> {
     type UpdateEvent = UpdateEvents;
 
-    fn init(
-        &mut self,
-        device: &Device,
-        queue: &Queue,
-    ) {
+    fn init(&mut self, device: &Device, queue: &Queue) {
         let vertex_size = (std::mem::size_of::<Vertex>() * VERTICES.len()) as u64;
         let vertex_buf = device.create_buffer(&BufferDescriptor {
             label: None,
@@ -172,7 +174,7 @@ impl<'b> RenderAble for State<'b> {
 
         let buffers = self.buffers.as_ref().unwrap();
         let mut built_data = self.shaders.pentagon.shader.lock().unwrap();
-        let sockets_ref= built_data.get_sockets().unwrap();
+        let sockets_ref = built_data.get_sockets().unwrap();
         render_pass.set_pipeline(&sockets_ref.pipeline);
         render_pass.set_vertex_buffer(0, buffers.vertex_buffers[0].raw().slice(..));
         render_pass.set_index_buffer(

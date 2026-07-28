@@ -1,13 +1,12 @@
 pub mod strategies;
-use std::{
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
 use wgpu::*;
 use winit::window::Window;
 
 use crate::{
-    shaders::manager::RecompilationManager, state::{StateRender, StateUpdates},
+    shaders::manager::RecompilationManager,
+    state::{StateRender, StateUpdates},
 };
 
 pub struct RendererCtx<'a> {
@@ -53,16 +52,18 @@ pub struct AdapterDescriptor {
 pub struct Renderer<'a> {
     pub ctx: Option<RendererCtx<'a>>,
     pub descriptor: RendererDescriptor<'a>,
-    pub recompilation_manager: RecompilationManager
+    pub recompilation_manager: RecompilationManager,
 }
 
-impl<'a> Renderer<'a>
-{
-    pub fn new(descriptor: RendererDescriptor<'a>, recompilation_manager: RecompilationManager) -> Self {
+impl<'a> Renderer<'a> {
+    pub fn new(
+        descriptor: RendererDescriptor<'a>,
+        recompilation_manager: RecompilationManager,
+    ) -> Self {
         Self {
             ctx: None,
             descriptor,
-            recompilation_manager
+            recompilation_manager,
         }
     }
 
@@ -124,7 +125,7 @@ impl<'a> Renderer<'a>
     }
 
     pub fn prepare_surface<State>(
-       recompilation_manager: &RecompilationManager,
+        recompilation_manager: &RecompilationManager,
         ctx: &mut RendererCtx,
         state: &mut State,
     ) where
