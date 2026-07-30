@@ -1,18 +1,18 @@
-use memory::{
-    buffers::{BufferWithType, ResourceType},
-    socket::TinyBuffer,
-};
+use codegen_macros::IntoBufferStruct;
+use memory::buffers::{BufferWithType, ResourceType};
 use tinyge_graphics::shaders::{
-    ComputeShader,
+    ComputeShader, ComputeShaderBuiltData,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
-use wgpu::{
-    BufferUsages, ComputePassDescriptor, Device, ShaderStages, wgt::CommandEncoderDescriptor,
-};
+use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
+#[derive(IntoBufferStruct)]
 pub struct ComputeRectsArgs {
+    #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
     pub model_verts_buffer: BufferWithType<Vec<[f32; 4]>>,
+    #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
     pub model_infos_buffer: BufferWithType<Vec<[u32; 2]>>,
+    #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
     pub output_rect_buffer: BufferWithType<Vec<glam::Vec4>>,
 }
 
@@ -85,24 +85,6 @@ impl<'a> ComputeShader<'a> for ComputeRects {
 
     fn load_source_code(&self) -> String {
         include_str!("../../../../shaders/lbvh/compute_rects.wgsl").into()
-    }
-
-    fn build_sockets(
-        &self,
-        resource_group_layout: &[ResourceGroupLayout<'a>],
-        device: &Device,
-    ) -> Self::Args {
-        let mut resources = self.build_sockets_dyn(resource_group_layout);
-        let mut buffers: Vec<TinyBuffer> = resources.swap_remove(0).buffers.into_iter().collect();
-        for buf in &mut buffers {
-            buf.build(device);
-        }
-        let mut iter = buffers.into_iter();
-        ComputeRectsArgs {
-            model_verts_buffer: iter.next().unwrap().into(),
-            model_infos_buffer: iter.next().unwrap().into(),
-            output_rect_buffer: iter.next().unwrap().into(),
-        }
     }
 
     fn dispatch(

@@ -1,42 +1,29 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use codegen_macros::IntoBufferStruct;
 use tinyge_graphics::{
     renderer::strategies::{RenderAble, single::SinglePass},
     shaders::ShaderWrapper,
     state::{StateRender, StateUpdates},
 };
 
-use memory::{
-    buffers::{BufferWithType, Buffers, ResourceType},
-    socket::TinyBuffer,
-};
+use memory::buffers::ResourceType;
 use wgpu::{
-    BufferDescriptor, BufferUsages, Color, Device, Operations, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, TextureFormat,
+    Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor,
+    TextureFormat,
 };
 use winit::dpi::PhysicalSize;
 
 use crate::{
     logic::UpdateEvents,
-    shader::{
-        Vertex,
-        pentagon::{INDICES, Pentagon, PentagonArgs, VERTICES},
-    },
+    shader::pentagon::{INDICES, Pentagon, PentagonArgs, VERTICES},
 };
 
 pub struct State<'a> {
-    pub buffers: Option<Buffers<'a>>,
-    pub time_buffer: Option<BufferWithType<f32>>,
+    pub queue: Option<Queue>,
     pub sz: PhysicalSize<u32>,
     pub start_time: SystemTime,
     pub shaders: Shaders,
-}
-
-#[derive(IntoBufferStruct)]
-pub struct BufferStruct {
-    #[vertex]
-    vertex_buffer: TinyBuffer,
+    _phantom: std::marker::PhantomData<&'a ()>,
 }
 
 pub struct Shaders {
@@ -46,8 +33,7 @@ pub struct Shaders {
 impl<'a> State<'a> {
     pub fn new() -> Self {
         Self {
-            buffers: None,
-            time_buffer: None,
+            queue: None,
             sz: PhysicalSize {
                 width: 1920,
                 height: 1080,
@@ -56,6 +42,7 @@ impl<'a> State<'a> {
             shaders: Shaders {
                 pentagon: ShaderWrapper::new(Pentagon::new()),
             },
+            _phantom: std::marker::PhantomData,
         }
     }
 }
@@ -63,77 +50,58 @@ impl<'a> State<'a> {
 impl<'a> StateUpdates<'a> for State<'a> {
     type UpdateEvent = UpdateEvents;
 
-    fn init(&mut self, device: &Device, queue: &Queue) {
-        let vertex_size = (std::mem::size_of::<Vertex>() * VERTICES.len()) as u64;
-        let vertex_buf = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: vertex_size,
-            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        queue.write_buffer(&vertex_buf, 0, bytemuck::cast_slice(&VERTICES));
-
-        let index_size = (std::mem::size_of::<u16>() * INDICES.len()) as u64;
-        let index_buf = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: index_size,
-            usage: BufferUsages::INDEX | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        queue.write_buffer(&index_buf, 0, bytemuck::cast_slice(INDICES));
-
-        let time_buf_raw = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: 4,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        queue.write_buffer(
-            &time_buf_raw,
-            0,
-            bytemuck::bytes_of(&[SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as f32]),
-        );
-
-        self.time_buffer = Some(BufferWithType::from(TinyBuffer {
-            inner: Some(time_buf_raw),
-            size: 4,
-            usages: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        }));
-        self.buffers = Some(Buffers {
-            vertex_buffers: vec![TinyBuffer {
-                inner: Some(vertex_buf),
-                size: vertex_size,
-                usages: BufferUsages::VERTEX,
-            }],
-            index_buffer: Some(TinyBuffer {
-                inner: Some(index_buf),
-                size: index_size,
-                usages: BufferUsages::INDEX,
-            }),
-            resource_buffers: vec![],
-        });
+    fn init(&mut self, _device: &Device, queue: &Queue) {
+        self.queue = Some(queue.clone());
     }
 
     fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>) {
         match update_event {
             UpdateEvents::Resize(sz) => self.sz = sz,
             UpdateEvents::TimeUpdate => {
-                self.time_buffer.as_ref().zip(queue).map(|(t, q)| {
+                if let Some(built_data) = self.shaders.pentagon.built_data.as_ref() {
                     let time_val = SystemTime::now()
                         .duration_since(self.start_time)
                         .unwrap()
                         .as_secs_f32();
-                    t.write(q, &[time_val])
-                });
+                    queue.map(|q| {
+                        q.write_buffer(
+                            built_data.buffers.time_buffer.raw(),
+                            0,
+                            bytemuck::bytes_of(&[time_val]),
+                        )
+                    });
+                }
             }
         }
     }
 
-    fn rebuild_shaders(&mut self, device: &Device, texture_format: &TextureFormat) {
-        self.shaders.pentagon.build(device, texture_format, None);
+    fn rebuild_shaders(&mut self, device: &Device, _texture_format: &TextureFormat) {
+        self.shaders.pentagon.build(device, _texture_format, None);
+
+        let built_data = self.shaders.pentagon.built_data.as_mut().unwrap();
+        built_data.buffers.vertex_buffer.build(device);
+        built_data.buffers.index_buffer.build(device);
+        built_data.buffers.time_buffer.build(device);
+
+        let queue = self.queue.as_ref().unwrap();
+        queue.write_buffer(
+            built_data.buffers.vertex_buffer.raw(),
+            0,
+            bytemuck::cast_slice(&VERTICES),
+        );
+        queue.write_buffer(
+            built_data.buffers.index_buffer.raw(),
+            0,
+            bytemuck::cast_slice(INDICES),
+        );
+        queue.write_buffer(
+            built_data.buffers.time_buffer.raw(),
+            0,
+            bytemuck::bytes_of(&[SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as f32]),
+        );
     }
 }
 
@@ -179,18 +147,16 @@ impl<'b> RenderAble for State<'b> {
             multiview_mask: None,
         });
 
-        let buffers = self.buffers.as_ref().unwrap();
         let built_data = self.shaders.pentagon.built_data.as_mut().unwrap();
         render_pass.set_pipeline(&built_data.pipeline);
-        render_pass.set_vertex_buffer(0, buffers.vertex_buffers[0].raw().slice(..));
+        render_pass.set_vertex_buffer(0, built_data.buffers.vertex_buffer.raw().slice(..));
         render_pass.set_index_buffer(
-            buffers.index_buffer.as_ref().unwrap().raw().slice(..),
+            built_data.buffers.index_buffer.raw().slice(..),
             wgpu::IndexFormat::Uint16,
         );
 
-        let resources: Vec<ResourceType> = vec![ResourceType::Buffer(
-            self.time_buffer.as_ref().unwrap().inner.clone(),
-        )];
+        let resources: Vec<ResourceType> =
+            vec![ResourceType::Buffer(built_data.buffers.time_buffer.clone())];
 
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);
         render_pass.set_bind_group(0, bind_group, &[]);

@@ -229,8 +229,11 @@ pub fn shader_inner(attr: TokenStream, item: TokenStream) -> TokenStream {
     let arg_struct_f = arg_n_idents
         .iter()
         .zip(arg_inner_types.clone())
-        .map(|(n, ty)| {
+        .enumerate()
+        .map(|(i, (n, ty))| {
+            let ri = syn::Index::from(i);
             quote! {
+                #[resource(bindgroup_index = 0, resource_index = #ri, ty = "buffer")]
                 pub #n : memory::buffers::BufferWithType<#ty>
             }
         });
@@ -386,6 +389,7 @@ pub fn shader_inner(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 #struct_def
 
+                #[derive(codegen_macros::IntoBufferStruct)]
                 pub struct #args_ident {
                     #(#arg_struct_f,)*
                 }
@@ -451,14 +455,6 @@ pub fn shader_inner(attr: TokenStream, item: TokenStream) -> TokenStream {
                             },
                         );
                         codegen::asts::lowered::renderer::LoweredRenderer { ir: &ir }.translate()
-                    }
-
-                    fn build_sockets(&self, resource_group_layout: &[tinyge_graphics::shaders::descriptors::ResourceGroupLayout<'a>], device: &wgpu::Device) -> Self::Args {
-                        let mut resources = self.build_sockets_dyn(resource_group_layout);
-                        let mut buffers = resources[0].buffers.drain(..);
-                        Self::Args {
-                            #(#arg_n_idents: buffers.next().unwrap().into(),)*
-                        }
                     }
 
                     fn resource_buffers_with_bind_group_layouts(

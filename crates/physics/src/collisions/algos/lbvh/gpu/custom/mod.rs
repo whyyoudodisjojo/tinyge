@@ -60,6 +60,8 @@ impl LBVHBuilder {
 
         let rects_buffer = compute_rects
             .built_data
+            .as_ref()
+            .unwrap()
             .buffers
             .output_rect_buffer
             .inner
@@ -69,6 +71,8 @@ impl LBVHBuilder {
 
         let keys_buffer = mortonize
             .built_data
+            .as_ref()
+            .unwrap()
             .buffers
             .keys_buffer
             .inner
@@ -77,6 +81,8 @@ impl LBVHBuilder {
             .unwrap();
         let global_bounds_buffer = mortonize
             .built_data
+            .as_ref()
+            .unwrap()
             .buffers
             .global_bounds_buffer
             .inner
@@ -85,6 +91,8 @@ impl LBVHBuilder {
             .unwrap();
         let num_rects_buffer = mortonize
             .built_data
+            .as_ref()
+            .unwrap()
             .buffers
             .num_rects_buffer
             .inner
@@ -94,6 +102,8 @@ impl LBVHBuilder {
 
         let nodes_buffer = build_leaves
             .built_data
+            .as_ref()
+            .unwrap()
             .buffers
             .nodes_buffer
             .inner
@@ -102,6 +112,8 @@ impl LBVHBuilder {
             .unwrap();
         let counts_buffer = build_leaves
             .built_data
+            .as_ref()
+            .unwrap()
             .buffers
             .counts_buffer
             .inner
@@ -110,6 +122,8 @@ impl LBVHBuilder {
             .unwrap();
         let params_buffer = build_leaves
             .built_data
+            .as_ref()
+            .unwrap()
             .buffers
             .params_buffer
             .inner

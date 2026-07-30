@@ -303,7 +303,7 @@ impl GpuBVHTraversal for BVHTree<GpuStorage> {
         BufferWithType::<u32>::from(root_idx_buf.clone())
             .write(queue, &(self.storage.root_idx as u32));
 
-        let mut built_data = shader.build(device);
+        let mut built_data = shader.build(device, None);
         let mut shader = shader;
         shader.dispatch(
             TraverseArgs {

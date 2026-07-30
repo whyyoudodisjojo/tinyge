@@ -204,7 +204,11 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
         vec![ResourceGroupLayout { entries }]
     }
 
-    fn build(&self, device: &Device) -> ComputeShaderBuiltData<Self::Args> {
+    fn build(
+        &self,
+        device: &Device,
+        prev_build_data: Option<ComputeShaderBuiltData<Self::Args>>,
+    ) -> ComputeShaderBuiltData<Self::Args> {
         let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
 
         let bind_group_layouts = resource_buffer_descs
@@ -246,23 +250,30 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
             .map(DynamicBindGroup::new)
             .collect();
 
-        let mut var_bufs = vec![];
-        self.ast.collect_var_buffers(&mut var_bufs);
-        let mut buffers: Vec<TinyBuffer> = var_bufs.into_iter().cloned().collect();
+        let buffers = match prev_build_data {
+            Some(prev) => prev.buffers,
+            None => {
+                let mut var_bufs = vec![];
+                self.ast.collect_var_buffers(&mut var_bufs);
+                let mut buffers: Vec<TinyBuffer> = var_bufs.into_iter().cloned().collect();
 
-        let ResourceBindingType::Buffer { usages, .. } =
-            &resource_buffer_descs[0].entries[self.num_vars].ty
-        else {
-            unreachable!()
+                let ResourceBindingType::Buffer { usages, .. } =
+                    &resource_buffer_descs[0].entries[self.num_vars].ty
+                else {
+                    unreachable!()
+                };
+                let mut output = TinyBuffer::new(self.output_size, *usages);
+                output.build(device);
+                buffers.push(output);
+
+                JitArgs(buffers)
+            }
         };
-        let mut output = TinyBuffer::new(self.output_size, *usages);
-        output.build(device);
-        buffers.push(output);
 
         ComputeShaderBuiltData {
             bind_groups,
             pipeline,
-            buffers: JitArgs(buffers),
+            buffers,
         }
     }
 
@@ -352,7 +363,7 @@ fn compute_var_strides_inner(ast: &JitAST, strides: &mut std::collections::HashM
 impl JitAST {
     pub fn realize(&self, device: &Device, queue: &Queue, element_count: u32) -> JitAST {
         let mut runner = JitRunner::new(self, element_count);
-        let mut built_data = runner.build(device);
+        let mut built_data = runner.build(device, None);
 
         println!("{}", runner.load_source_code());
 

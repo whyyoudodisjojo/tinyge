@@ -1,4 +1,4 @@
-use codegen_macros::IntoWgslStruct;
+use codegen_macros::{IntoBufferStruct, IntoWgslStruct};
 use memory::buffers::BufferWithType;
 use tinyge_graphics::shaders::ComputeShaderWrapper;
 use wgpu::Device;
@@ -17,12 +17,17 @@ pub struct Params {
     pub num_elems: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, IntoBufferStruct)]
 pub struct RadixSortPhaseArgs {
+    #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
     pub param_buffer: BufferWithType<Params>,
+    #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
     pub input_arr_buffer: BufferWithType<Vec<Key>>,
+    #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
     pub count_arr_buffer: BufferWithType<[u32; 16]>,
+    #[resource(bindgroup_index = 0, resource_index = 3, ty = "buffer")]
     pub output_arr_buffer: BufferWithType<Vec<Key>>,
+    #[resource(bindgroup_index = 0, resource_index = 4, ty = "buffer")]
     pub global_offsets_buffer: BufferWithType<[u32; 16]>,
 }
 #[derive(Clone)]
@@ -57,10 +62,34 @@ impl RadixSort {
         );
 
         let buffers = RadixSortInternalBuffers {
-            param_buffer: count.built_data.buffers.param_buffer.clone(),
-            count_arr_buffer: count.built_data.buffers.count_arr_buffer.clone(),
-            output_arr_buffer: count.built_data.buffers.output_arr_buffer.clone(),
-            global_offsets_buffer: count.built_data.buffers.global_offsets_buffer.clone(),
+            param_buffer: count
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .param_buffer
+                .clone(),
+            count_arr_buffer: count
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .count_arr_buffer
+                .clone(),
+            output_arr_buffer: count
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .output_arr_buffer
+                .clone(),
+            global_offsets_buffer: count
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .global_offsets_buffer
+                .clone(),
         };
 
         Self {

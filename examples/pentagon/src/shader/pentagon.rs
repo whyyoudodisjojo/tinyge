@@ -16,9 +16,12 @@ use wgpu::{
 };
 
 #[derive(IntoBufferStruct)]
+#[allow(dead_code)]
 pub struct PentagonArgs {
     #[vertex]
     pub vertex_buffer: TinyBuffer,
+    #[index]
+    pub index_buffer: TinyBuffer,
     #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
     pub time_buffer: TinyBuffer,
 }

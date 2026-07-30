@@ -1,22 +1,24 @@
-use memory::{
-    buffers::{BufferWithType, ResourceType},
-    socket::TinyBuffer,
-};
+use codegen_macros::IntoBufferStruct;
+use memory::buffers::{BufferWithType, ResourceType};
 use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
-use wgpu::{
-    BufferUsages, ComputePassDescriptor, Device, ShaderStages, wgt::CommandEncoderDescriptor,
-};
+use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
 use crate::collisions::algos::FlattenedBVHNode;
 
+#[derive(IntoBufferStruct)]
 pub struct BuildTreeArgs {
+    #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
     pub keys_buffer: BufferWithType<Vec<u32>>,
+    #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
     pub rects_buffer: BufferWithType<Vec<glam::Vec4>>,
+    #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
     pub nodes_buffer: BufferWithType<Vec<FlattenedBVHNode>>,
+    #[resource(bindgroup_index = 0, resource_index = 3, ty = "buffer")]
     pub counts_buffer: BufferWithType<Vec<u32>>,
+    #[resource(bindgroup_index = 0, resource_index = 4, ty = "buffer")]
     pub params_buffer: BufferWithType<u32>,
 }
 
@@ -51,26 +53,6 @@ impl<'a> ComputeShader<'a> for BuildTree {
 
     fn load_source_code(&self) -> String {
         include_str!("../../../../shaders/lbvh/build_tree.wgsl").to_string()
-    }
-
-    fn build_sockets(
-        &self,
-        resource_group_layout: &[ResourceGroupLayout<'a>],
-        device: &Device,
-    ) -> Self::Args {
-        let mut resources = self.build_sockets_dyn(resource_group_layout);
-        let mut buffers: Vec<TinyBuffer> = resources.swap_remove(0).buffers.into_iter().collect();
-        for buf in &mut buffers {
-            buf.build(device);
-        }
-        let mut iter = buffers.into_iter();
-        BuildTreeArgs {
-            keys_buffer: iter.next().unwrap().into(),
-            rects_buffer: iter.next().unwrap().into(),
-            nodes_buffer: iter.next().unwrap().into(),
-            counts_buffer: iter.next().unwrap().into(),
-            params_buffer: iter.next().unwrap().into(),
-        }
     }
 
     fn resource_buffers_with_bind_group_layouts(

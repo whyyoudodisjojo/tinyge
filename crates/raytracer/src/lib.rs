@@ -29,11 +29,11 @@ impl RayTracer {
     }
 
     pub fn build_tlas(&mut self, blases: &[&Blas]) {
-        let args = &mut self.shader.built_data.buffers;
-        args.tlas.build(&self.device);
+        let args = &mut self.shader.built_data.as_mut().unwrap().buffers;
+        args.acc.tlas.build(&self.device);
 
         for (i, blas) in blases.iter().enumerate() {
-            args.tlas.raw_mut()[i] = Some(wgpu::TlasInstance::new(
+            args.acc.tlas.raw_mut()[i] = Some(wgpu::TlasInstance::new(
                 blas,
                 [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 0,
@@ -44,24 +44,41 @@ impl RayTracer {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        encoder.build_acceleration_structures(&[], std::iter::once(args.tlas.raw()));
+        encoder.build_acceleration_structures(&[], std::iter::once(args.acc.tlas.raw()));
         self.queue.submit(std::iter::once(encoder.finish()));
     }
 
     pub fn set_rays(&self, rays: &[GpuRay]) {
-        let buf = self.shader.built_data.buffers.rays_buffer.inner.raw();
+        let buf = self
+            .shader
+            .built_data
+            .as_ref()
+            .unwrap()
+            .buffers
+            .rays_buffer
+            .inner
+            .raw();
         self.queue.write_buffer(buf, 0, bytemuck::cast_slice(rays));
     }
 
     pub fn dispatch(&mut self) {
         self.queue.write_buffer(
-            self.shader.built_data.buffers.num_rays_buffer.inner.raw(),
+            self.shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .num_rays_buffer
+                .inner
+                .raw(),
             0,
             bytemuck::bytes_of(&self.num_rays),
         );
         self.queue.write_buffer(
             self.shader
                 .built_data
+                .as_ref()
+                .unwrap()
                 .buffers
                 .max_candidates_buffer
                 .inner
@@ -70,19 +87,60 @@ impl RayTracer {
             bytemuck::bytes_of(&self.max_candidates),
         );
         self.queue.write_buffer(
-            self.shader.built_data.buffers.counter_buffer.inner.raw(),
+            self.shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .counter_buffer
+                .inner
+                .raw(),
             0,
             bytemuck::bytes_of(&0u32),
         );
 
         let args = AccelerationArgs {
-            tlas: self.shader.built_data.buffers.tlas.clone(),
-            blas: self.shader.built_data.buffers.blas.clone(),
-            rays_buffer: self.shader.built_data.buffers.rays_buffer.clone(),
-            candidates_buffer: self.shader.built_data.buffers.candidates_buffer.clone(),
-            counter_buffer: self.shader.built_data.buffers.counter_buffer.clone(),
-            num_rays_buffer: self.shader.built_data.buffers.num_rays_buffer.clone(),
-            max_candidates_buffer: self.shader.built_data.buffers.max_candidates_buffer.clone(),
+            acc: self.shader.built_data.as_ref().unwrap().buffers.acc.clone(),
+            rays_buffer: self
+                .shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .rays_buffer
+                .clone(),
+            candidates_buffer: self
+                .shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .candidates_buffer
+                .clone(),
+            counter_buffer: self
+                .shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .counter_buffer
+                .clone(),
+            num_rays_buffer: self
+                .shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .num_rays_buffer
+                .clone(),
+            max_candidates_buffer: self
+                .shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .max_candidates_buffer
+                .clone(),
         };
         self.shader.dispatch(args, &self.device, &self.queue);
     }
@@ -91,12 +149,26 @@ impl RayTracer {
         let counter: Vec<u32> = read_buffer(
             &self.device,
             &self.queue,
-            self.shader.built_data.buffers.counter_buffer.inner.raw(),
+            self.shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .counter_buffer
+                .inner
+                .raw(),
         );
         let candidates: Vec<RawCandidate> = read_buffer(
             &self.device,
             &self.queue,
-            self.shader.built_data.buffers.candidates_buffer.inner.raw(),
+            self.shader
+                .built_data
+                .as_ref()
+                .unwrap()
+                .buffers
+                .candidates_buffer
+                .inner
+                .raw(),
         );
         (candidates, counter[0])
     }

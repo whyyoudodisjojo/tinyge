@@ -36,6 +36,7 @@ pub trait Shader<'a> {
         device: &Device,
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
+        prev_build_data: Option<ShaderBuiltData<Self::Args>>,
     ) -> ShaderBuiltData<Self::Args> {
         let mesh_buffer_specs = self.mesh_buffers_layouts();
         let vertex_layouts = mesh_buffer_specs
@@ -110,8 +111,12 @@ pub trait Shader<'a> {
             .map(DynamicBindGroup::new)
             .collect();
 
-        let buffers =
-            UnifiedShaderBuildData::new(&resource_buffer_descs, Some(&mesh_buffer_specs)).into();
+        let buffers = match prev_build_data {
+            Some(prev) => prev.buffers,
+            None => {
+                UnifiedShaderBuildData::new(&resource_buffer_descs, Some(&mesh_buffer_specs)).into()
+            }
+        };
 
         ShaderBuiltData {
             buffers,
@@ -146,12 +151,16 @@ where
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
     ) {
-        self.built_data = Some(self.shader.build(device, texture_format, cache));
+        self.built_data =
+            Some(
+                self.shader
+                    .build(device, texture_format, cache, self.built_data.take()),
+            );
     }
 }
 
 pub struct ComputeShaderWrapper<S, T> {
-    pub built_data: ComputeShaderBuiltData<T>,
+    pub built_data: Option<ComputeShaderBuiltData<T>>,
     pub inner: S,
 }
 
@@ -160,21 +169,21 @@ where
     S: ComputeShader<'a>,
 {
     pub fn new(shader: S, device: &Device) -> Self {
-        let buffers = shader.build(device);
+        let buffers = shader.build(device, None);
         Self {
-            built_data: buffers,
+            built_data: Some(buffers),
             inner: shader,
         }
     }
 
     pub fn recompile(&mut self, device: &Device) {
-        let buffer_build_spec = self.inner.build(device);
-        self.built_data = buffer_build_spec;
+        let buffer_build_spec = self.inner.build(device, self.built_data.take());
+        self.built_data = Some(buffer_build_spec);
     }
 
     pub fn dispatch(&mut self, args: S::Args, device: &Device, queue: &Queue) -> S::Ret {
         self.inner
-            .dispatch(args, &mut self.built_data, device, queue)
+            .dispatch(args, self.built_data.as_mut().unwrap(), device, queue)
     }
 }
 
@@ -188,7 +197,11 @@ pub trait ComputeShader<'a> {
     fn load_source_code(&self) -> String;
     fn entry_point(&self) -> &'static str;
 
-    fn build(&self, device: &Device) -> ComputeShaderBuiltData<Self::Args> {
+    fn build(
+        &self,
+        device: &Device,
+        prev_build_data: Option<ComputeShaderBuiltData<Self::Args>>,
+    ) -> ComputeShaderBuiltData<Self::Args> {
         let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
 
         let bind_group_layouts = resource_buffer_descs
@@ -231,7 +244,24 @@ pub trait ComputeShader<'a> {
             .map(DynamicBindGroup::new)
             .collect();
 
-        let buffers = UnifiedShaderBuildData::new(&resource_buffer_descs, None).into();
+        let buffers = match prev_build_data {
+            Some(prev) => prev.buffers,
+            None => {
+                let mut data = UnifiedShaderBuildData::new(&resource_buffer_descs, None);
+                for buf in &mut data.vertex_buffers {
+                    buf.build(device);
+                }
+                for buf in &mut data.index_buffers {
+                    buf.build(device);
+                }
+                for group in &mut data.resource_groups {
+                    for buf in &mut group.buffers {
+                        buf.build(device);
+                    }
+                }
+                data.into()
+            }
+        };
 
         ComputeShaderBuiltData {
             bind_groups,
