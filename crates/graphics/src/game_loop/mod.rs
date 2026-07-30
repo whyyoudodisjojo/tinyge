@@ -72,7 +72,7 @@ where
             .unwrap();
 
         self.state.init(device, queue);
-        self.state.rebuild_shaders(device, texture_format);
+        self.state.rebuild_shaders(device, texture_format, queue);
 
         self.executor.handle_event(
             BaseEvent::Resumed,

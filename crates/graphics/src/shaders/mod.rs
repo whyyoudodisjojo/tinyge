@@ -150,12 +150,14 @@ where
         device: &Device,
         texture_format: &TextureFormat,
         cache: Option<&PipelineCache>,
-    ) {
+    ) -> bool {
+        let buffers_rebuild = self.built_data.is_none();
         self.built_data =
             Some(
                 self.shader
                     .build(device, texture_format, cache, self.built_data.take()),
             );
+        buffers_rebuild
     }
 }
 

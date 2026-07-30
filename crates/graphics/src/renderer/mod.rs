@@ -127,7 +127,7 @@ impl<'a> Renderer<'a> {
 
             ctx.surface.configure(&ctx.device, &ctx.surface_config);
 
-            state.rebuild_shaders(&ctx.device, &ctx.surface_config.format);
+            state.rebuild_shaders(&ctx.device, &ctx.surface_config.format, &ctx.queue);
         }
     }
 }

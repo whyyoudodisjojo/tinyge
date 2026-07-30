@@ -6,9 +6,15 @@ where
 {
     type UpdateEvent;
 
-    fn init(&mut self, device: &Device, queue: &Queue);
+    fn init(&mut self, _device: &Device, _queue: &Queue) {}
     fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>);
-    fn rebuild_shaders(&mut self, _device: &Device, _texture_format: &TextureFormat) {}
+    fn rebuild_shaders(
+        &mut self,
+        _device: &Device,
+        _texture_format: &TextureFormat,
+        _queue: &Queue,
+    ) {
+    }
 }
 
 pub trait StateRender {

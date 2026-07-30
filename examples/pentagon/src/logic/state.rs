@@ -19,7 +19,6 @@ use crate::{
 };
 
 pub struct State<'a> {
-    pub queue: Option<Queue>,
     pub sz: PhysicalSize<u32>,
     pub start_time: SystemTime,
     pub shaders: Shaders,
@@ -33,7 +32,6 @@ pub struct Shaders {
 impl<'a> State<'a> {
     pub fn new() -> Self {
         Self {
-            queue: None,
             sz: PhysicalSize {
                 width: 1920,
                 height: 1080,
@@ -49,10 +47,6 @@ impl<'a> State<'a> {
 
 impl<'a> StateUpdates<'a> for State<'a> {
     type UpdateEvent = UpdateEvents;
-
-    fn init(&mut self, _device: &Device, queue: &Queue) {
-        self.queue = Some(queue.clone());
-    }
 
     fn update(&mut self, update_event: Self::UpdateEvent, queue: Option<&Queue>) {
         match update_event {
@@ -75,33 +69,34 @@ impl<'a> StateUpdates<'a> for State<'a> {
         }
     }
 
-    fn rebuild_shaders(&mut self, device: &Device, _texture_format: &TextureFormat) {
-        self.shaders.pentagon.build(device, _texture_format, None);
+    fn rebuild_shaders(&mut self, device: &Device, _texture_format: &TextureFormat, queue: &Queue) {
+        let buffers_rebuilt = self.shaders.pentagon.build(device, _texture_format, None);
 
-        let built_data = self.shaders.pentagon.built_data.as_mut().unwrap();
-        built_data.buffers.vertex_buffer.build(device);
-        built_data.buffers.index_buffer.build(device);
-        built_data.buffers.time_buffer.build(device);
+        if buffers_rebuilt {
+            let built_data = self.shaders.pentagon.built_data.as_mut().unwrap();
+            built_data.buffers.vertex_buffer.build(device);
+            built_data.buffers.index_buffer.build(device);
+            built_data.buffers.time_buffer.build(device);
 
-        let queue = self.queue.as_ref().unwrap();
-        queue.write_buffer(
-            built_data.buffers.vertex_buffer.raw(),
-            0,
-            bytemuck::cast_slice(&VERTICES),
-        );
-        queue.write_buffer(
-            built_data.buffers.index_buffer.raw(),
-            0,
-            bytemuck::cast_slice(INDICES),
-        );
-        queue.write_buffer(
-            built_data.buffers.time_buffer.raw(),
-            0,
-            bytemuck::bytes_of(&[SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as f32]),
-        );
+            queue.write_buffer(
+                built_data.buffers.vertex_buffer.raw(),
+                0,
+                bytemuck::cast_slice(&VERTICES),
+            );
+            queue.write_buffer(
+                built_data.buffers.index_buffer.raw(),
+                0,
+                bytemuck::cast_slice(INDICES),
+            );
+            queue.write_buffer(
+                built_data.buffers.time_buffer.raw(),
+                0,
+                bytemuck::bytes_of(&[SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as f32]),
+            );
+        }
     }
 }
 
