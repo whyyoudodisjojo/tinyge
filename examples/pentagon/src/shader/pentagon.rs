@@ -1,15 +1,27 @@
 use std::num::NonZeroU64;
 
 use crate::shader::Vertex;
-use memory::descriptors::{
-    ColorTarget, MeshBufferSpecs, ResourceBinding, ResourceGroupLayout, ShaderPipelineDescriptor,
-    VertexBufferSpec,
+use codegen_macros::IntoBufferStruct;
+use memory::{
+    descriptors::{
+        ColorTarget, MeshBufferSpecs, ResourceBinding, ResourceGroupLayout,
+        ShaderPipelineDescriptor, VertexBufferSpec,
+    },
+    socket::TinyBuffer,
 };
 use tinyge_graphics::shaders::Shader;
 use wgpu::{
     BlendComponent, BlendState, BufferUsages, ColorWrites, MultisampleState, PrimitiveState,
     ShaderStages, VertexAttribute, VertexBufferLayout, VertexFormat,
 };
+
+#[derive(IntoBufferStruct)]
+pub struct PentagonArgs {
+    #[vertex]
+    pub vertex_buffer: TinyBuffer,
+    #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
+    pub time_buffer: TinyBuffer,
+}
 
 pub const VERTICES: &[Vertex] = &[
     Vertex {
@@ -50,6 +62,8 @@ impl Pentagon {
 }
 
 impl<'a> Shader<'a> for Pentagon {
+    type Args = PentagonArgs;
+
     fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'a> {
         let vertex_sz = (3 * 4) + (3 * 4);
         let vertex_buffer_sz = vertex_sz * VERTICES.len() as u64;

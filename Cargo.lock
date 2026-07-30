@@ -1736,6 +1736,7 @@ name = "pentagon"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "codegen-macros",
  "memory",
  "tinyge-graphics",
  "wgpu",

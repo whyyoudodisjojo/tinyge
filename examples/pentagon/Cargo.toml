@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 bytemuck = {workspace = true}
-tinyge-graphics = {path = "../../crates/graphics"}
 wgpu = {workspace = true}
 winit = {workspace = true}
 memory = {path = "../../crates/memory"}
+tinyge-graphics = {path = "../../crates/graphics"}
+codegen-macros = {path = "../../crates/codegen-macros"}

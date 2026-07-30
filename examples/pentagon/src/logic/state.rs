@@ -1,5 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use codegen_macros::IntoBufferStruct;
 use tinyge_graphics::{
     renderer::strategies::{RenderAble, single::SinglePass},
     shaders::ShaderWrapper,
@@ -20,7 +21,7 @@ use crate::{
     logic::UpdateEvents,
     shader::{
         Vertex,
-        pentagon::{INDICES, Pentagon, VERTICES},
+        pentagon::{INDICES, Pentagon, PentagonArgs, VERTICES},
     },
 };
 
@@ -32,8 +33,14 @@ pub struct State<'a> {
     pub shaders: Shaders,
 }
 
+#[derive(IntoBufferStruct)]
+pub struct BufferStruct {
+    #[vertex]
+    vertex_buffer: TinyBuffer,
+}
+
 pub struct Shaders {
-    pub pentagon: ShaderWrapper<Pentagon>,
+    pub pentagon: ShaderWrapper<Pentagon, PentagonArgs>,
 }
 
 impl<'a> State<'a> {

@@ -48,6 +48,7 @@ impl<'a> From<&ResourceBinding<'a>> for BindGroupLayoutEntry {
     }
 }
 
+#[derive(Clone)]
 pub struct VertexBufferSpec<'a> {
     pub layout: VertexBufferLayout<'a>,
     pub size: u64,

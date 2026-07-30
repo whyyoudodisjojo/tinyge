@@ -114,10 +114,8 @@ impl<'a> Renderer<'a> {
         self.ctx.as_ref().map(|c| Arc::downgrade(&c.window))
     }
 
-    pub fn prepare_surface<State>(
-        ctx: &mut RendererCtx,
-        state: &mut State,
-    ) where
+    pub fn prepare_surface<State>(ctx: &mut RendererCtx, state: &mut State)
+    where
         State: StateRender + StateUpdates<'a>,
     {
         let render_width = state.render_width();

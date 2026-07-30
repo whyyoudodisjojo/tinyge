@@ -1,7 +1,11 @@
-use memory::{buffers::ResourceType, socket::TinyBuffer};
+use memory::{
+    buffers::{DynamicBindGroup, ResourceType},
+    socket::TinyBuffer,
+};
 use wgpu::{
-    BufferBindingType, BufferUsages, CommandEncoderDescriptor, ComputePassDescriptor, Device,
-    Queue, ShaderStages,
+    BindGroupLayoutDescriptor, BufferBindingType, BufferUsages, CommandEncoderDescriptor,
+    ComputePassDescriptor, ComputePipelineDescriptor, Device, PipelineLayoutDescriptor, Queue,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages,
 };
 
 use tinyge_graphics::shaders::{
@@ -142,8 +146,22 @@ impl<'ast> JitRunner<'ast> {
     }
 }
 
+#[derive(Clone)]
+pub struct JitArgs(pub Vec<TinyBuffer>);
+
+impl<'a> From<memory::buffers::UnifiedShaderBuildData<'a>> for JitArgs {
+    fn from(data: memory::buffers::UnifiedShaderBuildData<'a>) -> Self {
+        let mut bufs = data.vertex_buffers;
+        bufs.extend(data.index_buffers);
+        for group in data.resource_groups {
+            bufs.extend(group.buffers);
+        }
+        JitArgs(bufs)
+    }
+}
+
 impl<'a> ComputeShader<'a> for JitRunner<'_> {
-    type Args = Vec<TinyBuffer>;
+    type Args = JitArgs;
     type Ret = TinyBuffer;
 
     fn entry_point(&self) -> &'static str {
@@ -186,24 +204,66 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
         vec![ResourceGroupLayout { entries }]
     }
 
-    fn build_sockets(
-        &self,
-        resource_group_layout: &[ResourceGroupLayout<'a>],
-        device: &Device,
-    ) -> Self::Args {
+    fn build(&self, device: &Device) -> ComputeShaderBuiltData<Self::Args> {
+        let resource_buffer_descs = self.resource_buffers_with_bind_group_layouts();
+
+        let bind_group_layouts = resource_buffer_descs
+            .iter()
+            .map(|l| {
+                let bind_group_layout_descriptor = BindGroupLayoutDescriptor {
+                    label: None,
+                    entries: &l.entries.iter().map(Into::into).collect::<Vec<_>>(),
+                };
+                device.create_bind_group_layout(&bind_group_layout_descriptor)
+            })
+            .collect::<Vec<_>>();
+
+        let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &bind_group_layouts
+                .iter()
+                .map(|b| Some(b))
+                .collect::<Vec<_>>(),
+            immediate_size: 0,
+        });
+
+        let shader_module = device.create_shader_module(ShaderModuleDescriptor {
+            label: None,
+            source: ShaderSource::Wgsl(std::borrow::Cow::Owned(self.load_source_code())),
+        });
+
+        let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            label: None,
+            layout: Some(&layout),
+            module: &shader_module,
+            entry_point: Some(self.entry_point()),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let bind_groups = bind_group_layouts
+            .into_iter()
+            .map(DynamicBindGroup::new)
+            .collect();
+
         let mut var_bufs = vec![];
         self.ast.collect_var_buffers(&mut var_bufs);
-        let mut bufs: Vec<TinyBuffer> = var_bufs.into_iter().cloned().collect();
+        let mut buffers: Vec<TinyBuffer> = var_bufs.into_iter().cloned().collect();
 
         let ResourceBindingType::Buffer { usages, .. } =
-            &resource_group_layout[0].entries[self.num_vars].ty
+            &resource_buffer_descs[0].entries[self.num_vars].ty
         else {
             unreachable!()
         };
         let mut output = TinyBuffer::new(self.output_size, *usages);
         output.build(device);
-        bufs.push(output);
-        bufs
+        buffers.push(output);
+
+        ComputeShaderBuiltData {
+            bind_groups,
+            pipeline,
+            buffers: JitArgs(buffers),
+        }
     }
 
     fn dispatch(
@@ -213,8 +273,9 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
         device: &Device,
         queue: &Queue,
     ) -> Self::Ret {
-        let output_buf = args.pop().unwrap();
-        let mut resources: Vec<ResourceType> = args.into_iter().map(ResourceType::Buffer).collect();
+        let output_buf = args.0.pop().unwrap();
+        let mut resources: Vec<ResourceType> =
+            args.0.into_iter().map(ResourceType::Buffer).collect();
         resources.push(ResourceType::Buffer(output_buf.clone()));
 
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);

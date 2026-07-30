@@ -8,14 +8,102 @@ use bytemuck::Pod;
 use lru::LruCache;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
-    Device,
+    BufferUsages, Device,
 };
 
 use crate::{
-    descriptors::ResourceBinding,
-    socket::{TinyBlas, TinyBuffer, TinySampler, TinyTlas},
+    descriptors::{MeshBufferSpecs, ResourceBinding, ResourceBindingType, ResourceGroupLayout},
+    socket::{TinyBlas, TinyBuffer, TinySampler, TinyTexture, TinyTlas},
     texture::ResourceTexture,
 };
+
+pub struct UnifiedShaderBuildData<'a> {
+    pub vertex_buffers: Vec<TinyBuffer>,
+    pub index_buffers: Vec<TinyBuffer>,
+    pub resource_groups: Vec<ResourceGroup<'a>>,
+}
+
+impl<'a> UnifiedShaderBuildData<'a> {
+    pub fn new(
+        resource_group_layouts: &[ResourceGroupLayout<'a>],
+        mesh_buffer_specs: Option<&MeshBufferSpecs>,
+    ) -> Self {
+        let res = resource_group_layouts
+            .iter()
+            .map(|r| {
+                let mut acc_struct = vec![];
+                let mut buffers = vec![];
+                let mut samplers = vec![];
+                let mut textures = vec![];
+
+                r.entries.iter().for_each(|e| match &e.ty {
+                    ResourceBindingType::AccelerationStructure {
+                        tlas_desc,
+                        blas_desc,
+                        blas_geo_sz_desc,
+                        ..
+                    } => {
+                        let tlas = TinyTlas::new(tlas_desc.clone());
+                        let blas = TinyBlas::new(blas_desc.clone(), blas_geo_sz_desc.clone());
+
+                        acc_struct.push(AccelerationStructures { blas, tlas })
+                    }
+                    ResourceBindingType::Buffer { size, usages, .. } => {
+                        let buffer = TinyBuffer::new(size.clone(), usages.clone());
+                        buffers.push(buffer);
+                    }
+                    ResourceBindingType::ExternalTexture => todo!(),
+                    ResourceBindingType::Sampler {
+                        sampler_descriptor, ..
+                    } => {
+                        let sampler = TinySampler::new(sampler_descriptor.clone());
+                        samplers.push(sampler)
+                    }
+                    ResourceBindingType::StorageTexture { .. } => todo!(),
+                    ResourceBindingType::Texture {
+                        texture_descriptor, ..
+                    } => {
+                        let texture = TinyTexture::new(texture_descriptor.clone());
+                        textures.push(ResourceTexture {
+                            texture,
+                            sz: texture_descriptor.size,
+                        });
+                    }
+                });
+
+                ResourceGroup {
+                    buffers,
+                    textures,
+                    samplers,
+                    acceleration_structures: acc_struct,
+                }
+            })
+            .collect();
+
+        let vertex_buffers = mesh_buffer_specs
+            .map(|m| {
+                m.vertex_buffers
+                    .iter()
+                    .map(|v| TinyBuffer::new(v.size, BufferUsages::COPY_DST | BufferUsages::VERTEX))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let index_buffers = mesh_buffer_specs
+            .map(|m| {
+                vec![TinyBuffer::new(
+                    m.index_buffer_size,
+                    BufferUsages::COPY_DST | BufferUsages::INDEX,
+                )]
+            })
+            .unwrap_or_default();
+
+        UnifiedShaderBuildData {
+            vertex_buffers,
+            index_buffers,
+            resource_groups: res,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct ResourceGroup<'a> {
