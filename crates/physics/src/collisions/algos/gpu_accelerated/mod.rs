@@ -28,15 +28,15 @@ pub struct RawCandidate {
 pub struct AccelerationArgs<'a> {
     #[resource(bindgroup_index = 0, resource_index = 0, ty = "acceleration_structure")]
     pub acc: AccelerationStructures<'a>,
-    #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
+    #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
     pub rays_buffer: BufferWithType<Vec<crate::collisions::algos::GpuRay>>,
-    #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
+    #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
     pub candidates_buffer: BufferWithType<Vec<RawCandidate>>,
-    #[resource(bindgroup_index = 0, resource_index = 3, ty = "buffer")]
+    #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
     pub counter_buffer: BufferWithType<u32>,
-    #[resource(bindgroup_index = 0, resource_index = 4, ty = "buffer")]
+    #[resource(bindgroup_index = 0, resource_index = 3, ty = "buffer")]
     pub num_rays_buffer: BufferWithType<u32>,
-    #[resource(bindgroup_index = 0, resource_index = 5, ty = "buffer")]
+    #[resource(bindgroup_index = 0, resource_index = 4, ty = "buffer")]
     pub max_candidates_buffer: BufferWithType<u32>,
 }
 
@@ -290,14 +290,7 @@ mod tests {
                 },
             ];
             queue.write_buffer(
-                shader
-                    .built_data
-                    .as_ref()
-                    .unwrap()
-                    .buffers
-                    .rays_buffer
-                    .inner
-                    .raw(),
+                shader.built_data().buffers.rays_buffer.inner.raw(),
                 0,
                 bytemuck::cast_slice(&rays),
             );
@@ -356,18 +349,8 @@ mod tests {
                 ]),
             };
 
-            shader
-                .built_data_mut()
-                .buffers
-                .acc
-                .tlas
-                .build(&device);
-            shader
-                .built_data_mut()
-                .buffers
-                .acc
-                .tlas
-                .raw_mut()[0] = Some(wgpu::TlasInstance::new(
+            shader.built_data_mut().buffers.acc.tlas.build(&device);
+            shader.built_data_mut().buffers.acc.tlas.raw_mut()[0] = Some(wgpu::TlasInstance::new(
                 &raw_blas,
                 [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                 0,
@@ -381,20 +364,13 @@ mod tests {
             queue.submit(std::iter::once(encoder.finish()));
 
             queue.write_buffer(
-                shader
-                    .built_data()
-                    .buffers
-                    .num_rays_buffer
-                    .inner
-                    .raw(),
+                shader.built_data().buffers.num_rays_buffer.inner.raw(),
                 0,
                 bytemuck::bytes_of(&num_rays),
             );
             queue.write_buffer(
                 shader
-                    .built_data
-                    .as_ref()
-                    .unwrap()
+                    .built_data()
                     .buffers
                     .max_candidates_buffer
                     .inner
@@ -403,14 +379,7 @@ mod tests {
                 bytemuck::bytes_of(&max_candidates),
             );
             queue.write_buffer(
-                shader
-                    .built_data
-                    .as_ref()
-                    .unwrap()
-                    .buffers
-                    .counter_buffer
-                    .inner
-                    .raw(),
+                shader.built_data().buffers.counter_buffer.inner.raw(),
                 0,
                 bytemuck::bytes_of(&0u32),
             );
@@ -418,38 +387,12 @@ mod tests {
             shader.dispatch(
                 AccelerationArgs {
                     acc: shader.built_data().buffers.acc.clone(),
-                    rays_buffer: shader
-                        .built_data
-                        .as_ref()
-                        .unwrap()
-                        .buffers
-                        .rays_buffer
-                        .clone(),
-                    candidates_buffer: shader
-                        .built_data
-                        .as_ref()
-                        .unwrap()
-                        .buffers
-                        .candidates_buffer
-                        .clone(),
-                    counter_buffer: shader
-                        .built_data
-                        .as_ref()
-                        .unwrap()
-                        .buffers
-                        .counter_buffer
-                        .clone(),
-                    num_rays_buffer: shader
-                        .built_data
-                        .as_ref()
-                        .unwrap()
-                        .buffers
-                        .num_rays_buffer
-                        .clone(),
+                    rays_buffer: shader.built_data().buffers.rays_buffer.clone(),
+                    candidates_buffer: shader.built_data().buffers.candidates_buffer.clone(),
+                    counter_buffer: shader.built_data().buffers.counter_buffer.clone(),
+                    num_rays_buffer: shader.built_data().buffers.num_rays_buffer.clone(),
                     max_candidates_buffer: shader
-                        .built_data
-                        .as_ref()
-                        .unwrap()
+                        .built_data()
                         .buffers
                         .max_candidates_buffer
                         .clone(),
@@ -461,14 +404,7 @@ mod tests {
             let counter: Vec<u32> = read_buffer(
                 &device,
                 &queue,
-                shader
-                    .built_data
-                    .as_ref()
-                    .unwrap()
-                    .buffers
-                    .counter_buffer
-                    .inner
-                    .raw(),
+                shader.built_data().buffers.counter_buffer.inner.raw(),
             );
             println!("Counter value: {}", counter[0]);
             assert!(
@@ -480,14 +416,7 @@ mod tests {
             let candidates: Vec<RawCandidate> = read_buffer(
                 &device,
                 &queue,
-                shader
-                    .built_data
-                    .as_ref()
-                    .unwrap()
-                    .buffers
-                    .candidates_buffer
-                    .inner
-                    .raw(),
+                shader.built_data().buffers.candidates_buffer.inner.raw(),
             );
 
             for i in 0..counter[0].min(candidates.len() as u32) as usize {

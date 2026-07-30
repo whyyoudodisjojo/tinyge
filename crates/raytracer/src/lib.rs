@@ -60,7 +60,12 @@ impl RayTracer {
             bytemuck::bytes_of(&self.num_rays),
         );
         self.queue.write_buffer(
-            self.shader.built_data().buffers.max_candidates_buffer.inner.raw(),
+            self.shader
+                .built_data()
+                .buffers
+                .max_candidates_buffer
+                .inner
+                .raw(),
             0,
             bytemuck::bytes_of(&self.max_candidates),
         );
@@ -76,7 +81,12 @@ impl RayTracer {
             candidates_buffer: self.shader.built_data().buffers.candidates_buffer.clone(),
             counter_buffer: self.shader.built_data().buffers.counter_buffer.clone(),
             num_rays_buffer: self.shader.built_data().buffers.num_rays_buffer.clone(),
-            max_candidates_buffer: self.shader.built_data().buffers.max_candidates_buffer.clone(),
+            max_candidates_buffer: self
+                .shader
+                .built_data()
+                .buffers
+                .max_candidates_buffer
+                .clone(),
         };
         self.shader.dispatch(args, &self.device, &self.queue);
     }
@@ -90,7 +100,12 @@ impl RayTracer {
         let candidates: Vec<RawCandidate> = read_buffer(
             &self.device,
             &self.queue,
-            self.shader.built_data().buffers.candidates_buffer.inner.raw(),
+            self.shader
+                .built_data()
+                .buffers
+                .candidates_buffer
+                .inner
+                .raw(),
         );
         (candidates, counter[0])
     }

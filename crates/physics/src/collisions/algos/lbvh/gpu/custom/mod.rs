@@ -65,16 +65,17 @@ impl LBVHBuilder {
         let rects_buffer = rects_data.buffers.output_rect_buffer.inner.raw().clone();
 
         let keys_buffer = mortonize_data.buffers.keys_buffer.inner.raw().clone();
-        let global_bounds_buffer = mortonize_data.buffers.global_bounds_buffer.inner.raw().clone();
+        let global_bounds_buffer = mortonize_data
+            .buffers
+            .global_bounds_buffer
+            .inner
+            .raw()
+            .clone();
         let num_rects_buffer = mortonize_data.buffers.num_rects_buffer.inner.raw().clone();
 
         let nodes_buffer = build_leaves_data.buffers.nodes_buffer.inner.raw().clone();
-        let counts_buffer = build_leaves_data.buffers.counts_buffer.inner
-            .raw()
-            .clone();
-        let params_buffer = build_leaves_data.buffers.params_buffer.inner
-            .raw()
-            .clone();
+        let counts_buffer = build_leaves_data.buffers.counts_buffer.inner.raw().clone();
+        let params_buffer = build_leaves_data.buffers.params_buffer.inner.raw().clone();
 
         let buffers = LBVHBuffers {
             rects_buffer,
