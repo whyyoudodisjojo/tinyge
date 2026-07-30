@@ -90,7 +90,7 @@ impl<'a> ComputeShader<'a> for ComputeRects {
     fn dispatch(
         &mut self,
         args: Self::Args,
-        build_data: &mut tinyge_graphics::shaders::ComputeShaderBuiltData<Self::Args>,
+        build_data: &mut ComputeShaderBuiltData<Self::Args>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self::Ret {

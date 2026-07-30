@@ -107,7 +107,7 @@ impl<'a> Shader<'a> for Pentagon {
                     has_dynamic_offset: false,
                     min_binding_size: NonZeroU64::new(4),
                     size: 4,
-                    usages: BufferUsages::UNIFORM,
+                    usages: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                 },
                 count: None,
             }],

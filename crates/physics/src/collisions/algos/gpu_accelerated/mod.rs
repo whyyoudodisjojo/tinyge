@@ -1,11 +1,8 @@
-use memory::{
-    buffers::{AccelerationStructures, BufferWithType, ResourceType},
-    socket::{TinyBlas, TinyTlas},
-};
+use memory::buffers::{AccelerationStructures, BufferWithType, ResourceType};
 use tinyge_graphics::shaders::descriptors::{
     ResourceBinding, ResourceBindingType, ResourceGroupLayout,
 };
-use wgpu::{BufferUsages, ComputePassDescriptor, Device, ShaderStages};
+use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages};
 
 pub struct AccelerationShader {
     pub num_rays: u32,
