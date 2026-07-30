@@ -90,10 +90,10 @@ impl<'a> UnifiedShaderBuildData<'a> {
             .unwrap_or_default();
         let index_buffers = mesh_buffer_specs
             .map(|m| {
-                vec![TinyBuffer::new(
-                    m.index_buffer_size,
+                m.index_buffer_size.iter().map(|i|TinyBuffer::new(
+                    *i,
                     BufferUsages::COPY_DST | BufferUsages::INDEX,
-                )]
+                )).collect()
             })
             .unwrap_or_default();
 

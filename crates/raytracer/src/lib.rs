@@ -29,7 +29,7 @@ impl RayTracer {
     }
 
     pub fn build_tlas(&mut self, blases: &[&Blas]) {
-        let args = &mut self.shader.built_data.as_mut().unwrap().buffers;
+        let args = &mut self.shader.built_data_mut().buffers;
         args.acc.tlas.build(&self.device);
 
         for (i, blas) in blases.iter().enumerate() {
@@ -49,98 +49,34 @@ impl RayTracer {
     }
 
     pub fn set_rays(&self, rays: &[GpuRay]) {
-        let buf = self
-            .shader
-            .built_data
-            .as_ref()
-            .unwrap()
-            .buffers
-            .rays_buffer
-            .inner
-            .raw();
+        let buf = self.shader.built_data().buffers.rays_buffer.inner.raw();
         self.queue.write_buffer(buf, 0, bytemuck::cast_slice(rays));
     }
 
     pub fn dispatch(&mut self) {
         self.queue.write_buffer(
-            self.shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .num_rays_buffer
-                .inner
-                .raw(),
+            self.shader.built_data().buffers.num_rays_buffer.inner.raw(),
             0,
             bytemuck::bytes_of(&self.num_rays),
         );
         self.queue.write_buffer(
-            self.shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .max_candidates_buffer
-                .inner
-                .raw(),
+            self.shader.built_data().buffers.max_candidates_buffer.inner.raw(),
             0,
             bytemuck::bytes_of(&self.max_candidates),
         );
         self.queue.write_buffer(
-            self.shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .counter_buffer
-                .inner
-                .raw(),
+            self.shader.built_data().buffers.counter_buffer.inner.raw(),
             0,
             bytemuck::bytes_of(&0u32),
         );
 
         let args = AccelerationArgs {
-            acc: self.shader.built_data.as_ref().unwrap().buffers.acc.clone(),
-            rays_buffer: self
-                .shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .rays_buffer
-                .clone(),
-            candidates_buffer: self
-                .shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .candidates_buffer
-                .clone(),
-            counter_buffer: self
-                .shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .counter_buffer
-                .clone(),
-            num_rays_buffer: self
-                .shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .num_rays_buffer
-                .clone(),
-            max_candidates_buffer: self
-                .shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .max_candidates_buffer
-                .clone(),
+            acc: self.shader.built_data().buffers.acc.clone(),
+            rays_buffer: self.shader.built_data().buffers.rays_buffer.clone(),
+            candidates_buffer: self.shader.built_data().buffers.candidates_buffer.clone(),
+            counter_buffer: self.shader.built_data().buffers.counter_buffer.clone(),
+            num_rays_buffer: self.shader.built_data().buffers.num_rays_buffer.clone(),
+            max_candidates_buffer: self.shader.built_data().buffers.max_candidates_buffer.clone(),
         };
         self.shader.dispatch(args, &self.device, &self.queue);
     }
@@ -149,26 +85,12 @@ impl RayTracer {
         let counter: Vec<u32> = read_buffer(
             &self.device,
             &self.queue,
-            self.shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .counter_buffer
-                .inner
-                .raw(),
+            self.shader.built_data().buffers.counter_buffer.inner.raw(),
         );
         let candidates: Vec<RawCandidate> = read_buffer(
             &self.device,
             &self.queue,
-            self.shader
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .candidates_buffer
-                .inner
-                .raw(),
+            self.shader.built_data().buffers.candidates_buffer.inner.raw(),
         );
         (candidates, counter[0])
     }

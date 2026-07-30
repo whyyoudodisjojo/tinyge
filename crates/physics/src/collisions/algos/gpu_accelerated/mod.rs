@@ -357,17 +357,13 @@ mod tests {
             };
 
             shader
-                .built_data
-                .as_ref()
-                .unwrap()
+                .built_data_mut()
                 .buffers
                 .acc
                 .tlas
                 .build(&device);
             shader
-                .built_data
-                .as_ref()
-                .unwrap()
+                .built_data_mut()
                 .buffers
                 .acc
                 .tlas
@@ -380,15 +376,13 @@ mod tests {
 
             encoder.build_acceleration_structures(
                 &[blas_entry],
-                std::iter::once(shader.built_data.as_ref().unwrap().buffers.acc.tlas.raw()),
+                std::iter::once(shader.built_data().buffers.acc.tlas.raw()),
             );
             queue.submit(std::iter::once(encoder.finish()));
 
             queue.write_buffer(
                 shader
-                    .built_data
-                    .as_ref()
-                    .unwrap()
+                    .built_data()
                     .buffers
                     .num_rays_buffer
                     .inner
@@ -423,7 +417,7 @@ mod tests {
 
             shader.dispatch(
                 AccelerationArgs {
-                    acc: shader.built_data.as_ref().unwrap().buffers.acc.clone(),
+                    acc: shader.built_data().buffers.acc.clone(),
                     rays_buffer: shader
                         .built_data
                         .as_ref()

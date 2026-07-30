@@ -162,8 +162,18 @@ where
 }
 
 pub struct ComputeShaderWrapper<S, T> {
-    pub built_data: Option<ComputeShaderBuiltData<T>>,
+    built_data: Option<ComputeShaderBuiltData<T>>,
     pub inner: S,
+}
+
+impl<S, T> ComputeShaderWrapper<S, T> {
+    pub fn built_data(&self) -> &ComputeShaderBuiltData<T> {
+        self.built_data.as_ref().unwrap()
+    }
+
+    pub fn built_data_mut(&mut self) -> &mut ComputeShaderBuiltData<T> {
+        self.built_data.as_mut().unwrap()
+    }
 }
 
 impl<'a, S> ComputeShaderWrapper<S, S::Args>

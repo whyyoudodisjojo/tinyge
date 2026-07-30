@@ -93,7 +93,7 @@ impl<'a> Shader<'a> for Pentagon {
                 layout,
                 size: vertex_buffer_sz,
             }],
-            index_buffer_size: (INDICES.len() * 2) as u64,
+            index_buffer_size: vec![(INDICES.len() * 2) as u64],
         }
     }
 

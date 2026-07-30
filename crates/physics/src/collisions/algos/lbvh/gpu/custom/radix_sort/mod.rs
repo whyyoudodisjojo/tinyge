@@ -61,35 +61,12 @@ impl RadixSort {
             device,
         );
 
+        let data = count.built_data();
         let buffers = RadixSortInternalBuffers {
-            param_buffer: count
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .param_buffer
-                .clone(),
-            count_arr_buffer: count
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .count_arr_buffer
-                .clone(),
-            output_arr_buffer: count
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .output_arr_buffer
-                .clone(),
-            global_offsets_buffer: count
-                .built_data
-                .as_ref()
-                .unwrap()
-                .buffers
-                .global_offsets_buffer
-                .clone(),
+            param_buffer: data.buffers.param_buffer.clone(),
+            count_arr_buffer: data.buffers.count_arr_buffer.clone(),
+            output_arr_buffer: data.buffers.output_arr_buffer.clone(),
+            global_offsets_buffer: data.buffers.global_offsets_buffer.clone(),
         };
 
         Self {
@@ -107,7 +84,7 @@ impl RadixSort {
         device: &Device,
         queue: &wgpu::Queue,
     ) {
-        let ping_buffer = input_buffer.inner.inner.unwrap();
+        let ping_buffer = input_buffer.inner.raw().clone();
         let pong_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: self.num_elems as u64 * std::mem::size_of::<Key>() as u64,

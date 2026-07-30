@@ -58,78 +58,23 @@ impl LBVHBuilder {
         );
         let radix_sort = RadixSort::new(num_models, device);
 
-        let rects_buffer = compute_rects
-            .built_data
-            .as_ref()
-            .unwrap()
-            .buffers
-            .output_rect_buffer
-            .inner
-            .inner
-            .clone()
-            .unwrap();
+        let rects_data = compute_rects.built_data();
+        let mortonize_data = mortonize.built_data();
+        let build_leaves_data = build_leaves.built_data();
 
-        let keys_buffer = mortonize
-            .built_data
-            .as_ref()
-            .unwrap()
-            .buffers
-            .keys_buffer
-            .inner
-            .inner
-            .clone()
-            .unwrap();
-        let global_bounds_buffer = mortonize
-            .built_data
-            .as_ref()
-            .unwrap()
-            .buffers
-            .global_bounds_buffer
-            .inner
-            .inner
-            .clone()
-            .unwrap();
-        let num_rects_buffer = mortonize
-            .built_data
-            .as_ref()
-            .unwrap()
-            .buffers
-            .num_rects_buffer
-            .inner
-            .inner
-            .clone()
-            .unwrap();
+        let rects_buffer = rects_data.buffers.output_rect_buffer.inner.raw().clone();
 
-        let nodes_buffer = build_leaves
-            .built_data
-            .as_ref()
-            .unwrap()
-            .buffers
-            .nodes_buffer
-            .inner
-            .inner
-            .clone()
-            .unwrap();
-        let counts_buffer = build_leaves
-            .built_data
-            .as_ref()
-            .unwrap()
-            .buffers
-            .counts_buffer
-            .inner
-            .inner
-            .clone()
-            .unwrap();
-        let params_buffer = build_leaves
-            .built_data
-            .as_ref()
-            .unwrap()
-            .buffers
-            .params_buffer
-            .inner
-            .inner
-            .clone()
-            .unwrap();
+        let keys_buffer = mortonize_data.buffers.keys_buffer.inner.raw().clone();
+        let global_bounds_buffer = mortonize_data.buffers.global_bounds_buffer.inner.raw().clone();
+        let num_rects_buffer = mortonize_data.buffers.num_rects_buffer.inner.raw().clone();
+
+        let nodes_buffer = build_leaves_data.buffers.nodes_buffer.inner.raw().clone();
+        let counts_buffer = build_leaves_data.buffers.counts_buffer.inner
+            .raw()
+            .clone();
+        let params_buffer = build_leaves_data.buffers.params_buffer.inner
+            .raw()
+            .clone();
 
         let buffers = LBVHBuffers {
             rects_buffer,

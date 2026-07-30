@@ -8,7 +8,7 @@ use wgpu::{
 
 #[derive(Clone, Hash)]
 pub struct TinyBuffer {
-    pub inner: Option<Buffer>,
+    inner: Option<Buffer>,
     pub size: u64,
     pub usages: BufferUsages,
 }
@@ -64,7 +64,7 @@ impl From<Buffer> for TinyBuffer {
 
 #[derive(Clone, Hash)]
 pub struct TinyTexture<'a> {
-    pub inner: Option<Texture>,
+    inner: Option<Texture>,
     pub view: Option<TextureView>,
     pub descriptor: TextureDescriptor<'a>,
 }
@@ -99,7 +99,7 @@ impl<'a> TinyTexture<'a> {
 
 #[derive(Clone)]
 pub struct TinyBlas<'a> {
-    pub inner: Option<Blas>,
+    inner: Option<Blas>,
     pub descriptor: CreateBlasDescriptor<Option<&'a str>>,
     pub sz_descriptor: BlasGeometrySizeDescriptors,
 }
@@ -137,7 +137,7 @@ impl<'a> TinyBlas<'a> {
 
 #[derive(Clone, Hash)]
 pub struct TinyTlas<'a> {
-    pub inner: Option<Tlas>,
+    inner: Option<Tlas>,
     pub descriptor: CreateTlasDescriptor<Option<&'a str>>,
 }
 
@@ -168,7 +168,7 @@ impl<'a> TinyTlas<'a> {
 
 #[derive(Clone)]
 pub struct TinySampler<'a> {
-    pub inner: Option<Sampler>,
+    inner: Option<Sampler>,
     pub descriptor: SamplerDescriptor<Option<&'a str>>,
 }
 
