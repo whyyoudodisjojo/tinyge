@@ -7,16 +7,16 @@ use wgpu::{
 };
 
 #[derive(Clone, Hash)]
-pub struct TinyBuffer {
-    inner: Option<Buffer>,
+pub struct TinyBuffer<InnerBuf = ()> {
+    inner: InnerBuf,
     pub size: u64,
     pub usages: BufferUsages,
 }
 
 impl TinyBuffer {
-    pub fn new(sz: u64, usages: BufferUsages) -> Self {
+    pub fn new(sz: u64, usages: BufferUsages) -> Self{
         Self {
-            inner: None,
+            inner: (),
             size: sz,
             usages,
         }
@@ -30,11 +30,11 @@ impl TinyBuffer {
         self.usages
     }
 
-    pub fn bind(&mut self, buffer: Buffer) {
-        self.inner = Some(buffer)
+    pub fn bind(self, buffer: Buffer) -> TinyBuffer<Buffer>{
+        TinyBuffer { inner: buffer, size: self.size, usages: self.usages }
     }
 
-    pub fn build(&mut self, device: &Device) {
+    pub fn build(self, device: &Device) -> TinyBuffer<Buffer> {
         let buf = device.create_buffer(&BufferDescriptor {
             label: None,
             size: self.size,
@@ -42,20 +42,22 @@ impl TinyBuffer {
             mapped_at_creation: false,
         });
 
-        self.bind(buf);
-    }
-
-    pub fn raw(&self) -> &Buffer {
-        self.inner.as_ref().unwrap()
+        self.bind(buf)
     }
 }
 
-impl From<Buffer> for TinyBuffer {
+impl TinyBuffer<Buffer>{
+    pub fn raw(&self) -> &Buffer {
+        &self.inner
+    }
+}
+
+impl From<Buffer> for TinyBuffer<Buffer> {
     fn from(buffer: Buffer) -> Self {
         let size = buffer.size();
         let usages = buffer.usage();
         TinyBuffer {
-            inner: Some(buffer),
+            inner: buffer,
             size,
             usages,
         }

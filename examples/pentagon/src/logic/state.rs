@@ -8,7 +8,7 @@ use tinyge_graphics::{
 
 use memory::buffers::ResourceType;
 use wgpu::{
-    Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor,
+    Buffer, Color, Device, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor,
     TextureFormat,
 };
 use winit::dpi::PhysicalSize;
@@ -74,9 +74,6 @@ impl<'a> StateUpdates<'a> for State<'a> {
 
         if buffers_rebuilt {
             let built_data = self.shaders.pentagon.built_data.as_mut().unwrap();
-            built_data.buffers.vertex_buffer.build(device);
-            built_data.buffers.index_buffer.build(device);
-            built_data.buffers.time_buffer.build(device);
 
             queue.write_buffer(
                 built_data.buffers.vertex_buffer.raw(),
@@ -150,7 +147,7 @@ impl<'b> RenderAble for State<'b> {
             wgpu::IndexFormat::Uint16,
         );
 
-        let resources: Vec<ResourceType> =
+        let resources: Vec<ResourceType<Buffer>> =
             vec![ResourceType::Buffer(built_data.buffers.time_buffer.clone())];
 
         let bind_group = built_data.bind_groups[0].get_or_create_bind_group(&resources, device);

@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use crate::asts::jit::JitAST;
 
-pub fn fuse_cast_cast(matched: JitAST, _captured: HashMap<String, JitAST>) -> JitAST {
+pub fn fuse_cast_cast<I>(
+    matched: JitAST<I>,
+    _captured: HashMap<String, JitAST<I>>,
+) -> JitAST<I> {
     let JitAST::Cast {
         operand,
         dt: outer_dt,

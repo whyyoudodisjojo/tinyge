@@ -4,22 +4,22 @@ use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
-use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
+use wgpu::{Buffer, BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
 use crate::collisions::algos::FlattenedBVHNode;
 
 #[derive(IntoBufferStruct)]
 pub struct BuildTreeArgs {
     #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
-    pub keys_buffer: BufferWithType<Vec<u32>>,
+    pub keys_buffer: BufferWithType<Vec<u32>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
-    pub rects_buffer: BufferWithType<Vec<glam::Vec4>>,
+    pub rects_buffer: BufferWithType<Vec<glam::Vec4>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
-    pub nodes_buffer: BufferWithType<Vec<FlattenedBVHNode>>,
+    pub nodes_buffer: BufferWithType<Vec<FlattenedBVHNode>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 3, ty = "buffer")]
-    pub counts_buffer: BufferWithType<Vec<u32>>,
+    pub counts_buffer: BufferWithType<Vec<u32>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 4, ty = "buffer")]
-    pub params_buffer: BufferWithType<u32>,
+    pub params_buffer: BufferWithType<u32, Buffer>,
 }
 
 pub enum BuildTreeStage {

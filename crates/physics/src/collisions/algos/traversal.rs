@@ -4,6 +4,7 @@ use codegen::asts::lowered::{BindedBuffer, LoweredAST, Scope};
 use codegen::{call, group};
 use codegen_macros::shader;
 use memory::buffers::BufferWithType;
+use wgpu::Buffer;
 use tinyge_graphics::shaders::ComputeShader;
 
 use crate::collisions::algos::{
@@ -263,11 +264,11 @@ fn traverse(
 impl GpuBVHTraversal for BVHTree<GpuStorage> {
     fn traverse_gpu(
         &self,
-        rays_buffer: &BufferWithType<Vec<Ray>>,
+        rays_buffer: &BufferWithType<Vec<Ray>, Buffer>,
         num_rays: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> BufferWithType<RayResult> {
+    ) -> BufferWithType<RayResult, Buffer> {
         use wgpu::{BufferDescriptor, BufferUsages};
 
         let shader = Traverse {
@@ -299,8 +300,8 @@ impl GpuBVHTraversal for BVHTree<GpuStorage> {
             mapped_at_creation: false,
         });
 
-        BufferWithType::<u32>::from(num_rays_buf.clone()).write(queue, &num_rays);
-        BufferWithType::<u32>::from(root_idx_buf.clone())
+        BufferWithType::<u32, Buffer>::from(num_rays_buf.clone()).write(queue, &num_rays);
+        BufferWithType::<u32, Buffer>::from(root_idx_buf.clone())
             .write(queue, &(self.storage.root_idx as u32));
 
         let mut built_data = shader.build(device, None);
@@ -318,7 +319,7 @@ impl GpuBVHTraversal for BVHTree<GpuStorage> {
             queue,
         );
 
-        BufferWithType::<RayResult>::from(results_buffer)
+        BufferWithType::<RayResult, Buffer>::from(results_buffer)
     }
 }
 
@@ -388,7 +389,7 @@ fn test_lbvh_traverse_gpu() {
             glam::Vec3A::new(0.0, 0.0, -1.0),
         )];
 
-        let rays_buffer: BufferWithType<Vec<Ray>> = device
+        let rays_buffer: BufferWithType<Vec<Ray>, Buffer> = device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&rays),

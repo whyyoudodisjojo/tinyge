@@ -17,10 +17,10 @@ use crate::{
     texture::ResourceTexture,
 };
 
-pub struct UnifiedShaderBuildData<'a> {
-    pub vertex_buffers: Vec<TinyBuffer>,
-    pub index_buffers: Vec<TinyBuffer>,
-    pub resource_groups: Vec<ResourceGroup<'a>>,
+pub struct UnifiedShaderBuildData<'a, I = ()> {
+    pub vertex_buffers: Vec<TinyBuffer<I>>,
+    pub index_buffers: Vec<TinyBuffer<I>>,
+    pub resource_groups: Vec<ResourceGroup<'a, I>>,
 }
 
 impl<'a> UnifiedShaderBuildData<'a> {
@@ -103,11 +103,36 @@ impl<'a> UnifiedShaderBuildData<'a> {
             resource_groups: res,
         }
     }
+
+    pub fn build(self, device: &Device) -> UnifiedShaderBuildData<'a, Buffer> {
+        UnifiedShaderBuildData {
+            vertex_buffers: self
+                .vertex_buffers
+                .into_iter()
+                .map(|b| b.build(device))
+                .collect(),
+            index_buffers: self
+                .index_buffers
+                .into_iter()
+                .map(|b| b.build(device))
+                .collect(),
+            resource_groups: self
+                .resource_groups
+                .into_iter()
+                .map(|g| ResourceGroup {
+                    buffers: g.buffers.into_iter().map(|b| b.build(device)).collect(),
+                    textures: g.textures,
+                    samplers: g.samplers,
+                    acceleration_structures: g.acceleration_structures,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone)]
-pub struct ResourceGroup<'a> {
-    pub buffers: Vec<TinyBuffer>,
+pub struct ResourceGroup<'a, I = ()> {
+    pub buffers: Vec<TinyBuffer<I>>,
     pub textures: Vec<ResourceTexture<'a>>,
     pub samplers: Vec<TinySampler<'a>>,
     pub acceleration_structures: Vec<AccelerationStructures<'a>>,
@@ -132,27 +157,34 @@ impl DynamicBindGroup {
         }
     }
 
-    pub fn key(bufs: &[ResourceType]) -> u64 {
+    pub fn key<I>(bufs: &[ResourceType<I>]) -> u64 
+        where I: Hash
+    {
         let mut hasher = DefaultHasher::new();
         bufs.hash(&mut hasher);
         hasher.finish()
     }
 
-    pub fn get_bind_group(&mut self, bufs: &[ResourceType]) -> Option<&BindGroup> {
+    pub fn get_bind_group<I>(&mut self, bufs: &[ResourceType<I>]) -> Option<&BindGroup> 
+        where I: Hash
+    {
         let k = Self::key(bufs);
 
         self.bind_group_cache.get(&k)
     }
 
-    pub fn insert(&mut self, b: &[ResourceType], bind_group: BindGroup) {
+    pub fn insert<I>(&mut self, b: &[ResourceType<I>], bind_group: BindGroup) 
+        where I: Hash
+    {
         self.bind_group_cache.put(Self::key(b), bind_group);
     }
 
     pub fn get_or_create_bind_group<'a>(
         &'a mut self,
-        buffs: &[ResourceType],
+        buffs: &[ResourceType<Buffer>],
         device: &Device,
-    ) -> &'a BindGroup {
+    ) -> &'a BindGroup 
+    {
         let k = Self::key(buffs);
 
         if self.bind_group_cache.get(&k).is_none() {
@@ -190,13 +222,13 @@ pub struct ResourceGroupBuildSpec<'a> {
 }
 
 #[derive(Clone)]
-pub struct BufferWithType<T> {
-    pub inner: TinyBuffer,
+pub struct BufferWithType<T, I = ()> {
+    pub inner: TinyBuffer<I>,
     _p_d: PhantomData<T>,
 }
 
-impl<T> From<TinyBuffer> for BufferWithType<T> {
-    fn from(value: TinyBuffer) -> Self {
+impl<T, I> From<TinyBuffer<I>> for BufferWithType<T, I> {
+    fn from(value: TinyBuffer<I>) -> Self {
         BufferWithType {
             inner: value,
             _p_d: PhantomData,
@@ -204,9 +236,9 @@ impl<T> From<TinyBuffer> for BufferWithType<T> {
     }
 }
 
-impl<T> From<Buffer> for BufferWithType<T> {
+impl<T> From<Buffer> for BufferWithType<T, Buffer> {
     fn from(buffer: Buffer) -> Self {
-        BufferWithType::from(TinyBuffer::from(buffer))
+        BufferWithType::from(TinyBuffer::<wgpu::Buffer>::from(buffer))
     }
 }
 
@@ -226,12 +258,12 @@ impl<T: Pod> AsByteSlice for [T] {
     }
 }
 
-impl<T> BufferWithType<T>
+impl<T> BufferWithType<T, Buffer>
 where
     T: Pod,
 {
     pub fn write<Q: AsByteSlice>(&self, queue: &wgpu::Queue, data: &Q) {
-        queue.write_buffer(self.inner.raw(), 0, data.as_byte_slice());
+        queue.write_buffer(&self.inner.raw(), 0, data.as_byte_slice());
     }
 }
 
@@ -242,14 +274,14 @@ pub struct Buffers<'a> {
     pub resource_buffers: Vec<ResourceGroup<'a>>,
 }
 
-pub struct ResourceEntry<'a> {
+pub struct ResourceEntry<'a, I> {
     pub binding: u32,
-    pub resource: ResourceType<'a>,
+    pub resource: ResourceType<'a, I>,
 }
 
 #[derive(Clone, Hash)]
-pub enum ResourceType<'a> {
-    Buffer(TinyBuffer),
+pub enum ResourceType<'a, I> {
+    Buffer(TinyBuffer<I>),
     Sampler(TinySampler<'a>),
     Texture(ResourceTexture<'a>),
     AccelerationStructure(TinyTlas<'a>),

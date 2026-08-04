@@ -3,7 +3,7 @@ use tinyge_graphics::shaders::ComputeShaderWrapper;
 use wgpu::{Buffer, Device};
 
 use crate::collisions::algos::{
-    BVHTree, FlattenedBVHNode, GpuCollisionAlgorithm, GpuStorage,
+    BVHTree, GpuCollisionAlgorithm, GpuStorage,
     lbvh::gpu::custom::{
         phases::{
             build_tree::{BuildTree, BuildTreeArgs, BuildTreeStage},
@@ -62,20 +62,20 @@ impl LBVHBuilder {
         let mortonize_data = mortonize.built_data();
         let build_leaves_data = build_leaves.built_data();
 
-        let rects_buffer = rects_data.buffers.output_rect_buffer.inner.raw().clone();
+        let rects_buffer = (*rects_data.buffers.output_rect_buffer.inner.raw()).clone();
 
-        let keys_buffer = mortonize_data.buffers.keys_buffer.inner.raw().clone();
-        let global_bounds_buffer = mortonize_data
+        let keys_buffer = (*mortonize_data.buffers.keys_buffer.inner.raw()).clone();
+        let global_bounds_buffer = (*mortonize_data
             .buffers
             .global_bounds_buffer
             .inner
-            .raw()
+            .raw())
             .clone();
-        let num_rects_buffer = mortonize_data.buffers.num_rects_buffer.inner.raw().clone();
+        let num_rects_buffer = (*mortonize_data.buffers.num_rects_buffer.inner.raw()).clone();
 
-        let nodes_buffer = build_leaves_data.buffers.nodes_buffer.inner.raw().clone();
-        let counts_buffer = build_leaves_data.buffers.counts_buffer.inner.raw().clone();
-        let params_buffer = build_leaves_data.buffers.params_buffer.inner.raw().clone();
+        let nodes_buffer = (*build_leaves_data.buffers.nodes_buffer.inner.raw()).clone();
+        let counts_buffer = (*build_leaves_data.buffers.counts_buffer.inner.raw()).clone();
+        let params_buffer = (*build_leaves_data.buffers.params_buffer.inner.raw()).clone();
 
         let buffers = LBVHBuffers {
             rects_buffer,
@@ -103,8 +103,8 @@ impl LBVHBuilder {
 impl GpuCollisionAlgorithm for LBVHBuilder {
     fn build(
         &mut self,
-        model_verts_buffer: BufferWithType<Vec<CollisionModelVertex>>,
-        model_infos_buffer: BufferWithType<Vec<CollisionModelInfo>>,
+        model_verts_buffer: BufferWithType<Vec<CollisionModelVertex>, Buffer>,
+        model_infos_buffer: BufferWithType<Vec<CollisionModelInfo>, Buffer>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> BVHTree<GpuStorage> {
@@ -181,9 +181,7 @@ impl GpuCollisionAlgorithm for LBVHBuilder {
 
         BVHTree {
             storage: GpuStorage {
-                nodes_buffer: BufferWithType::<FlattenedBVHNode>::from(
-                    self.buffers.nodes_buffer.clone(),
-                ),
+                nodes_buffer: self.buffers.nodes_buffer.clone().into(),
                 root_idx: (2 * self.num_models - 1) as usize - 1,
                 num_nodes: (2 * self.num_models - 1) as usize,
             },

@@ -1,6 +1,6 @@
 use codegen_macros::IntoWgslStruct;
 use memory::buffers::BufferWithType;
-use wgpu::{Device, Queue};
+use wgpu::{Buffer, Device, Queue};
 
 use crate::collisions::algos::{GpuBVHTraversal, GpuCollisionAlgorithm, Ray, RayResult};
 
@@ -30,12 +30,12 @@ where
 {
     pub fn run_gpu(
         &mut self,
-        model_verts: BufferWithType<Vec<ModelVertex>>,
-        model_infos: BufferWithType<Vec<ModelInfo>>,
+        model_verts: BufferWithType<Vec<ModelVertex>, Buffer>,
+        model_infos: BufferWithType<Vec<ModelInfo>, Buffer>,
         device: &Device,
         queue: &Queue,
-        rays: BufferWithType<Vec<Ray>>,
-    ) -> BufferWithType<RayResult> {
+        rays: BufferWithType<Vec<Ray>, Buffer>,
+    ) -> BufferWithType<RayResult, Buffer> {
         let res = self.algo.build(model_verts, model_infos, device, queue);
         res.traverse_gpu(
             &rays,

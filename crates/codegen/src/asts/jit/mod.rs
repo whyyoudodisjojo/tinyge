@@ -5,9 +5,9 @@ pub mod runner;
 
 use memory::buffers::BufferWithType;
 use memory::socket::TinyBuffer;
-use wgpu::BufferUsages;
+use wgpu::{Buffer, BufferUsages};
 
-use crate::asts::lowered::{BinOp, LoweredAST, UnaryOp, scope::Scope};
+use crate::asts::lowered::{ASTOrConst, BinOp, LoweredAST, UnaryOp, scope::Scope};
 use crate::asts::{AstConst, IntoWgslStruct};
 use crate::dt::{BasicTy, DType, IntegerTy, VecTy};
 
@@ -62,10 +62,10 @@ pub enum TernaryOp {
 }
 
 #[derive(Clone)]
-pub enum JitAST {
+pub enum JitAST<I> {
     Var {
         id: usize,
-        buffer: TinyBuffer,
+        buffer: TinyBuffer<I>,
         dtype: DType,
     },
 
@@ -139,11 +139,11 @@ pub(crate) fn scalar_identity_bytes(dt: &DType, op: ReduceOp) -> Vec<u8> {
 
 static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-impl<T> From<BufferWithType<T>> for JitAST
+impl<T, I> From<BufferWithType<T, I>> for JitAST<I>
 where
     T: IntoWgslStruct,
 {
-    fn from(value: BufferWithType<T>) -> Self {
+    fn from(value: BufferWithType<T, I>) -> Self {
         JitAST::Var {
             id: COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             buffer: value.inner,
@@ -152,7 +152,19 @@ where
     }
 }
 
-impl JitAST {
+pub trait IntoJitAST {
+    fn into_jit_ast<T>(self) -> JitAST<Buffer> where T: IntoWgslStruct;
+}
+
+impl IntoJitAST for wgpu::Buffer {
+    fn into_jit_ast<T>(self) -> JitAST<Buffer> 
+        where T: IntoWgslStruct
+    {
+        JitAST::from(BufferWithType::<T, Buffer>::from(self))
+    }
+}
+
+impl JitAST<()> {
     pub fn new<T>() -> Self
     where
         T: IntoWgslStruct,
@@ -169,7 +181,67 @@ impl JitAST {
         }
     }
 
-    pub fn collect_var_buffers<'a>(&'a self, out: &mut Vec<&'a TinyBuffer>) {
+    pub fn bind(self, device: &wgpu::Device) -> JitAST<wgpu::Buffer> {
+        match self {
+            JitAST::Var {
+                id,
+                buffer,
+                dtype,
+            } => JitAST::Var {
+                id,
+                buffer: buffer.build(device),
+                dtype,
+            },
+            JitAST::Lowered { expr, dt } => JitAST::Lowered { expr, dt },
+            JitAST::Const(c) => JitAST::Const(AstConst {
+                dt: c.dt,
+                data: c
+                    .data
+                    .into_iter()
+                    .map(|d| match d {
+                        ASTOrConst::AST(a) => ASTOrConst::AST(a.bind(device)),
+                        ASTOrConst::Const(c) => ASTOrConst::Const(c),
+                    })
+                    .collect(),
+            }),
+            JitAST::BinOp { lhs, rhs, op } => JitAST::BinOp {
+                lhs: Box::new(lhs.bind(device)),
+                rhs: Box::new(rhs.bind(device)),
+                op,
+            },
+            JitAST::UnaryOp { operand, op } => JitAST::UnaryOp {
+                operand: Box::new(operand.bind(device)),
+                op,
+            },
+            JitAST::Cast { operand, dt } => JitAST::Cast {
+                operand: Box::new(operand.bind(device)),
+                dt,
+            },
+            JitAST::Ternary { a, b, c, op } => JitAST::Ternary {
+                a: Box::new(a.bind(device)),
+                b: Box::new(b.bind(device)),
+                c: Box::new(c.bind(device)),
+                op,
+            },
+            JitAST::Movement { operand, op } => JitAST::Movement {
+                operand: Box::new(operand.bind(device)),
+                op,
+            },
+            JitAST::Reduce { operand, axis, op } => JitAST::Reduce {
+                operand: Box::new(operand.bind(device)),
+                axis,
+                op,
+            },
+            JitAST::AllReduce { operand, op } => JitAST::AllReduce {
+                operand: Box::new(operand.bind(device)),
+                op,
+            },
+        }
+    }
+}
+
+impl<I> JitAST<I> {
+    pub fn collect_var_buffers<'a>(&'a self, out: &mut Vec<&'a TinyBuffer<I>>) {
         let mut seen = std::collections::HashSet::new();
         self.collect_var_buffers_inner(&mut seen, out);
     }
@@ -177,7 +249,7 @@ impl JitAST {
     fn collect_var_buffers_inner<'a>(
         &'a self,
         seen: &mut std::collections::HashSet<usize>,
-        out: &mut Vec<&'a TinyBuffer>,
+        out: &mut Vec<&'a TinyBuffer<I>>,
     ) {
         match self {
             JitAST::Var { id, buffer, .. } => {
@@ -345,7 +417,7 @@ impl JitAST {
         }
     }
 
-    pub fn inner_movement_chain(&self) -> (&JitAST, Vec<&MovOp>) {
+    pub fn inner_movement_chain(&self) -> (&JitAST<I>, Vec<&MovOp>) {
         let mut ops = vec![];
         let mut current = self;
         while let JitAST::Movement { operand, op } = current {
@@ -359,12 +431,13 @@ impl JitAST {
         ast: Self,
         scope: &mut Scope,
         var_producer: &mut F,
-        user_rules: &[RewriteRule],
+        user_rules: &[RewriteRule<I>],
     ) -> LoweredAST
     where
         F: FnMut(usize) -> LoweredAST,
+        I: Clone,
     {
-        let builtins = rules::builtin_rules();
+        let builtins = rules::builtin_rules::<I>();
         let all_rules: Vec<_> = builtins.iter().chain(user_rules.iter()).collect();
         Self::graph_rewrite(ast, scope, &all_rules, var_producer)
     }

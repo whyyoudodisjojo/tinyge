@@ -2,7 +2,7 @@ use memory::buffers::{AccelerationStructures, BufferWithType, ResourceType};
 use tinyge_graphics::shaders::descriptors::{
     ResourceBinding, ResourceBindingType, ResourceGroupLayout,
 };
-use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages};
+use wgpu::{Buffer, BufferUsages, ComputePassDescriptor, ShaderStages};
 
 pub struct AccelerationShader {
     pub num_rays: u32,
@@ -29,15 +29,15 @@ pub struct AccelerationArgs<'a> {
     #[resource(bindgroup_index = 0, resource_index = 0, ty = "acceleration_structure")]
     pub acc: AccelerationStructures<'a>,
     #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
-    pub rays_buffer: BufferWithType<Vec<crate::collisions::algos::GpuRay>>,
+    pub rays_buffer: BufferWithType<Vec<crate::collisions::algos::GpuRay>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
-    pub candidates_buffer: BufferWithType<Vec<RawCandidate>>,
+    pub candidates_buffer: BufferWithType<Vec<RawCandidate>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
-    pub counter_buffer: BufferWithType<u32>,
+    pub counter_buffer: BufferWithType<u32, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 3, ty = "buffer")]
-    pub num_rays_buffer: BufferWithType<u32>,
+    pub num_rays_buffer: BufferWithType<u32, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 4, ty = "buffer")]
-    pub max_candidates_buffer: BufferWithType<u32>,
+    pub max_candidates_buffer: BufferWithType<u32, Buffer>,
 }
 
 impl<'a> tinyge_graphics::shaders::ComputeShader<'a> for AccelerationShader {

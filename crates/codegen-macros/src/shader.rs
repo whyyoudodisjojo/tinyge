@@ -234,7 +234,7 @@ pub fn shader_inner(attr: TokenStream, item: TokenStream) -> TokenStream {
             let ri = syn::Index::from(i);
             quote! {
                 #[resource(bindgroup_index = 0, resource_index = #ri, ty = "buffer")]
-                pub #n : memory::buffers::BufferWithType<#ty>
+                pub #n : memory::buffers::BufferWithType<#ty, wgpu::Buffer>
             }
         });
 

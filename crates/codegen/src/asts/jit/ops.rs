@@ -5,7 +5,7 @@ use crate::asts::jit::{JitAST, JitBinOp, JitUnaryOp, MovOp, ReduceOp, TernaryOp}
 
 macro_rules! impl_binop_trait {
     ($trait:ident, $method:ident, $op:expr) => {
-        impl $trait for JitAST {
+        impl<I> $trait for JitAST<I> {
             type Output = Self;
             fn $method(self, rhs: Self) -> Self {
                 JitAST::BinOp {
@@ -41,7 +41,7 @@ impl_binop_trait!(
 impl_binop_trait!(Shl, shl, JitBinOp::Basic(crate::asts::lowered::BinOp::Shl));
 impl_binop_trait!(Shr, shr, JitBinOp::Basic(crate::asts::lowered::BinOp::Shr));
 
-impl Not for JitAST {
+impl<I> Not for JitAST<I> {
     type Output = Self;
     fn not(self) -> Self {
         JitAST::UnaryOp {
@@ -51,7 +51,7 @@ impl Not for JitAST {
     }
 }
 
-impl Neg for JitAST {
+impl<I> Neg for JitAST<I> {
     type Output = Self;
     fn neg(self) -> Self {
         JitAST::UnaryOp {
@@ -61,7 +61,7 @@ impl Neg for JitAST {
     }
 }
 
-impl JitAST {
+impl<I> JitAST<I> {
     pub fn eq(self, rhs: Self) -> Self {
         JitAST::BinOp {
             lhs: Box::new(self),
@@ -342,13 +342,13 @@ impl JitAST {
         }
     }
 
-    pub fn cast<I>(self) -> JitAST
+    pub fn cast<T>(self) -> JitAST<I>
     where
-        I: IntoWgslStruct,
+        T: IntoWgslStruct,
     {
         JitAST::Cast {
             operand: Box::new(self),
-            dt: I::dt(),
+            dt: T::dt(),
         }
     }
 }

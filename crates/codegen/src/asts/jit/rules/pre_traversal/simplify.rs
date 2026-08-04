@@ -15,7 +15,7 @@ enum Extracted {
 }
 
 impl Extracted {
-    fn from_jit(node: &JitAST) -> Option<Self> {
+    fn from_jit<I>(node: &JitAST<I>) -> Option<Self> {
         match node {
             JitAST::Const(c) => {
                 let bytes = match c.data.first()? {
@@ -61,7 +61,7 @@ impl Extracted {
     }
 }
 
-fn const_zero(dt: &DType) -> JitAST {
+fn const_zero<I>(dt: &DType) -> JitAST<I> {
     match dt {
         DType::Basic(BasicTy::F32) => JitAST::from(0.0f32),
         DType::Basic(BasicTy::Integer(IntegerTy::I32)) => JitAST::from(0i32),
@@ -71,7 +71,10 @@ fn const_zero(dt: &DType) -> JitAST {
     }
 }
 
-pub fn simplify_binop_pre(matched: JitAST, captured: HashMap<String, JitAST>) -> JitAST {
+pub fn simplify_binop_pre<I: Clone>(
+    matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
+) -> JitAST<I> {
     let lhs = captured.get("lhs").unwrap();
     let rhs = captured.get("rhs").unwrap();
 

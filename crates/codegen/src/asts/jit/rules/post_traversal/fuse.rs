@@ -16,14 +16,14 @@ use crate::asts::jit::pattern::RewriteRule;
 
 use super::{basic, movement};
 
-pub fn fuse_reduce(
-    matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn fuse_reduce<I>(
+    matched: JitAST<I>,
+    mut captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
-    let x = captured.get("x").unwrap().clone();
+    let x = captured.remove("x").unwrap();
 
     let outer_op = match &matched {
         JitAST::AllReduce { op, .. } => *op,
@@ -70,7 +70,7 @@ pub fn fuse_reduce(
         _ => panic!("expected Global var load from var_producer"),
     };
 
-    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&x as &JitAST), |node| {
+    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&x as &JitAST<I>), |node| {
         if let JitAST::Movement { operand, .. } = node {
             Some(operand.as_ref())
         } else {

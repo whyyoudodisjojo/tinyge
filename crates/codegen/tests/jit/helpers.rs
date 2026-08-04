@@ -1,6 +1,7 @@
+pub use codegen::asts::jit::IntoJitAST;
 use codegen::asts::jit::JitAST;
 use pollster::block_on;
-use wgpu::{BufferDescriptor, BufferUsages};
+use wgpu::{Buffer, BufferDescriptor, BufferUsages};
 
 pub fn setup_wgpu() -> (wgpu::Device, wgpu::Queue) {
     block_on(async {
@@ -27,7 +28,7 @@ pub fn make_input_buffer(device: &wgpu::Device, queue: &wgpu::Queue, data: &[f32
     b
 }
 
-pub fn run_ast(ast: JitAST, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Vec<f32> {
+pub fn run_ast(ast: JitAST<Buffer>, device: &wgpu::Device, queue: &wgpu::Queue, n: u32) -> Vec<f32> {
     let JitAST::Var { buffer, .. } = ast.realize(device, queue, n) else {
         panic!("expected Var");
     };

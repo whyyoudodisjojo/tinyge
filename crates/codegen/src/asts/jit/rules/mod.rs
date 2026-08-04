@@ -8,7 +8,7 @@ use pre_traversal::{fuse as pre_fuse, simplify};
 
 use super::pattern::{PatJitAST, RewriteRule};
 
-pub fn builtin_rules() -> Vec<RewriteRule> {
+pub fn builtin_rules<I: Clone>() -> Vec<RewriteRule<I>> {
     vec![
         RewriteRule::post(
             BinOp {

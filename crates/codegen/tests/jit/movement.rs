@@ -1,6 +1,4 @@
 use super::helpers::*;
-use codegen::asts::jit::JitAST;
-use memory::buffers::BufferWithType;
 
 #[test]
 fn reshape_2x4_to_4x2() {
@@ -8,7 +6,7 @@ fn reshape_2x4_to_4x2() {
     let a_data: Vec<f32> = (0..8).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::from(BufferWithType::<[f32; 8]>::from(a_buf))
+    let ast = a_buf.into_jit_ast::<[f32; 8]>()
         .reshape(vec![4, 2])
         .reshape(vec![8]);
     let result = run_ast(ast, &device, &queue, 8);
@@ -24,7 +22,7 @@ fn permute_transpose() {
     let a_data: Vec<f32> = (0..6).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::from(BufferWithType::<[f32; 6]>::from(a_buf))
+    let ast = a_buf.into_jit_ast::<[f32; 6]>()
         .reshape(vec![2, 3])
         .permute(vec![1, 0])
         .reshape(vec![6]);
@@ -42,7 +40,7 @@ fn pad_2d() {
     let a_data: Vec<f32> = (0..4).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::from(BufferWithType::<[f32; 4]>::from(a_buf))
+    let ast = a_buf.into_jit_ast::<[f32; 4]>()
         .reshape(vec![2, 2])
         .pad(vec![(1, 1), (1, 1)])
         .reshape(vec![16]);
@@ -64,7 +62,7 @@ fn flip_axis_1() {
     let a_data: Vec<f32> = (0..6).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::from(BufferWithType::<[f32; 6]>::from(a_buf))
+    let ast = a_buf.into_jit_ast::<[f32; 6]>()
         .reshape(vec![2, 3])
         .flip(1)
         .reshape(vec![6]);
@@ -82,7 +80,7 @@ fn shrink_2d() {
     let a_data: Vec<f32> = (0..16).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::from(BufferWithType::<[f32; 16]>::from(a_buf))
+    let ast = a_buf.into_jit_ast::<[f32; 16]>()
         .reshape(vec![4, 4])
         .shrink(vec![(1, 1), (1, 1)])
         .reshape(vec![4]);
@@ -100,7 +98,7 @@ fn expand_broadcast() {
     let a_data: Vec<f32> = (0..4).map(|i| i as f32).collect();
     let a_buf = make_input_buffer(&device, &queue, &a_data);
 
-    let ast = JitAST::from(BufferWithType::<[f32; 4]>::from(a_buf))
+    let ast = a_buf.into_jit_ast::<[f32; 4]>()
         .reshape(vec![4])
         .expand(vec![2, 4])
         .reshape(vec![8]);

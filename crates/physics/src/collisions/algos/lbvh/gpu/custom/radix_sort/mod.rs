@@ -1,7 +1,7 @@
 use codegen_macros::{IntoBufferStruct, IntoWgslStruct};
 use memory::buffers::BufferWithType;
 use tinyge_graphics::shaders::ComputeShaderWrapper;
-use wgpu::Device;
+use wgpu::{Buffer, Device};
 
 use crate::collisions::algos::lbvh::{
     Key,
@@ -20,22 +20,22 @@ pub struct Params {
 #[derive(Clone, IntoBufferStruct)]
 pub struct RadixSortPhaseArgs {
     #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
-    pub param_buffer: BufferWithType<Params>,
+    pub param_buffer: BufferWithType<Params, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
-    pub input_arr_buffer: BufferWithType<Vec<Key>>,
+    pub input_arr_buffer: BufferWithType<Vec<Key>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
-    pub count_arr_buffer: BufferWithType<[u32; 16]>,
+    pub count_arr_buffer: BufferWithType<[u32; 16], Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 3, ty = "buffer")]
-    pub output_arr_buffer: BufferWithType<Vec<Key>>,
+    pub output_arr_buffer: BufferWithType<Vec<Key>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 4, ty = "buffer")]
-    pub global_offsets_buffer: BufferWithType<[u32; 16]>,
+    pub global_offsets_buffer: BufferWithType<[u32; 16], Buffer>,
 }
 #[derive(Clone)]
 pub struct RadixSortInternalBuffers {
-    pub param_buffer: BufferWithType<Params>,
-    pub count_arr_buffer: BufferWithType<[u32; 16]>,
-    pub output_arr_buffer: BufferWithType<Vec<Key>>,
-    pub global_offsets_buffer: BufferWithType<[u32; 16]>,
+    pub param_buffer: BufferWithType<Params, Buffer>,
+    pub count_arr_buffer: BufferWithType<[u32; 16], Buffer>,
+    pub output_arr_buffer: BufferWithType<Vec<Key>, Buffer>,
+    pub global_offsets_buffer: BufferWithType<[u32; 16], Buffer>,
 }
 
 pub struct RadixSort {
@@ -80,11 +80,11 @@ impl RadixSort {
 
     pub fn sort(
         &mut self,
-        input_buffer: BufferWithType<Vec<Key>>,
+        input_buffer: BufferWithType<Vec<Key>, Buffer>,
         device: &Device,
         queue: &wgpu::Queue,
     ) {
-        let ping_buffer = input_buffer.inner.raw().clone();
+        let ping_buffer = (*input_buffer.inner.raw()).clone();
         let pong_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: self.num_elems as u64 * std::mem::size_of::<Key>() as u64,
@@ -110,9 +110,9 @@ impl RadixSort {
 
             let args = RadixSortPhaseArgs {
                 param_buffer: self.buffers.param_buffer.clone(),
-                input_arr_buffer: BufferWithType::<Vec<Key>>::from(current_input.clone()),
+                input_arr_buffer: current_input.clone().into(),
                 count_arr_buffer: self.buffers.count_arr_buffer.clone(),
-                output_arr_buffer: BufferWithType::<Vec<Key>>::from(current_output.clone()),
+                output_arr_buffer: current_output.clone().into(),
                 global_offsets_buffer: self.buffers.global_offsets_buffer.clone(),
             };
 

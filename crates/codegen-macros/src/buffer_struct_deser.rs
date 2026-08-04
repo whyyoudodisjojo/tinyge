@@ -127,10 +127,17 @@ pub fn buffer_struct_deser(item: TokenStream) -> TokenStream {
     let generics = &parsed.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
+    let lifetimes: Vec<_> = parsed.generics.lifetimes().map(|l| &l.lifetime).collect();
+    let uni_ty = if lifetimes.is_empty() {
+        quote! { memory::buffers::UnifiedShaderBuildData<'_, wgpu::Buffer> }
+    } else {
+        quote! { memory::buffers::UnifiedShaderBuildData<#(#lifetimes,)* wgpu::Buffer> }
+    };
+
     let output = if parsed.generics.params.is_empty() {
         quote! {
-            impl From<memory::buffers::UnifiedShaderBuildData<'_>> for #name {
-                fn from(value: memory::buffers::UnifiedShaderBuildData<'_>) -> #name {
+            impl From<#uni_ty> for #name {
+                fn from(value: #uni_ty) -> #name {
                     #name {
                         #(#field_inits,)*
                     }
@@ -139,8 +146,8 @@ pub fn buffer_struct_deser(item: TokenStream) -> TokenStream {
         }
     } else {
         quote! {
-            impl #impl_generics From<memory::buffers::UnifiedShaderBuildData #ty_generics> for #name #ty_generics #where_clause {
-                fn from(value: memory::buffers::UnifiedShaderBuildData #ty_generics) -> #name #ty_generics {
+            impl #impl_generics From<#uni_ty> for #name #ty_generics #where_clause {
+                fn from(value: #uni_ty) -> #name #ty_generics {
                     #name {
                         #(#field_inits,)*
                     }

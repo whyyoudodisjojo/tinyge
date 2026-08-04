@@ -29,13 +29,13 @@ macro_rules! impl_const_primitives {
             }
         }
 
-        impl From<$ty> for ASTOrConst<JitAST> {
+        impl<I> From<$ty> for ASTOrConst<JitAST<I>> {
             fn from($val: $ty) -> Self {
                 $dt
             }
         }
 
-        impl From<$ty> for JitAST {
+        impl<I> From<$ty> for JitAST<I> {
             fn from(val: $ty) -> Self {
                 JitAST::Const(AstConst {
                     dt: <$ty as IntoWgslStruct>::dt(),
@@ -74,13 +74,13 @@ macro_rules! impl_const_array {
             }
         }
 
-        impl From<[f32; $n]> for ASTOrConst<JitAST> {
+        impl<I> From<[f32; $n]> for ASTOrConst<JitAST<I>> {
             fn from(val: [f32; $n]) -> Self {
                 ASTOrConst::Const(val.iter().flat_map(|f| f.to_le_bytes()).collect())
             }
         }
 
-        impl From<[f32; $n]> for JitAST {
+        impl<I> From<[f32; $n]> for JitAST<I> {
             fn from(val: [f32; $n]) -> Self {
                 JitAST::Const(AstConst {
                     dt: <[f32; $n] as IntoWgslStruct>::dt(),

@@ -4,16 +4,16 @@ use tinyge_graphics::shaders::{
     ComputeShader, ComputeShaderBuiltData,
     descriptors::{ResourceBinding, ResourceBindingType, ResourceGroupLayout},
 };
-use wgpu::{BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
+use wgpu::{Buffer, BufferUsages, ComputePassDescriptor, ShaderStages, wgt::CommandEncoderDescriptor};
 
 #[derive(IntoBufferStruct)]
 pub struct ComputeRectsArgs {
     #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
-    pub model_verts_buffer: BufferWithType<Vec<[f32; 4]>>,
+    pub model_verts_buffer: BufferWithType<Vec<[f32; 4]>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 1, ty = "buffer")]
-    pub model_infos_buffer: BufferWithType<Vec<[u32; 2]>>,
+    pub model_infos_buffer: BufferWithType<Vec<[u32; 2]>, Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 2, ty = "buffer")]
-    pub output_rect_buffer: BufferWithType<Vec<glam::Vec4>>,
+    pub output_rect_buffer: BufferWithType<Vec<glam::Vec4>, Buffer>,
 }
 
 pub struct ComputeRects {

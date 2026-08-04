@@ -81,12 +81,12 @@ fn lower_where_array(
     LoweredAST::Group(vec![for_loop, LoweredAST::Load(local(result_id))])
 }
 
-pub fn lower_reduce(
-    operand: Box<JitAST>,
+pub fn lower_reduce<I>(
+    operand: Box<JitAST<I>>,
     op: ReduceOp,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    _rules: &[&RewriteRule],
+    _rules: &[&RewriteRule<I>],
     axis: Option<usize>,
 ) -> LoweredAST {
     let input_shape = operand.shape();
@@ -109,8 +109,8 @@ pub fn lower_reduce(
 
     let (base, chain) = operand.inner_movement_chain();
     let base_var_id = match base {
-        JitAST::Var { id, .. } => *id,
-        _ => 0,
+        JitAST::Var { id, .. } => id.clone(),
+        _ => 0usize,
     };
 
     let var_load = var_producer(base_var_id);
@@ -149,7 +149,7 @@ pub fn lower_reduce(
         coords
     };
 
-    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&*operand as &JitAST), |node| {
+    let shapes: Vec<Vec<usize>> = std::iter::successors(Some(&*operand as &JitAST<I>), |node| {
         if let JitAST::Movement { operand, .. } = node {
             Some(operand.as_ref())
         } else {
@@ -230,12 +230,12 @@ pub fn lower_reduce(
 
 // --- Rule transforms ---
 
-pub fn cdiv(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn cdiv<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
@@ -246,12 +246,12 @@ pub fn cdiv(
     }
 }
 
-pub fn binop_max(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn binop_max<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
@@ -262,12 +262,12 @@ pub fn binop_max(
     }
 }
 
-pub fn cmod(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn cmod<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
@@ -278,12 +278,12 @@ pub fn cmod(
     }
 }
 
-pub fn fdiv(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn fdiv<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
@@ -294,12 +294,12 @@ pub fn fdiv(
     }
 }
 
-pub fn pow(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn pow<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
@@ -310,12 +310,12 @@ pub fn pow(
     }
 }
 
-pub fn floordiv(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn floordiv<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
@@ -326,12 +326,12 @@ pub fn floordiv(
     }
 }
 
-pub fn floormod(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn floormod<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
@@ -342,12 +342,12 @@ pub fn floormod(
     }
 }
 
-pub fn threefry(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn threefry<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let l = JitAST::graph_rewrite_post(c.remove("lhs").unwrap(), scope, rules, var_producer);
@@ -367,12 +367,12 @@ pub fn threefry(
     }
 }
 
-pub fn exp2(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn exp2<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
@@ -382,12 +382,12 @@ pub fn exp2(
     }
 }
 
-pub fn log2(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn log2<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
@@ -397,12 +397,12 @@ pub fn log2(
     }
 }
 
-pub fn sin(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn sin<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
@@ -412,12 +412,12 @@ pub fn sin(
     }
 }
 
-pub fn sqrt(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn sqrt<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
@@ -427,12 +427,12 @@ pub fn sqrt(
     }
 }
 
-pub fn reciprocal(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn reciprocal<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
@@ -443,12 +443,12 @@ pub fn reciprocal(
     }
 }
 
-pub fn trunc(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn trunc<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
@@ -458,12 +458,12 @@ pub fn trunc(
     }
 }
 
-pub fn bitcast(
-    _matched: JitAST,
-    captured: HashMap<String, JitAST>,
+pub fn bitcast<I: Clone>(
+    _matched: JitAST<I>,
+    captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let mut c = captured;
     let o = JitAST::graph_rewrite_post(c.remove("x").unwrap(), scope, rules, var_producer);
@@ -473,12 +473,12 @@ pub fn bitcast(
     }
 }
 
-pub fn cast(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn cast<I: Clone>(
+    matched: JitAST<I>,
+    _captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let JitAST::Cast { operand, dt } = matched else {
         unreachable!()
@@ -518,12 +518,12 @@ pub fn cast(
     LoweredAST::Const(AstConst { dt, data })
 }
 
-pub fn ternary_where(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn ternary_where<I: Clone>(
+    matched: JitAST<I>,
+    _captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let JitAST::Ternary { a, b, c, op: _ } = matched else {
         unreachable!()
@@ -550,12 +550,12 @@ pub fn ternary_where(
     }
 }
 
-pub fn ternary_mulacc(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn ternary_mulacc<I: Clone>(
+    matched: JitAST<I>,
+    _captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let JitAST::Ternary { a, b, c, op: _ } = matched else {
         unreachable!()
@@ -574,12 +574,12 @@ pub fn ternary_mulacc(
     }
 }
 
-pub fn unaryop_basic(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn unaryop_basic<I: Clone>(
+    matched: JitAST<I>,
+    _captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let (operand, op) = match matched {
         JitAST::UnaryOp { operand, op } => (operand, op),
@@ -595,12 +595,12 @@ pub fn unaryop_basic(
     }
 }
 
-pub fn binop_basic(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn binop_basic<I: Clone>(
+    matched: JitAST<I>,
+    _captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
     let (lhs, rhs, op) = match matched {
         JitAST::BinOp { lhs, rhs, op } => (lhs, rhs, op),
@@ -619,33 +619,28 @@ pub fn binop_basic(
     }
 }
 
-pub fn reduce(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn reduce<I>(
+    matched: JitAST<I>,
+    _captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
-    let JitAST::Reduce {
-        ref operand,
-        axis,
-        op,
-    } = matched
-    else {
+    let JitAST::Reduce { operand, axis, op } = matched else {
         unreachable!()
     };
-    lower_reduce(operand.clone(), op, scope, var_producer, rules, Some(axis))
+    lower_reduce(operand, op, scope, var_producer, rules, Some(axis))
 }
 
-pub fn all_reduce(
-    matched: JitAST,
-    _captured: HashMap<String, JitAST>,
+pub fn all_reduce<I>(
+    matched: JitAST<I>,
+    _captured: HashMap<String, JitAST<I>>,
     scope: &mut Scope,
     var_producer: &mut dyn FnMut(usize) -> LoweredAST,
-    rules: &[&RewriteRule],
+    rules: &[&RewriteRule<I>],
 ) -> LoweredAST {
-    let JitAST::AllReduce { ref operand, op } = matched else {
+    let JitAST::AllReduce { operand, op } = matched else {
         unreachable!()
     };
-    lower_reduce(operand.clone(), op, scope, var_producer, rules, None)
+    lower_reduce(operand, op, scope, var_producer, rules, None)
 }

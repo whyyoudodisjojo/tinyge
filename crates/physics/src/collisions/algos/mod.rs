@@ -4,6 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use codegen_macros::IntoWgslStruct;
 use glam::{Vec3A, Vec4};
 use memory::buffers::BufferWithType;
+use wgpu::Buffer;
 
 pub mod gpu_accelerated;
 pub mod lbvh;
@@ -174,7 +175,7 @@ pub struct CpuStorage {
 }
 
 pub struct GpuStorage {
-    pub nodes_buffer: BufferWithType<FlattenedBVHNode>,
+    pub nodes_buffer: BufferWithType<FlattenedBVHNode, Buffer>,
     pub root_idx: usize,
     pub num_nodes: usize,
 }
@@ -192,11 +193,11 @@ pub trait CpuBVHTraversal {
 pub trait GpuBVHTraversal {
     fn traverse_gpu(
         &self,
-        rays_buffer: &BufferWithType<Vec<Ray>>,
+        rays_buffer: &BufferWithType<Vec<Ray>, Buffer>,
         num_rays: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> BufferWithType<RayResult>;
+    ) -> BufferWithType<RayResult, Buffer>;
 }
 pub trait CpuCollisionAlgorithm {
     fn build(&mut self, vertices: Vec<Vec<Vec3A>>) -> BVHTree<CpuStorage>;
@@ -205,8 +206,8 @@ pub trait CpuCollisionAlgorithm {
 pub trait GpuCollisionAlgorithm {
     fn build(
         &mut self,
-        model_verts_buffer: BufferWithType<Vec<super::ModelVertex>>,
-        model_infos_buffer: BufferWithType<Vec<super::ModelInfo>>,
+        model_verts_buffer: BufferWithType<Vec<super::ModelVertex>, Buffer>,
+        model_infos_buffer: BufferWithType<Vec<super::ModelInfo>, Buffer>,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> BVHTree<GpuStorage>;

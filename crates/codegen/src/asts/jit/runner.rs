@@ -3,7 +3,7 @@ use memory::{
     socket::TinyBuffer,
 };
 use wgpu::{
-    BindGroupLayoutDescriptor, BufferBindingType, BufferUsages, CommandEncoderDescriptor,
+    BindGroupLayoutDescriptor, Buffer, BufferBindingType, BufferUsages, CommandEncoderDescriptor,
     ComputePassDescriptor, ComputePipelineDescriptor, Device, PipelineLayoutDescriptor, Queue,
     ShaderModuleDescriptor, ShaderSource, ShaderStages,
 };
@@ -24,7 +24,7 @@ use crate::asts::lowered::{
 use crate::dt::DType;
 
 pub struct JitRunner<'ast> {
-    ast: &'ast JitAST,
+    ast: &'ast JitAST<Buffer>,
     element_count: u32,
     num_vars: usize,
     input_dt: DType,
@@ -33,7 +33,7 @@ pub struct JitRunner<'ast> {
 }
 
 impl<'ast> JitRunner<'ast> {
-    pub fn new(ast: &'ast JitAST, element_count: u32) -> Self {
+    pub fn new(ast: &'ast JitAST<Buffer>, element_count: u32) -> Self {
         let (num_vars, input_dt) = ast.collect_var_info();
         let input_dt = input_dt.expect("JitAST must have at least one Var");
         let output_dt = ast.dt();
@@ -49,7 +49,7 @@ impl<'ast> JitRunner<'ast> {
     }
 
     fn build_shader_ir(
-        ast: &JitAST,
+        ast: &JitAST<Buffer>,
         num_vars: usize,
         input_dt: &DType,
         output_dt: &DType,
@@ -147,22 +147,22 @@ impl<'ast> JitRunner<'ast> {
 }
 
 #[derive(Clone)]
-pub struct JitArgs(pub Vec<TinyBuffer>);
+pub struct JitArgs(pub Vec<TinyBuffer<Buffer>>);
 
-impl<'a> From<memory::buffers::UnifiedShaderBuildData<'a>> for JitArgs {
-    fn from(data: memory::buffers::UnifiedShaderBuildData<'a>) -> Self {
-        let mut bufs = data.vertex_buffers;
-        bufs.extend(data.index_buffers);
-        for group in data.resource_groups {
-            bufs.extend(group.buffers);
-        }
-        JitArgs(bufs)
+impl<'a> From<memory::buffers::UnifiedShaderBuildData<'a, Buffer>> for JitArgs {
+    fn from(value: memory::buffers::UnifiedShaderBuildData<'a, Buffer>) -> Self {
+        let buffers = value
+            .resource_groups
+            .into_iter()
+            .flat_map(|g| g.buffers)
+            .collect();
+        JitArgs(buffers)
     }
 }
 
 impl<'a> ComputeShader<'a> for JitRunner<'_> {
     type Args = JitArgs;
-    type Ret = TinyBuffer;
+    type Ret = TinyBuffer<Buffer>;
 
     fn entry_point(&self) -> &'static str {
         "jit_main"
@@ -255,15 +255,14 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
             None => {
                 let mut var_bufs = vec![];
                 self.ast.collect_var_buffers(&mut var_bufs);
-                let mut buffers: Vec<TinyBuffer> = var_bufs.into_iter().cloned().collect();
+                let mut buffers: Vec<TinyBuffer<Buffer>> = var_bufs.into_iter().cloned().collect();
 
                 let ResourceBindingType::Buffer { usages, .. } =
                     &resource_buffer_descs[0].entries[self.num_vars].ty
                 else {
                     unreachable!()
                 };
-                let mut output = TinyBuffer::new(self.output_size, *usages);
-                output.build(device);
+                let output = TinyBuffer::new(self.output_size, *usages).build(device);
                 buffers.push(output);
 
                 JitArgs(buffers)
@@ -285,7 +284,7 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
         queue: &Queue,
     ) -> Self::Ret {
         let output_buf = args.0.pop().unwrap();
-        let mut resources: Vec<ResourceType> =
+        let mut resources: Vec<ResourceType<Buffer>> =
             args.0.into_iter().map(ResourceType::Buffer).collect();
         resources.push(ResourceType::Buffer(output_buf.clone()));
 
@@ -311,13 +310,16 @@ impl<'a> ComputeShader<'a> for JitRunner<'_> {
     }
 }
 
-fn compute_var_strides(ast: &JitAST) -> std::collections::HashMap<usize, u32> {
+fn compute_var_strides(ast: &JitAST<Buffer>) -> std::collections::HashMap<usize, u32> {
     let mut strides = std::collections::HashMap::new();
     compute_var_strides_inner(ast, &mut strides);
     strides
 }
 
-fn compute_var_strides_inner(ast: &JitAST, strides: &mut std::collections::HashMap<usize, u32>) {
+fn compute_var_strides_inner(
+    ast: &JitAST<Buffer>,
+    strides: &mut std::collections::HashMap<usize, u32>,
+) {
     match ast {
         JitAST::Var { id, dtype, buffer } => {
             if strides.contains_key(id) {
@@ -360,8 +362,13 @@ fn compute_var_strides_inner(ast: &JitAST, strides: &mut std::collections::HashM
     }
 }
 
-impl JitAST {
-    pub fn realize(&self, device: &Device, queue: &Queue, element_count: u32) -> JitAST {
+impl JitAST<Buffer> {
+    pub fn realize(
+        &self,
+        device: &Device,
+        queue: &Queue,
+        element_count: u32,
+    ) -> JitAST<Buffer> {
         let mut runner = JitRunner::new(self, element_count);
         let mut built_data = runner.build(device, None);
 

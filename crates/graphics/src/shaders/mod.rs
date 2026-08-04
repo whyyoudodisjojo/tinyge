@@ -21,7 +21,8 @@ pub struct ComputeShaderBuiltData<T> {
 }
 
 pub trait Shader<'a> {
-    type Args: From<UnifiedShaderBuildData<'a>>;
+    type Args: From<UnifiedShaderBuildData<'a, Buffer>>;
+
     fn mesh_buffers_layouts(&self) -> MeshBufferSpecs<'a> {
         MeshBufferSpecs::default()
     }
@@ -66,7 +67,7 @@ pub trait Shader<'a> {
             label: None,
             bind_group_layouts: &bind_group_layouts
                 .iter()
-                .map(|b| Some(b))
+                .map(Some)
                 .collect::<Vec<_>>(),
             immediate_size: 0,
         });
@@ -92,7 +93,7 @@ pub trait Shader<'a> {
                 compilation_options: desc.fragment_compilation_options,
                 targets: &desc
                     .fragment_targets
-                    .into_iter()
+                    .iter()
                     .map(|t| {
                         t.as_ref().map(|t| ColorTargetState {
                             format: *texture_format,
@@ -113,9 +114,9 @@ pub trait Shader<'a> {
 
         let buffers = match prev_build_data {
             Some(prev) => prev.buffers,
-            None => {
-                UnifiedShaderBuildData::new(&resource_buffer_descs, Some(&mesh_buffer_specs)).into()
-            }
+            None => UnifiedShaderBuildData::new(&resource_buffer_descs, Some(&mesh_buffer_specs))
+                .build(device)
+                .into(),
         };
 
         ShaderBuiltData {
@@ -200,7 +201,7 @@ where
 }
 
 pub trait ComputeShader<'a> {
-    type Args: From<UnifiedShaderBuildData<'a>>;
+    type Args: From<UnifiedShaderBuildData<'a, Buffer>>;
     type Ret;
 
     fn resource_buffers_with_bind_group_layouts(&self) -> Vec<ResourceGroupLayout<'a>> {
@@ -232,7 +233,7 @@ pub trait ComputeShader<'a> {
             label: None,
             bind_group_layouts: &bind_group_layouts
                 .iter()
-                .map(|b| Some(b))
+                .map(Some)
                 .collect::<Vec<_>>(),
             immediate_size: 0,
         });
@@ -258,21 +259,9 @@ pub trait ComputeShader<'a> {
 
         let buffers = match prev_build_data {
             Some(prev) => prev.buffers,
-            None => {
-                let mut data = UnifiedShaderBuildData::new(&resource_buffer_descs, None);
-                for buf in &mut data.vertex_buffers {
-                    buf.build(device);
-                }
-                for buf in &mut data.index_buffers {
-                    buf.build(device);
-                }
-                for group in &mut data.resource_groups {
-                    for buf in &mut group.buffers {
-                        buf.build(device);
-                    }
-                }
-                data.into()
-            }
+            None => UnifiedShaderBuildData::new(&resource_buffer_descs, None)
+                .build(device)
+                .into(),
         };
 
         ComputeShaderBuiltData {

@@ -50,7 +50,7 @@ pub enum PatJitAST {
 }
 
 impl PatJitAST {
-    pub fn matches(&self, ast: &JitAST, ctx: &mut HashMap<String, JitAST>) -> bool {
+    pub fn matches<I: Clone>(&self, ast: &JitAST<I>, ctx: &mut HashMap<String, JitAST<I>>) -> bool {
         match (self, ast) {
             (PatJitAST::Var(n), _) => {
                 ctx.insert(n.clone(), ast.clone());
@@ -209,44 +209,44 @@ impl PatJitAST {
     }
 }
 
-pub enum RewriteRule {
+pub enum RewriteRule<I> {
     Pre {
         pat: PatJitAST,
-        transform: fn(JitAST, HashMap<String, JitAST>) -> JitAST,
+        transform: fn(JitAST<I>, HashMap<String, JitAST<I>>) -> JitAST<I>,
     },
     Post {
         pat: PatJitAST,
         transform: fn(
-            JitAST,
-            HashMap<String, JitAST>,
+            JitAST<I>,
+            HashMap<String, JitAST<I>>,
             &mut Scope,
             &mut dyn FnMut(usize) -> LoweredAST,
-            &[&RewriteRule],
+            &[&RewriteRule<I>],
         ) -> LoweredAST,
     },
 }
 
-impl RewriteRule {
-    pub fn pre(pat: PatJitAST, transform: fn(JitAST, HashMap<String, JitAST>) -> JitAST) -> Self {
+impl<I> RewriteRule<I> {
+    pub fn pre(pat: PatJitAST, transform: fn(JitAST<I>, HashMap<String, JitAST<I>>) -> JitAST<I>) -> Self {
         Self::Pre { pat, transform }
     }
 
     pub fn post(
         pat: PatJitAST,
         transform: fn(
-            JitAST,
-            HashMap<String, JitAST>,
+            JitAST<I>,
+            HashMap<String, JitAST<I>>,
             &mut Scope,
             &mut dyn FnMut(usize) -> LoweredAST,
-            &[&RewriteRule],
+            &[&RewriteRule<I>],
         ) -> LoweredAST,
     ) -> Self {
         Self::Post { pat, transform }
     }
 }
 
-impl JitAST {
-    fn pre_rewrite(ast: Self, rules: &[&RewriteRule]) -> Self {
+impl<I: Clone> JitAST<I> {
+    fn pre_rewrite(ast: Self, rules: &[&RewriteRule<I>]) -> Self {
         let ast = match ast {
             JitAST::BinOp { lhs, rhs, op } => JitAST::BinOp {
                 lhs: Box::new(Self::pre_rewrite(*lhs, rules)),
@@ -309,7 +309,7 @@ impl JitAST {
     pub fn graph_rewrite_post(
         ast: Self,
         scope: &mut Scope,
-        rules: &[&RewriteRule],
+        rules: &[&RewriteRule<I>],
         on_var: &mut dyn FnMut(usize) -> LoweredAST,
     ) -> LoweredAST {
         for rule in rules {
@@ -348,7 +348,7 @@ impl JitAST {
     pub fn graph_rewrite(
         ast: Self,
         scope: &mut Scope,
-        rules: &[&RewriteRule],
+        rules: &[&RewriteRule<I>],
         on_var: &mut dyn FnMut(usize) -> LoweredAST,
     ) -> LoweredAST {
         let ast = Self::pre_rewrite(ast, rules);

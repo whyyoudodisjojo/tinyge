@@ -11,19 +11,19 @@ use memory::{
 };
 use tinyge_graphics::shaders::Shader;
 use wgpu::{
-    BlendComponent, BlendState, BufferUsages, ColorWrites, MultisampleState, PrimitiveState,
-    ShaderStages, VertexAttribute, VertexBufferLayout, VertexFormat,
+    BlendComponent, BlendState, Buffer, BufferUsages, ColorWrites, MultisampleState,
+    PrimitiveState, ShaderStages, VertexAttribute, VertexBufferLayout, VertexFormat,
 };
 
 #[derive(IntoBufferStruct)]
 #[allow(dead_code)]
 pub struct PentagonArgs {
     #[vertex]
-    pub vertex_buffer: TinyBuffer,
+    pub vertex_buffer: TinyBuffer<Buffer>,
     #[index]
-    pub index_buffer: TinyBuffer,
+    pub index_buffer: TinyBuffer<Buffer>,
     #[resource(bindgroup_index = 0, resource_index = 0, ty = "buffer")]
-    pub time_buffer: TinyBuffer,
+    pub time_buffer: TinyBuffer<Buffer>,
 }
 
 pub const VERTICES: &[Vertex] = &[
