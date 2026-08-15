@@ -1,7 +1,7 @@
-use darling::{FromDeriveInput, FromMeta, ast::NestedMeta};
+use darling::{FromMeta, ast::NestedMeta};
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Error, Ident, parse_macro_input, spanned::Spanned};
+use syn::{DeriveInput, Error, parse_macro_input, spanned::Spanned};
 
 #[derive(Debug, FromMeta)]
 #[darling(rename_all = "snake_case")]
@@ -55,19 +55,8 @@ impl TryFrom<&syn::Attribute> for FieldAttr {
     }
 }
 
-#[derive(FromDeriveInput)]
-#[darling(supports(struct_named))]
-#[allow(dead_code)]
-struct BufferStructInput {
-    ident: Ident,
-}
-
 pub fn buffer_struct_deser(item: TokenStream) -> TokenStream {
     let parsed = parse_macro_input!(item as DeriveInput);
-    let _input = match BufferStructInput::from_derive_input(&parsed) {
-        Ok(i) => i,
-        Err(e) => return e.write_errors().into(),
-    };
 
     let fields = match &parsed.data {
         syn::Data::Struct(syn::DataStruct {

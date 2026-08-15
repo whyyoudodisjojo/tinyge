@@ -32,7 +32,7 @@ impl ComputeRects {
 
 impl<'a> ComputeShader<'a> for ComputeRects {
     type Args = ComputeRectsArgs;
-    type Ret = ComputeRectsArgs;
+    type Ret = ();
 
     fn resource_buffers_with_bind_group_layouts(
         &self,
@@ -117,7 +117,5 @@ impl<'a> ComputeShader<'a> for ComputeRects {
         }
 
         queue.submit(std::iter::once(encoder.finish()));
-
-        args
     }
 }
